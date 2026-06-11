@@ -866,9 +866,9 @@ image_files = [
     "close_button.png",
     "minimize_button.png",
     "DynamicFPSLimiter_icon.png",
-    "icon_copy.png",
-    "icon_paste.png",
-    "icon_save.png",
+    #"icon_copy.png",
+    #"icon_paste.png",
+    #"icon_save.png",
     "icon_reset.png",
     "icon_settings.png"#, "icon_plot.png"
 ]
