@@ -8,7 +8,7 @@
 - Status snapshot branch: `docs/review-baseline`
 - Reviewed commit and branch point:
   `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
-- Current phase: review reconciliation and documentation baseline
+- Current phase: deterministic controller and adapter test harness
 
 ## Completed
 
@@ -25,7 +25,20 @@
   unnormalized, case-sensitive process-identity design. Its Windows, RTSS, and
   Lossless Scaling manifestations remain environment-dependent and require
   runtime validation.
-- No application code has changed and no fix has been released.
+- No controller-policy fix has been implemented or released.
+- The `test/controller-and-adapter-harness` branch now contains a deterministic
+  standard-library `unittest` suite, pure controller contracts, scripted
+  adapters, an unwired cap-ladder validator, and characterization of the
+  reviewed decrease selector.
+- The production monitoring loop delegates decrease-cap selection to the
+  characterized pure selector without changing the reviewed controller policy.
+- `CTRL-001` and `CTRL-005` remain open. The former is characterized with its
+  defect preserved; the latter has pure validation scaffolding that is not
+  wired into startup or runtime.
+- The automated-suite portion of `TEST-001` exists, but CI remains absent.
+  `TEST-002` has initial deterministic clock, FPS/process, sensor, RTSS, and
+  generation seams; production adapters and later controller work remain
+  outstanding.
 
 The three detailed verification reports under `review-input/codex-results/`
 were local, ignored review inputs used to reconcile this documentation
@@ -51,11 +64,11 @@ beyond the statically reviewed baseline.
 
 ## Next work
 
-Next implementation branch:
+Current implementation branch:
 
 1. `test/controller-and-adapter-harness`
 
-Following branches:
+Following branches after this harness is reviewed:
 
 2. `fix/rtss-transaction-and-restore`
 3. `fix/session-lifecycle`

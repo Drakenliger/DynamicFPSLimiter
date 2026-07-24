@@ -13,6 +13,21 @@
 - Physical hardware is used only in the sections explicitly titled physical,
   Lossless Scaling, or supported RTSS-version matrix.
 
+## Current automated harness
+
+Run the initial deterministic suite with:
+
+```text
+python -m unittest discover -s tests -t . -v
+```
+
+The harness currently covers pure legacy decrease characterization
+(`CTRL-001`), an unwired structural cap-ladder validator (`CTRL-005`),
+standard-library discovery and import isolation (`TEST-001`), and initial fake
+clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
+It performs no live RTSS, GUI, sensor, process, registry, profile, or hardware
+interaction. CI and later production adapters remain outstanding.
+
 ## Pure controller unit tests
 
 Exercise one controller step using immutable runtime configuration and typed
