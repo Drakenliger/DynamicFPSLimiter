@@ -10,6 +10,11 @@ started.
 **Objective:** Create deterministic seams and regression scaffolding without
 changing production policy.
 
+- **Status:** Initial pure contracts, fake adapters, cap-list validation
+  scaffolding, legacy decrease characterization, discovery, and import
+  isolation are implemented. `CTRL-001` remains defective by design,
+  `CTRL-005` remains unwired, CI is absent, and later production adapters remain
+  outstanding.
 - **Included findings:** `TEST-001`, `TEST-002`, and test-first coverage for
   `CTRL-001` and `CTRL-005`.
 - **Expected areas:** test layout and runner; cap-list/controller boundaries;

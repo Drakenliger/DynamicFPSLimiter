@@ -5,8 +5,16 @@
 No fix has been released from the review baseline.
 
 Current work consists only of review reconciliation, safety architecture, test
-planning, and tracked project-status documentation. Planned behavior in
-`DECISIONS.md`, `IMPLEMENTATION_PLAN.md`, and `TEST_PLAN.md` is not implemented.
+planning, tracked project-status documentation, and the initial deterministic
+controller/adapter harness. The harness uses standard-library `unittest`,
+characterizes the reviewed legacy decrease behavior, and supplies pure
+contracts and fakes without changing production controller policy.
+
+`CTRL-001` remains open and its defective no-step-down result is intentionally
+preserved. `CTRL-005` has pure cap-ladder validation scaffolding, but it is not
+wired into runtime. The automated-suite portion of `TEST-001` exists without
+CI, while `TEST-002` has initial deterministic seams and still requires later
+production adapters.
 
 ### Known high-priority limitations
 
@@ -18,9 +26,11 @@ planning, and tracked project-status documentation. Planned behavior in
 - Previous cap and limiter state are not captured and restored.
 - Stop/start and profile transitions can leave stale worker generations active.
 - Autopilot, idle, and process identity are not generation-safe.
-- No automated regression suite or CI currently protects controller and
-  external-state behavior.
+- The initial automated regression suite is local only; CI and broader
+  production-adapter coverage remain absent.
 
 This branch is not production-ready. It makes no compatibility claim for any
 RTSS version, the RX 7900 XTX, or Lossless Scaling beyond the statically
-reviewed baseline. Windows integration and physical acceptance remain required.
+reviewed baseline. No live RTSS, LHM, PDH, GUI, game, profile, or Lossless
+Scaling validation was performed. Windows integration and physical acceptance
+remain required.

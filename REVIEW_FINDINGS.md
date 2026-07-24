@@ -121,16 +121,17 @@ environment-dependent runtime qualification.
 ## Active finding ledger
 
 `Owner` names the responsible workstream, not an assigned individual.
-`Automated tests` and `Manual evidence` are planned evidence; none has passed at
-this documentation-only baseline.
+`Automated tests` and `Manual evidence` identify required evidence. The initial
+deterministic harness passes on `test/controller-and-adapter-harness`; physical
+and integration evidence remains outstanding.
 
 | Pri | ID | Severity / status | Active finding | Owner | Target branch / PR | Automated tests | Manual evidence | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P0 | CTRL-001 | High / Confirmed | Normal one-step cap decrease is unreachable | Controller | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Cap-list selection | RX 7900 XTX sustained overload trace | Open |
+| P0 | CTRL-001 | High / Confirmed | Normal one-step cap decrease is unreachable | Controller | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Passing differential cap-selection characterization; defect preserved | RX 7900 XTX sustained overload trace | Open |
 | P0 | CTRL-002 | High / Confirmed | Stale FPS and process identity can drive decisions | Controller | `fix/controller-validity-and-delays` | Fake clock/freshness | Menus, Alt-Tab, RTSS restart | Open |
 | P1 | CTRL-003 | Medium / Confirmed | No settling period follows an RTSS cap change | Controller | `fix/controller-validity-and-delays` | Fake clock/controller | Cap timing and frametime trace | Open |
 | P1 | CTRL-004 | Medium / Confirmed design gap | No explicit CPU-bound suppression policy | Controller | `fix/controller-validity-and-delays` | Controller sensor-role policy | CPU/GPU-bound LS traces | Open |
-| P1 | CTRL-005 | Medium / Confirmed | Runtime configuration validation is incomplete | Controller/config | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Config/cap validation | Invalid-input Windows UI run | Open |
+| P1 | CTRL-005 | Medium / Confirmed | Runtime configuration validation is incomplete | Controller/config | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Passing pure cap-ladder validator tests; validator unwired | Invalid-input Windows UI run | Open |
 | P0 | CTRL-006 | High / Confirmed | LibreHM ignores configured decision delays | Controller | `fix/controller-validity-and-delays` | Fake clock/sensors | Brief versus sustained bursts | Open |
 | P0 | HW-001 | High / Confirmed | LibreHM decisions are gated by legacy PDH | Backend isolation | `fix/backend-isolation-and-pdh` | Fake backend isolation | LHM valid with PDH zero/unavailable | Open |
 | P1 | HW-002 | High / Confirmed | LHM selections use positional, ambiguous identities | LHM | `fix/lhm-identity-health` | Fake LHM identity | Multi-GPU identifier inventory | Open |
@@ -170,8 +171,8 @@ this documentation-only baseline.
 | P2 | SEC-003 | Medium / Possible | Autostart uses elevated shell command strings | Security | `hardening/config-packaging-logging` | Argument construction | Task Scheduler smoke | Open |
 | P2 | SEC-004 | Medium / Informational | Release and dependency integrity are not enforced | Packaging | `hardening/config-packaging-logging` | Manifest/build checks | Release artifact audit | Open |
 | P2 | SEC-005 | Medium / Confirmed | First launch recursively strips Mark of the Web | Security | `hardening/config-packaging-logging` | Pre-launch policy | Downloaded artifact audit | Open |
-| P1 | TEST-001 | High / Confirmed | No automated test suite or CI exists | QA | `test/controller-and-adapter-harness` | Test/CI self-check | Not applicable | Open |
-| P1 | TEST-002 | High / Confirmed | Controller logic lacks deterministic seams | QA/controller | `test/controller-and-adapter-harness` | Fake clock/backends/RTSS | Not applicable | Open |
+| P1 | TEST-001 | High / Confirmed | No automated test suite or CI exists | QA | `test/controller-and-adapter-harness` | Standard-library discovery and import-isolation suite passes; CI absent | Not applicable | In progress |
+| P1 | TEST-002 | High / Confirmed | Controller logic lacks deterministic seams | QA/controller | `test/controller-and-adapter-harness` | Initial fake clock, FPS/process, sensor, RTSS, and generation contracts pass | Not applicable | In progress |
 | P1 | MAINT-001 | Medium / Confirmed | Errors and worker failures are obscured | Diagnostics | `hardening/config-packaging-logging` | Error/worker reporting | No-console failure capture | Open |
 | P3 | MAINT-002 | Low / Confirmed | `backup_snippets.py` is syntactically invalid | Maintenance | `docs/rx7900xtx-acceptance` | AST/packaging inventory | Not applicable | Open |
 | P3 | MAINT-003 | Low / Informational | Documentation, versions, and dependency declarations diverge | Documentation | `docs/rx7900xtx-acceptance` | Documentation/version check | Release review | Open |
