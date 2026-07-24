@@ -40,6 +40,7 @@ from core.warning import get_active_warnings
 from core.autostart import AutoStartManager
 from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
+from core.cap_selection import select_legacy_decrease_cap
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
 from core.launch_popup import show_loading_popup, hide_loading_popup
@@ -364,25 +365,16 @@ def monitoring_loop():
                         if CurrentFPSOffset > (current_mincap - current_maxcap) and should_decrease:
                             current_fps_cap = current_maxcap + CurrentFPSOffset
                             try:
-                                # Find values lower than current fps_mean
-                                lower_values = [x for x in fps_limit_list if x < fps_mean]
-                                
-                                if lower_values:
-                                    # If current cap is already lower than fps_mean
-                                    if current_fps_cap <= fps_mean:
-                                        # Get current index and move to next lower value
-                                        current_index = fps_limit_list.index(current_fps_cap)
-                                        if current_index < 0:
-                                            next_fps = fps_limit_list[current_index - 1]
-                                            CurrentFPSOffset = next_fps - current_maxcap
-                                            rtss.set_fractional_framerate(current_profile, next_fps)
-                                    else:
-                                        # Jump to highest value below fps_mean
-                                        next_fps = max(lower_values)
-                                        CurrentFPSOffset = next_fps - current_maxcap
-                                        rtss.set_fractional_framerate(current_profile, next_fps)
+                                next_fps = select_legacy_decrease_cap(
+                                    fps_limit_list,
+                                    current_fps_cap,
+                                    fps_mean,
+                                    should_decrease,
+                                )
+                                if next_fps is not None and next_fps != current_fps_cap:
+                                    CurrentFPSOffset = next_fps - current_maxcap
+                                    rtss.set_fractional_framerate(current_profile, next_fps)
                             except ValueError:
-                                # If current FPS not in list, find nearest lower value
                                 lower_values = [x for x in fps_limit_list if x < current_fps_cap]
                                 if lower_values:
                                     next_fps = max(lower_values)
