@@ -5,7 +5,7 @@
 - Fork: `Drakenliger/DynamicFPSLimiter`
 - Upstream: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
-- Current branch: `docs/review-baseline`
+- Status snapshot branch: `docs/review-baseline`
 - Reviewed commit and branch point:
   `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Current phase: review reconciliation and documentation baseline
@@ -76,8 +76,8 @@ The complete accepted order is maintained in `IMPLEMENTATION_PLAN.md`.
 
 ## Documentation branch scope
 
-These seven documentation files are committed on
-`docs/review-baseline` and included in draft pull request #1:
+These seven documentation files were prepared on
+`docs/review-baseline` and introduced through pull request #1:
 
 - `AGENTS.md`
 - `CURRENT_STATUS.md`
