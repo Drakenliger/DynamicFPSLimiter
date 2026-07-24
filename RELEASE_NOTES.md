@@ -4,11 +4,32 @@
 
 No fix has been released from the review baseline.
 
+### RTSS Stage 1 - preparatory internal infrastructure
+
+RTSS Stage 1 adds deterministic contracts for RTSS profile identity, apply
+requests, captured state, readback, apply results, and restoration results. It
+includes exact rational FPS representation, canonical case-insensitive
+application-profile identity, captured limiter-flag ownership, rollback
+uncertainty enforcement, explicit evidence availability, and exact
+document/revision restoration verification.
+
+Deterministic fakes and regression tests cover identity collisions, ownership,
+failure and rollback outcomes, immutable document bytes and SHA-256 evidence,
+revision evidence, verified absence, exhaustive result matrices, and import
+isolation. The completed suite contains 95 deterministic unit tests.
+
+No production RTSS caller uses the new transaction contracts yet. No runtime
+behavior change, live RTSS/profile write, Windows integration, RX 7900 XTX,
+Lossless Scaling, LHM, PDH, GUI, or lifecycle validation is included. This is
+preparatory internal infrastructure; Stage 2 transaction coordination and
+production integration remain future work.
+
 Current work consists only of review reconciliation, safety architecture, test
-planning, tracked project-status documentation, and the initial deterministic
-controller/adapter harness. The harness uses standard-library `unittest`,
-characterizes the reviewed legacy decrease behavior, and supplies pure
-contracts and fakes without changing production controller policy.
+planning, tracked project-status documentation, the initial deterministic
+controller/adapter harness, and the RTSS Stage 1 contract layer and tests. The
+harness uses standard-library `unittest`, characterizes the reviewed legacy
+decrease behavior, and supplies pure contracts and fakes without changing
+production controller or RTSS policy.
 
 `CTRL-001` remains open and its defective no-step-down result is intentionally
 preserved. `CTRL-005` has pure cap-ladder validation scaffolding, but it is not

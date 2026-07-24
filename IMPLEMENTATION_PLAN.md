@@ -5,6 +5,28 @@ The sequence below is accepted for work after the review baseline
 and draft pull request. Branch names describe scope; they do not imply work has
 started.
 
+## Current RTSS Stage 1 gate
+
+RTSS Stage 1 contracts and deterministic tests are complete in local commit
+`42a4485c6d6b078d442e57061e745a2ea43e3d89`
+(`test: add deterministic RTSS transaction contracts`). All 95 deterministic
+unit tests passed, and two independent read-only reviews are complete. No
+production caller changed, no production RTSS behavior changed, and no Stage 2
+transaction coordination was implemented.
+
+The next gated steps are:
+
+1. Review and commit this documentation synchronization.
+2. Push only `fix/rtss-transaction-and-restore` to
+   `Drakenliger/DynamicFPSLimiter`.
+3. Open a focused draft pull request against
+   `Drakenliger/DynamicFPSLimiter:main`.
+4. Review the draft pull request and CI.
+5. Merge only after review requirements are met.
+6. Begin Stage 2 only from an updated branch based on merged `main`.
+
+None of the push, pull request, CI review, merge, or Stage 2 steps is complete.
+
 ## 1. `test/controller-and-adapter-harness`
 
 **Objective:** Create deterministic seams and regression scaffolding without
@@ -38,6 +60,13 @@ changing production policy.
 **Objective:** Replace overlapping writers with one validated, serialized,
 generation-aware, reversible RTSS boundary.
 
+- **Stage 1 status:** Completed locally in
+  `42a4485c6d6b078d442e57061e745a2ea43e3d89` with 95 passing deterministic
+  unit tests and completed independent review. This stage provides identity,
+  request, capture, readback, apply, restore, ownership, evidence, and result
+  contracts plus deterministic fakes and regressions.
+- **Stage 2 status:** Not started. No production callers use the Stage 1
+  contracts, and no transaction coordinator or production integration exists.
 - **Included findings:** `RTSS-001` through `RTSS-009`, `SEC-002`, and the RTSS
   handshake portion of `RTSS-005`.
 - **Expected areas:** RTSS interface/controller boundary; canonical profile

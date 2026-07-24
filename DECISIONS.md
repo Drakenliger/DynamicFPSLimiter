@@ -21,9 +21,33 @@ These decisions apply to implementation after the review baseline at
 12. Worker threads enqueue GUI updates rather than directly owning GUI state.
 13. Do not tune RX 7900 XTX thresholds before correctness and lifecycle safety.
 14. Do not claim RTSS-version compatibility without physical testing.
+15. Canonical RTSS profile equality and hashing use canonical case-insensitive
+    identity.
+16. Profile display spelling is diagnostic metadata and is not ownership
+    identity.
+17. Limiter-flag mutation requires exact captured prior ownership for every
+    bit the request may change.
+18. Ordinary apply `FAILED` is limited to pre-mutation failure or an exact,
+    verified no-change result.
+19. Restore-result outcomes form a closed state machine with explicitly
+    permitted failure steps and no recursive rollback disposition.
+20. Exact restoration uses `VERIFIED`.
+21. Unresolved post-mutation restoration uses an explicit unresolved
+    disposition rather than ordinary `FAILED`.
+22. Every non-verified rollback accounts for every unresolved owned limiter bit.
+23. Profile-document and revision evidence use explicit availability states,
+    including verified absence, unsupported evidence, and read failure.
+24. Document restoration is verified with immutable complete bytes or an
+    approved immutable SHA-256 digest.
+25. RTSS Stage 1 remains deterministic contracts and tests only; it changes no
+    production caller or runtime behavior.
+26. Stage 2 transaction coordination and production integration remain
+    separate work and start only after the Stage 1 pull request is reviewed and
+    merged.
 
-These decisions define boundaries and safety properties, not completed
-behavior.
+Decisions 15-25 are implemented in the Stage 1 contracts and deterministic
+tests. They do not represent completed production behavior. Decision 26 remains
+a gate on future work.
 
 ## Unresolved decisions
 

@@ -5,10 +5,11 @@
 - Fork: `Drakenliger/DynamicFPSLimiter`
 - Upstream: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
-- Status snapshot branch: `docs/review-baseline`
+- Current branch: `fix/rtss-transaction-and-restore`
+- Current `HEAD`: `42a4485c6d6b078d442e57061e745a2ea43e3d89`
 - Reviewed commit and branch point:
   `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
-- Current phase: deterministic controller and adapter test harness
+- Current phase: RTSS Stage 1 locally committed; draft PR preparation
 
 ## Completed
 
@@ -39,6 +40,21 @@
   `TEST-002` has initial deterministic clock, FPS/process, sensor, RTSS, and
   generation seams; production adapters and later controller work remain
   outstanding.
+- RTSS Stage 1 contracts and deterministic tests are complete in local commit
+  `42a4485c6d6b078d442e57061e745a2ea43e3d89`
+  (`test: add deterministic RTSS transaction contracts`).
+- Stage 1 corrected all six blocking independent-review findings:
+  `S1-FINAL-001`, `S1-FINAL-002`, `S1-FINAL-003`, `S1-FINAL-004`,
+  `S1-FINAL-002-R1`, and `S1-FINAL-003-R1`.
+- Two independent read-only reviews were completed. The final independent
+  review found no remaining Stage 1 blockers or regressions.
+- Stage 1 validation completed with 95 passing deterministic unit tests.
+- The working tree was clean after the Stage 1 commit and at the documentation
+  update preflight.
+- Nothing has been pushed or published from the Stage 1 branch, and no draft
+  pull request exists yet.
+- Stage 2 has not started. No production RTSS caller uses the Stage 1 contracts,
+  and no production RTSS behavior changed.
 
 The three detailed verification reports under `review-input/codex-results/`
 were local, ignored review inputs used to reconcile this documentation
@@ -64,16 +80,13 @@ beyond the statically reviewed baseline.
 
 ## Next work
 
-Current implementation branch:
+The next action is to review and commit this documentation synchronization,
+then push only `fix/rtss-transaction-and-restore` and open a focused draft pull
+request against `Drakenliger/DynamicFPSLimiter:main`.
 
-1. `test/controller-and-adapter-harness`
-
-Following branches after this harness is reviewed:
-
-2. `fix/rtss-transaction-and-restore`
-3. `fix/session-lifecycle`
-
-The complete accepted order is maintained in `IMPLEMENTATION_PLAN.md`.
+RTSS Stage 2 remains blocked until the Stage 1 pull request has been reviewed
+and merged. Stage 2 must begin on an updated branch based on the merged `main`.
+The complete accepted implementation order remains in `IMPLEMENTATION_PLAN.md`.
 
 ## Physical validation still required
 
@@ -100,5 +113,12 @@ These seven documentation files were prepared on
 - `TEST_PLAN.md`
 - `RELEASE_NOTES.md`
 
-This branch contains documentation-only changes. No application source code has
-changed, and no production fix has been implemented or released.
+The earlier `docs/review-baseline` branch contained documentation-only changes.
+No application source code changed on that historical branch, and no production
+fix was implemented or released there.
+
+The current `fix/rtss-transaction-and-restore` branch contains the locally
+committed RTSS Stage 1 contracts and deterministic tests at
+`42a4485c6d6b078d442e57061e745a2ea43e3d89`. Its current working-tree changes
+are this uncommitted documentation synchronization. No production RTSS runtime
+behavior changed, and Stage 2 has not started.
