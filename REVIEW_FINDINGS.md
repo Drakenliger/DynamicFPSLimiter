@@ -5,12 +5,18 @@
 - Repository: `Drakenliger/DynamicFPSLimiter`
 - Reviewed branch: `main`
 - Reviewed commit: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
-- Primary review:
-  `review-input/DynamicFPSLimiter_Main_Branch_Deep_Technical_Review.md`
-- Verification reports:
-  `review-input/codex-results/01_controller_hardware_p0_verification.md`,
-  `review-input/codex-results/02_rtss_security_p0_verification.md`, and
-  `review-input/codex-results/03_lifecycle_autopilot_p0_verification.md`
+Review provenance consists of these local, ignored review inputs, which are not
+tracked in Git:
+
+- `review-input/DynamicFPSLimiter_Main_Branch_Deep_Technical_Review.md`
+- `review-input/codex-results/01_controller_hardware_p0_verification.md`
+- `review-input/codex-results/02_rtss_security_p0_verification.md`
+- `review-input/codex-results/03_lifecycle_autopilot_p0_verification.md`
+
+These names are retained for provenance only. A fresh clone or future session
+does not need access to the local reports. `REVIEW_FINDINGS.md` is the durable
+active ledger and contains all accepted findings, classifications, wording
+refinements, priorities, and test links needed to continue the work.
 
 ## Release gate
 
@@ -174,14 +180,14 @@ this documentation-only baseline.
 ### Notes on new identifiers
 
 - `HW-013` - **High / Confirmed / Open**. Legacy mode has a hard
-  LibreHardwareMonitor startup dependency. Source:
-  `review-input/codex-results/01_controller_hardware_p0_verification.md`.
-  Target: backend isolation and LHM lifecycle.
+  LibreHardwareMonitor startup dependency. Verification provenance:
+  `01_controller_hardware_p0_verification.md` (local ignored input). Target:
+  backend isolation and LHM lifecycle.
 - `RTSS-009` - **Low / Confirmed / Open**. The dormant
   `disable_limiter()` helper toggles flag bit 4 rather than idempotently
-  disabling it. It has **no active caller at the reviewed commit**. Source:
-  `review-input/codex-results/02_rtss_security_p0_verification.md`. Target: RTSS
-  transaction and flag ownership.
+  disabling it. It has **no active caller at the reviewed commit**.
+  Verification provenance: `02_rtss_security_p0_verification.md` (local ignored
+  input). Target: RTSS transaction and flag ownership.
 
 ### Priority triage decisions
 

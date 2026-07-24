@@ -27,8 +27,18 @@
   runtime validation.
 - No application code has changed and no fix has been released.
 
-All three named verification reports are present under
-`review-input/codex-results/`.
+The three detailed verification reports under `review-input/codex-results/`
+were local, ignored review inputs used to reconcile this documentation
+baseline. They are not tracked in Git and are not required by a fresh clone.
+
+The durable repository sources of truth are:
+
+- `CURRENT_STATUS.md`
+- `REVIEW_FINDINGS.md`
+- `DECISIONS.md`
+- `IMPLEMENTATION_PLAN.md`
+- `TEST_PLAN.md`
+- `RELEASE_NOTES.md`
 
 ## Release status
 
@@ -64,9 +74,10 @@ The complete accepted order is maintained in `IMPLEMENTATION_PLAN.md`.
 - Long-uptime idle behavior, Win32 ABI behavior, driver/RTSS restart, sleep, and
   shutdown resilience.
 
-## Files changed on this branch
+## Documentation branch scope
 
-Only these seven tracked root documentation files are created:
+These seven documentation files are committed on
+`docs/review-baseline` and included in draft pull request #1:
 
 - `AGENTS.md`
 - `CURRENT_STATUS.md`
@@ -76,4 +87,5 @@ Only these seven tracked root documentation files are created:
 - `TEST_PLAN.md`
 - `RELEASE_NOTES.md`
 
-They are intentionally unstaged and uncommitted.
+This branch contains documentation-only changes. No application source code has
+changed, and no production fix has been implemented or released.
