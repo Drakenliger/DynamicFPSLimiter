@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, unique
 from hashlib import sha256
 from math import gcd
 from types import MappingProxyType
 from typing import Iterable
 
 
+@unique
 class ProfileKind(Enum):
     """The two RTSS profile identity forms supported by the application."""
 
@@ -18,6 +19,7 @@ class ProfileKind(Enum):
     APPLICATION = "application"
 
 
+@unique
 class RtssDenominatorStrategy(Enum):
     """Explicit fractional-cap mechanisms; selection belongs to composition."""
 
@@ -26,6 +28,7 @@ class RtssDenominatorStrategy(Enum):
     RTSS_API = "rtss_api"
 
 
+@unique
 class RtssOutcome(Enum):
     """Structured terminal outcomes for later transaction coordination."""
 
@@ -40,6 +43,7 @@ class RtssOutcome(Enum):
     DEGRADED = "degraded"
 
 
+@unique
 class RtssFailureStep(Enum):
     """The transaction step at which an operation stopped."""
 
@@ -58,6 +62,7 @@ class RtssFailureStep(Enum):
     CONFLICT = "conflict"
 
 
+@unique
 class RtssFieldAvailability(Enum):
     """Explicit evidence state for optional document-backed profile fields."""
 
@@ -68,6 +73,7 @@ class RtssFieldAvailability(Enum):
     VERIFIED_ABSENT = "verified_absent"
 
 
+@unique
 class RtssOwnedField(Enum):
     """Fields whose restoration can remain unresolved after an owned operation."""
 
@@ -86,6 +92,7 @@ class RtssOwnedField(Enum):
     RETAINED_OWNERSHIP = "retained_ownership"
 
 
+@unique
 class RtssOperationState(Enum):
     """Evidence for whether a save or activation operation is settled."""
 
@@ -94,6 +101,7 @@ class RtssOperationState(Enum):
     UNCERTAIN = "uncertain"
 
 
+@unique
 class RtssDegradedClassification(Enum):
     """Closed reasons that prevent ordinary exact ownership release."""
 
@@ -104,6 +112,7 @@ class RtssDegradedClassification(Enum):
     READ_FAILURE = "read_failure"
 
 
+@unique
 class RtssHandoffDecision(Enum):
     """Explicit recipient decision for a complete degraded handoff."""
 
@@ -111,6 +120,7 @@ class RtssHandoffDecision(Enum):
     REJECTED = "rejected"
 
 
+@unique
 class RtssOwnershipReleaseReason(Enum):
     """The only proofs that can release deterministic RTSS ownership."""
 
@@ -118,6 +128,7 @@ class RtssOwnershipReleaseReason(Enum):
     ACCEPTED_HANDOFF = "accepted_handoff"
 
 
+@unique
 class _RtssRestoreDisposition(Enum):
     """Closed restore-result states used to fail new outcomes safely."""
 
@@ -125,6 +136,26 @@ class _RtssRestoreDisposition(Enum):
     PRE_MUTATION_FAILED = "pre_mutation_failed"
     UNRESOLVED = "unresolved"
     INVALID = "invalid"
+
+
+@unique
+class RtssStoredFieldKind(Enum):
+    """The two independently observed fields in an exact stored cap."""
+
+    NUMERATOR = "numerator"
+    DENOMINATOR = "denominator"
+
+
+@unique
+class RtssStoredCapStatus(Enum):
+    """Derived pair state; applicability is separate from observation success."""
+
+    NOT_REQUESTED = "not_requested"
+    CAPTURED = "captured"
+    CAPTURE_FAILED = "capture_failed"
+    UNSUPPORTED = "unsupported"
+    VERIFIED_ABSENT = "verified_absent"
+    INCONSISTENT = "inconsistent"
 
 
 _RESTORE_OUTCOME_DISPOSITIONS = {
@@ -818,11 +849,28 @@ def _validate_field_availability(
 
 
 @dataclass(frozen=True, slots=True)
+class RtssReadFailureDiagnostic:
+    """Typed immutable detail for one failed exact stored-field observation."""
+
+    field: RtssStoredFieldKind
+    code: str
+    message: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.field, RtssStoredFieldKind):
+            raise TypeError("diagnostic field must be an RtssStoredFieldKind")
+        _require_nonempty_string(self.code, label="diagnostic code")
+        if self.message is not None:
+            _require_nonempty_string(self.message, label="diagnostic message")
+
+
+@dataclass(frozen=True, slots=True)
 class RtssStoredFieldEvidence:
-    """Availability and exact integer data for one stored RTSS cap field."""
+    """Availability, exact value, and typed failure detail for one stored field."""
 
     availability: RtssFieldAvailability
     value: int | None = None
+    diagnostic: RtssReadFailureDiagnostic | None = None
 
     def __post_init__(self) -> None:
         availability = _validate_field_availability(
@@ -834,6 +882,15 @@ class RtssStoredFieldEvidence:
         elif self.value is not None:
             raise ValueError(
                 "unavailable stored field evidence must not contain a value"
+            )
+        if availability is RtssFieldAvailability.READ_FAILED:
+            if not isinstance(self.diagnostic, RtssReadFailureDiagnostic):
+                raise ValueError(
+                    "failed stored field evidence requires a typed diagnostic"
+                )
+        elif self.diagnostic is not None:
+            raise ValueError(
+                "stored field diagnostic is only valid for READ_FAILED evidence"
             )
 
 
@@ -849,11 +906,23 @@ class RtssStoredCapEvidence:
             raise TypeError("numerator must be RtssStoredFieldEvidence")
         if not isinstance(self.denominator, RtssStoredFieldEvidence):
             raise TypeError("denominator must be RtssStoredFieldEvidence")
-        if self.numerator.availability is not self.denominator.availability:
+        if (
+            self.numerator.diagnostic is not None
+            and self.numerator.diagnostic.field
+            is not RtssStoredFieldKind.NUMERATOR
+        ):
             raise ValueError(
-                "stored numerator and denominator require coherent paired evidence"
+                "numerator failure diagnostic must identify the numerator"
             )
-        if self.availability is RtssFieldAvailability.AVAILABLE:
+        if (
+            self.denominator.diagnostic is not None
+            and self.denominator.diagnostic.field
+            is not RtssStoredFieldKind.DENOMINATOR
+        ):
+            raise ValueError(
+                "denominator failure diagnostic must identify the denominator"
+            )
+        if self.status is RtssStoredCapStatus.CAPTURED:
             if self.denominator.value <= 0:
                 raise ValueError("stored denominator must be positive")
 
@@ -879,20 +948,124 @@ class RtssStoredCapEvidence:
 
         if availability is RtssFieldAvailability.AVAILABLE:
             raise ValueError("available stored evidence requires exact values")
+        if availability is RtssFieldAvailability.READ_FAILED:
+            return cls.read_failed(
+                numerator_code="numerator_read_failed",
+                denominator_code="denominator_read_failed",
+            )
         return cls(
             RtssStoredFieldEvidence(availability),
             RtssStoredFieldEvidence(availability),
         )
 
     @property
-    def availability(self) -> RtssFieldAvailability:
-        return self.numerator.availability
+    def availability(self) -> RtssFieldAvailability | None:
+        """Return the coherent availability, or ``None`` for asymmetric evidence."""
+
+        if self.numerator.availability is self.denominator.availability:
+            return self.numerator.availability
+        return None
+
+    @classmethod
+    def read_failed(
+        cls,
+        *,
+        numerator_code: str,
+        denominator_code: str,
+        numerator_message: str | None = None,
+        denominator_message: str | None = None,
+    ) -> RtssStoredCapEvidence:
+        """Build field-specific failed observations for the exact pair."""
+
+        return cls(
+            RtssStoredFieldEvidence(
+                RtssFieldAvailability.READ_FAILED,
+                diagnostic=RtssReadFailureDiagnostic(
+                    RtssStoredFieldKind.NUMERATOR,
+                    numerator_code,
+                    numerator_message,
+                ),
+            ),
+            RtssStoredFieldEvidence(
+                RtssFieldAvailability.READ_FAILED,
+                diagnostic=RtssReadFailureDiagnostic(
+                    RtssStoredFieldKind.DENOMINATOR,
+                    denominator_code,
+                    denominator_message,
+                ),
+            ),
+        )
+
+    @property
+    def status(self) -> RtssStoredCapStatus:
+        pair = (
+            self.numerator.availability,
+            self.denominator.availability,
+        )
+        coherent_states = {
+            (
+                RtssFieldAvailability.NOT_REQUESTED,
+                RtssFieldAvailability.NOT_REQUESTED,
+            ): RtssStoredCapStatus.NOT_REQUESTED,
+            (
+                RtssFieldAvailability.AVAILABLE,
+                RtssFieldAvailability.AVAILABLE,
+            ): RtssStoredCapStatus.CAPTURED,
+            (
+                RtssFieldAvailability.READ_FAILED,
+                RtssFieldAvailability.READ_FAILED,
+            ): RtssStoredCapStatus.CAPTURE_FAILED,
+            (
+                RtssFieldAvailability.UNSUPPORTED,
+                RtssFieldAvailability.UNSUPPORTED,
+            ): RtssStoredCapStatus.UNSUPPORTED,
+            (
+                RtssFieldAvailability.VERIFIED_ABSENT,
+                RtssFieldAvailability.VERIFIED_ABSENT,
+            ): RtssStoredCapStatus.VERIFIED_ABSENT,
+        }
+        return coherent_states.get(pair, RtssStoredCapStatus.INCONSISTENT)
+
+    @property
+    def requested(self) -> bool:
+        return self.status is not RtssStoredCapStatus.NOT_REQUESTED
+
+    @property
+    def supported(self) -> bool | None:
+        if self.status is RtssStoredCapStatus.UNSUPPORTED:
+            return False
+        if self.status in {
+            RtssStoredCapStatus.CAPTURED,
+            RtssStoredCapStatus.CAPTURE_FAILED,
+        }:
+            return True
+        return None
+
+    @property
+    def captured(self) -> bool:
+        return self.status is RtssStoredCapStatus.CAPTURED
+
+    @property
+    def unresolved(self) -> bool:
+        return self.requested and self.status not in {
+            RtssStoredCapStatus.CAPTURED,
+            RtssStoredCapStatus.VERIFIED_ABSENT,
+        }
+
+    def require_complete_for_mutation(self) -> None:
+        """Fail closed when requested exact evidence was not captured completely."""
+
+        if self.requested and not self.captured:
+            raise ValueError(
+                "requested exact stored numerator and denominator require "
+                "complete pre-mutation capture"
+            )
 
     @property
     def effective_cap(self) -> RationalCap | None:
         """Return only the mathematical value; retain this object for exactness."""
 
-        if self.availability is not RtssFieldAvailability.AVAILABLE:
+        if not self.captured:
             return None
         return RationalCap(self.numerator.value, self.denominator.value)
 
@@ -976,9 +1149,9 @@ class CapturedProfileState:
                 raise ValueError(
                     "a nonexistent captured profile must not have a profile document hash"
                 )
-            if self.stored_cap.availability not in {
-                RtssFieldAvailability.NOT_REQUESTED,
-                RtssFieldAvailability.VERIFIED_ABSENT,
+            if self.stored_cap.status not in {
+                RtssStoredCapStatus.NOT_REQUESTED,
+                RtssStoredCapStatus.VERIFIED_ABSENT,
             }:
                 raise ValueError(
                     "a nonexistent captured profile requires absent or "
@@ -987,14 +1160,14 @@ class CapturedProfileState:
         elif self.cap is None:
             raise ValueError("an existing captured profile requires an exact cap")
         elif (
-            self.stored_cap.availability
-            is RtssFieldAvailability.VERIFIED_ABSENT
+            self.stored_cap.status
+            is RtssStoredCapStatus.VERIFIED_ABSENT
         ):
             raise ValueError(
                 "an existing captured profile cannot have absent stored-cap evidence"
             )
         elif (
-            self.stored_cap.availability is RtssFieldAvailability.AVAILABLE
+            self.stored_cap.status is RtssStoredCapStatus.CAPTURED
             and self.stored_cap.effective_cap != self.cap
         ):
             raise ValueError(
@@ -1052,6 +1225,17 @@ class CapturedProfileState:
                 "captured profile document must be available, not requested, "
                 "or verified absent"
             )
+
+    @property
+    def pre_mutation_capture_admissible(self) -> bool:
+        """Whether every requested exact stored field was captured conclusively."""
+
+        return not self.stored_cap.requested or self.stored_cap.captured
+
+    def require_pre_mutation_capture(self) -> None:
+        """Reject incomplete requested exact evidence before future mutation."""
+
+        self.stored_cap.require_complete_for_mutation()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1311,32 +1495,32 @@ class RtssReadback:
                     raise ValueError(
                         "verified absent profile readback must not have a profile revision"
                     )
-                if self.stored_cap.availability not in {
-                    RtssFieldAvailability.NOT_REQUESTED,
-                    RtssFieldAvailability.VERIFIED_ABSENT,
+                if self.stored_cap.status not in {
+                    RtssStoredCapStatus.NOT_REQUESTED,
+                    RtssStoredCapStatus.VERIFIED_ABSENT,
                 }:
                     raise ValueError(
                         "verified absent profile readback requires absent or "
                         "unrequested stored-cap evidence"
                     )
             elif (
-                self.stored_cap.availability
-                is RtssFieldAvailability.VERIFIED_ABSENT
+                self.stored_cap.status
+                is RtssStoredCapStatus.VERIFIED_ABSENT
             ):
                 raise ValueError(
                     "verified existing profile readback cannot have absent "
                     "stored-cap evidence"
                 )
-            elif self.stored_cap.availability in {
-                RtssFieldAvailability.READ_FAILED,
-                RtssFieldAvailability.UNSUPPORTED,
+            elif self.stored_cap.status in {
+                RtssStoredCapStatus.CAPTURE_FAILED,
+                RtssStoredCapStatus.UNSUPPORTED,
+                RtssStoredCapStatus.INCONSISTENT,
             }:
                 raise ValueError(
                     "verified readback cannot mark stored-cap evidence unavailable"
                 )
             elif (
-                self.stored_cap.availability
-                is RtssFieldAvailability.AVAILABLE
+                self.stored_cap.status is RtssStoredCapStatus.CAPTURED
                 and self.stored_cap.effective_cap != self.cap
             ):
                 raise ValueError(
@@ -1357,16 +1541,16 @@ class RtssReadback:
                 raise ValueError(
                     "non-verified readback must not expose unverified profile state"
                 )
-            if self.stored_cap.availability in {
-                RtssFieldAvailability.AVAILABLE,
-                RtssFieldAvailability.VERIFIED_ABSENT,
-            }:
+            if self.stored_cap.status is RtssStoredCapStatus.VERIFIED_ABSENT:
                 raise ValueError(
                     "non-verified readback must not expose exact stored-cap state"
                 )
+            stored_availabilities = {
+                self.stored_cap.numerator.availability,
+                self.stored_cap.denominator.availability,
+            }
             if (
-                self.stored_cap.availability
-                is RtssFieldAvailability.READ_FAILED
+                RtssFieldAvailability.READ_FAILED in stored_availabilities
                 and (
                     self.outcome is not RtssOutcome.FAILED
                     or self.failure_step is not RtssFailureStep.READBACK
@@ -1376,8 +1560,7 @@ class RtssReadback:
                     "failed stored-cap read requires a readback failure"
                 )
             if (
-                self.stored_cap.availability
-                is RtssFieldAvailability.UNSUPPORTED
+                RtssFieldAvailability.UNSUPPORTED in stored_availabilities
                 and self.outcome
                 not in {
                     RtssOutcome.UNSUPPORTED_CAPABILITY,
@@ -1435,12 +1618,9 @@ def _validate_exact_captured_state_readback(
     if captured_state.profile_existed and readback.cap != captured_state.cap:
         raise ValueError(f"{label} cap must match captured prior state")
 
-    stored_availability = captured_state.stored_cap.availability
-    if stored_availability is RtssFieldAvailability.AVAILABLE:
-        if (
-            readback.stored_cap.availability
-            is not RtssFieldAvailability.AVAILABLE
-        ):
+    stored_status = captured_state.stored_cap.status
+    if stored_status is RtssStoredCapStatus.CAPTURED:
+        if readback.stored_cap.status is not RtssStoredCapStatus.CAPTURED:
             raise ValueError(
                 f"{label} requires exact stored numerator and denominator readback"
             )
@@ -1448,15 +1628,12 @@ def _validate_exact_captured_state_readback(
             raise ValueError(
                 f"{label} stored cap representation must match captured prior state"
             )
-    elif stored_availability is RtssFieldAvailability.VERIFIED_ABSENT:
-        if (
-            readback.stored_cap.availability
-            is not RtssFieldAvailability.VERIFIED_ABSENT
-        ):
+    elif stored_status is RtssStoredCapStatus.VERIFIED_ABSENT:
+        if readback.stored_cap.status is not RtssStoredCapStatus.VERIFIED_ABSENT:
             raise ValueError(
                 f"{label} requires verified-absent stored-cap evidence"
             )
-    elif stored_availability is not RtssFieldAvailability.NOT_REQUESTED:
+    elif stored_status is not RtssStoredCapStatus.NOT_REQUESTED:
         raise ValueError(
             f"{label} cannot prove exact storage from unavailable captured evidence"
         )
@@ -1564,6 +1741,7 @@ class RtssRestoreResult:
     failure_step: RtssFailureStep = RtssFailureStep.NONE
     error: str | None = None
     unrestored_flag_mask: int = 0
+    transaction_identity: RtssTransactionIdentity | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.outcome, RtssOutcome):
@@ -1584,6 +1762,13 @@ class RtssRestoreResult:
             self.unrestored_flag_mask,
             label="unrestored_flag_mask",
         )
+        if self.transaction_identity is not None and not isinstance(
+            self.transaction_identity,
+            RtssTransactionIdentity,
+        ):
+            raise TypeError(
+                "restore transaction_identity must be an RtssTransactionIdentity"
+            )
         if self.readback is not None and self.readback.generation != self.generation:
             raise ValueError("restore readback generation must match result")
         if (
@@ -1953,14 +2138,13 @@ class RtssTransactionIdentity:
 
 
 @dataclass(frozen=True, slots=True)
-class RtssOwnershipToken:
-    """The current holder and attribution of one unresolved RTSS ownership."""
+class RtssCapabilityEvidence:
+    """Immutable capability observation tied to one transaction and capture."""
 
     transaction_identity: RtssTransactionIdentity
     generation: RtssGeneration
     backend_generation: int
     capability_generation: int
-    holder: str
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -1980,78 +2164,82 @@ class RtssOwnershipToken:
             self.capability_generation,
             label="capability_generation",
         )
-        _require_nonempty_string(self.holder, label="ownership holder")
 
 
 @dataclass(frozen=True, slots=True)
+class RtssOwnershipToken:
+    """The exact captured state and capability evidence owned by one holder."""
+
+    transaction_identity: RtssTransactionIdentity
+    captured_state: CapturedProfileState
+    capability_evidence: RtssCapabilityEvidence
+    holder: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.transaction_identity,
+            RtssTransactionIdentity,
+        ):
+            raise TypeError(
+                "transaction_identity must be an RtssTransactionIdentity"
+            )
+        if not isinstance(self.captured_state, CapturedProfileState):
+            raise TypeError("captured_state must be a CapturedProfileState")
+        if not isinstance(self.capability_evidence, RtssCapabilityEvidence):
+            raise TypeError(
+                "capability_evidence must be an RtssCapabilityEvidence"
+            )
+        if (
+            self.capability_evidence.transaction_identity
+            != self.transaction_identity
+        ):
+            raise ValueError(
+                "ownership capability evidence must match the transaction"
+            )
+        if (
+            self.capability_evidence.generation
+            != self.captured_state.generation
+        ):
+            raise ValueError(
+                "ownership capability evidence must match the captured generation"
+            )
+        if (
+            self.capability_evidence.backend_generation
+            != self.captured_state.backend_generation
+        ):
+            raise ValueError(
+                "ownership capability evidence must match the captured backend epoch"
+            )
+        _require_nonempty_string(self.holder, label="ownership holder")
+
+    @property
+    def generation(self) -> RtssGeneration:
+        return self.captured_state.generation
+
+    @property
+    def backend_generation(self) -> int:
+        return self.captured_state.backend_generation
+
+    @property
+    def capability_generation(self) -> int:
+        return self.capability_evidence.capability_generation
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class RtssUnresolvedFieldEvidence:
-    """Evidence state for one field that remains unresolved."""
+    """Derived field-specific evidence for one unresolved responsibility."""
 
     field: RtssOwnedField
     availability: RtssFieldAvailability
     reason: str
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.field, RtssOwnedField):
-            raise TypeError("field must be an RtssOwnedField")
-        availability = _validate_field_availability(
-            self.availability,
-            label="unresolved_field",
-        )
-        if availability in {
-            RtssFieldAvailability.NOT_REQUESTED,
-            RtssFieldAvailability.VERIFIED_ABSENT,
-        }:
-            raise ValueError(
-                "an unresolved field requires available, failed, or "
-                "unsupported evidence"
-            )
-        _require_nonempty_string(self.reason, label="unresolved field reason")
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RtssDegradedFieldAccounting:
-    """Complete partition of applicable fields into resolved and unresolved."""
+    """A derived partition; callers cannot author structural truth directly."""
 
     applicable_fields: frozenset[RtssOwnedField]
     resolved_fields: frozenset[RtssOwnedField]
     unresolved_evidence: tuple[RtssUnresolvedFieldEvidence, ...]
-
-    def __post_init__(self) -> None:
-        applicable = _coerce_owned_field_set(
-            self.applicable_fields,
-            label="applicable_fields",
-        )
-        resolved = _coerce_owned_field_set(
-            self.resolved_fields,
-            label="resolved_fields",
-        )
-        unresolved_evidence = tuple(self.unresolved_evidence)
-        if any(
-            not isinstance(item, RtssUnresolvedFieldEvidence)
-            for item in unresolved_evidence
-        ):
-            raise TypeError(
-                "unresolved_evidence must contain RtssUnresolvedFieldEvidence"
-            )
-        unresolved_fields = tuple(
-            item.field for item in unresolved_evidence
-        )
-        if len(set(unresolved_fields)) != len(unresolved_fields):
-            raise ValueError("unresolved fields must not contain duplicates")
-        unresolved = frozenset(unresolved_fields)
-        if resolved & unresolved:
-            raise ValueError(
-                "a resolved field must not also be listed as unresolved"
-            )
-        if resolved | unresolved != applicable:
-            raise ValueError(
-                "degraded accounting must classify every applicable field "
-                "exactly once"
-            )
-        object.__setattr__(self, "applicable_fields", applicable)
-        object.__setattr__(self, "resolved_fields", resolved)
-        object.__setattr__(self, "unresolved_evidence", unresolved_evidence)
 
     @property
     def unresolved_fields(self) -> frozenset[RtssOwnedField]:
@@ -2082,10 +2270,9 @@ def _captured_owned_fields(
                 RtssOwnedField.EFFECTIVE_CAP,
             }
         )
-        if (
-            captured_state.stored_cap.availability
-            is RtssFieldAvailability.AVAILABLE
-        ):
+        # Applicability is ownership intent, not observation success. Requested
+        # failed, unsupported, or asymmetric exact evidence must remain visible.
+        if captured_state.stored_cap.requested:
             fields.update(
                 {
                     RtssOwnedField.EXACT_STORED_NUMERATOR,
@@ -2133,21 +2320,23 @@ def _resolved_captured_fields(
         if readback.profile_exists and readback.cap == captured_state.cap:
             resolved.add(RtssOwnedField.EFFECTIVE_CAP)
         if (
-            captured_state.stored_cap.availability
+            captured_state.stored_cap.numerator.availability
             is RtssFieldAvailability.AVAILABLE
-            and readback.stored_cap.availability
+            and readback.stored_cap.numerator.availability
             is RtssFieldAvailability.AVAILABLE
+            and readback.stored_cap.numerator
+            == captured_state.stored_cap.numerator
         ):
-            if (
-                readback.stored_cap.numerator
-                == captured_state.stored_cap.numerator
-            ):
-                resolved.add(RtssOwnedField.EXACT_STORED_NUMERATOR)
-            if (
-                readback.stored_cap.denominator
-                == captured_state.stored_cap.denominator
-            ):
-                resolved.add(RtssOwnedField.EXACT_STORED_DENOMINATOR)
+            resolved.add(RtssOwnedField.EXACT_STORED_NUMERATOR)
+        if (
+            captured_state.stored_cap.denominator.availability
+            is RtssFieldAvailability.AVAILABLE
+            and readback.stored_cap.denominator.availability
+            is RtssFieldAvailability.AVAILABLE
+            and readback.stored_cap.denominator
+            == captured_state.stored_cap.denominator
+        ):
+            resolved.add(RtssOwnedField.EXACT_STORED_DENOMINATOR)
     elif not readback.profile_exists:
         resolved.update(
             {
@@ -2184,17 +2373,226 @@ def _resolved_captured_fields(
     return frozenset(resolved)
 
 
-def _operation_field_partition(
-    field: RtssOwnedField,
-    state: RtssOperationState,
-) -> tuple[set[RtssOwnedField], set[RtssOwnedField]]:
-    if not isinstance(state, RtssOperationState):
-        raise TypeError("operation state must be an RtssOperationState")
-    if state is RtssOperationState.NOT_APPLICABLE:
-        return set(), set()
-    if state is RtssOperationState.VERIFIED:
-        return {field}, {field}
-    return {field}, set()
+@dataclass(frozen=True, slots=True)
+class RtssDiagnostic:
+    """Small immutable diagnostic whose text never determines structural truth."""
+
+    code: str
+    message: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty_string(self.code, label="diagnostic code")
+        if self.message is not None:
+            _require_nonempty_string(self.message, label="diagnostic message")
+
+
+@dataclass(frozen=True, slots=True)
+class RtssOperationEvidence:
+    """Concrete save or activation observation with identity and backend epoch."""
+
+    operation: RtssOwnedField
+    generation: RtssGeneration
+    backend_generation: int
+    attempted: bool
+    result: bool | None
+    diagnostic: RtssDiagnostic | None = None
+
+    def __post_init__(self) -> None:
+        if self.operation not in {
+            RtssOwnedField.SAVE,
+            RtssOwnedField.ACTIVATION,
+        }:
+            raise ValueError("operation evidence must describe save or activation")
+        if not isinstance(self.generation, RtssGeneration):
+            raise TypeError("operation generation must be an RtssGeneration")
+        _require_nonnegative_int(
+            self.backend_generation,
+            label="operation backend_generation",
+        )
+        if not isinstance(self.attempted, bool):
+            raise TypeError("operation attempted must be a bool")
+        if self.result is not None and not isinstance(self.result, bool):
+            raise TypeError("operation result must be a bool or None")
+        if self.diagnostic is not None and not isinstance(
+            self.diagnostic,
+            RtssDiagnostic,
+        ):
+            raise TypeError("operation diagnostic must be an RtssDiagnostic")
+        if not self.attempted:
+            if self.result is not None or self.diagnostic is not None:
+                raise ValueError(
+                    "unattempted operation cannot claim a result or diagnostic"
+                )
+        elif self.result is True:
+            if self.diagnostic is not None:
+                raise ValueError(
+                    "successful operation evidence must not contain a diagnostic"
+                )
+        elif self.diagnostic is None:
+            raise ValueError(
+                "failed or uncertain operation evidence requires a diagnostic"
+            )
+
+    @property
+    def state(self) -> RtssOperationState:
+        if not self.attempted:
+            return RtssOperationState.NOT_APPLICABLE
+        if self.result is True:
+            return RtssOperationState.VERIFIED
+        return RtssOperationState.UNCERTAIN
+
+
+@dataclass(frozen=True, slots=True)
+class RtssConflictEvidence:
+    """One immutable field-specific external-change observation."""
+
+    field: RtssOwnedField
+    generation: RtssGeneration
+    backend_generation: int
+    captured_value: str | bytes | int | RationalCap
+    observed_value: str | bytes | int | RationalCap
+
+    def __post_init__(self) -> None:
+        if self.field not in {
+            RtssOwnedField.EXACT_STORED_NUMERATOR,
+            RtssOwnedField.EXACT_STORED_DENOMINATOR,
+            RtssOwnedField.EFFECTIVE_CAP,
+            RtssOwnedField.PROFILE_DOCUMENT,
+            RtssOwnedField.PROFILE_REVISION,
+            RtssOwnedField.LIMITER_FLAGS,
+        }:
+            raise ValueError("conflict evidence must identify a comparable owned field")
+        if not isinstance(self.generation, RtssGeneration):
+            raise TypeError("conflict generation must be an RtssGeneration")
+        _require_nonnegative_int(
+            self.backend_generation,
+            label="conflict backend_generation",
+        )
+        permitted = (str, bytes, int, RationalCap)
+        if isinstance(self.captured_value, bool) or not isinstance(
+            self.captured_value,
+            permitted,
+        ):
+            raise TypeError("captured conflict value must be immutable typed data")
+        if isinstance(self.observed_value, bool) or not isinstance(
+            self.observed_value,
+            permitted,
+        ):
+            raise TypeError("observed conflict value must be immutable typed data")
+        if type(self.captured_value) is not type(self.observed_value):
+            raise TypeError("conflict values must have the same concrete type")
+        if self.captured_value == self.observed_value:
+            raise ValueError("conflict evidence requires different observed data")
+
+
+def _make_unresolved_field_evidence(
+    owned_field: RtssOwnedField,
+    availability: RtssFieldAvailability,
+    reason: str,
+) -> RtssUnresolvedFieldEvidence:
+    evidence = object.__new__(RtssUnresolvedFieldEvidence)
+    object.__setattr__(evidence, "field", owned_field)
+    object.__setattr__(evidence, "availability", availability)
+    object.__setattr__(evidence, "reason", reason)
+    return evidence
+
+
+def _make_degraded_accounting(
+    applicable: set[RtssOwnedField],
+    resolved: set[RtssOwnedField],
+    unresolved: tuple[RtssUnresolvedFieldEvidence, ...],
+) -> RtssDegradedFieldAccounting:
+    accounting = object.__new__(RtssDegradedFieldAccounting)
+    object.__setattr__(accounting, "applicable_fields", frozenset(applicable))
+    object.__setattr__(accounting, "resolved_fields", frozenset(resolved))
+    object.__setattr__(accounting, "unresolved_evidence", unresolved)
+    return accounting
+
+
+def _availability_from_readback_outcome(
+    readback: RtssReadback,
+) -> RtssFieldAvailability:
+    if readback.outcome is RtssOutcome.UNSUPPORTED_CAPABILITY:
+        return RtssFieldAvailability.UNSUPPORTED
+    if readback.outcome is RtssOutcome.FAILED:
+        return RtssFieldAvailability.READ_FAILED
+    return RtssFieldAvailability.NOT_REQUESTED
+
+
+def _unresolved_availability(
+    owned_field: RtssOwnedField,
+    captured_state: CapturedProfileState,
+    readback: RtssReadback | None,
+    save_evidence: RtssOperationEvidence | None,
+    activation_evidence: RtssOperationEvidence | None,
+) -> RtssFieldAvailability:
+    if owned_field is RtssOwnedField.EXACT_STORED_NUMERATOR:
+        source = (
+            readback.stored_cap.numerator
+            if readback is not None
+            else captured_state.stored_cap.numerator
+        )
+        return source.availability
+    if owned_field is RtssOwnedField.EXACT_STORED_DENOMINATOR:
+        source = (
+            readback.stored_cap.denominator
+            if readback is not None
+            else captured_state.stored_cap.denominator
+        )
+        return source.availability
+    if owned_field is RtssOwnedField.PROFILE_DOCUMENT:
+        if readback is not None:
+            return readback.profile_document_availability
+        return captured_state.profile_document_availability
+    if owned_field is RtssOwnedField.PROFILE_REVISION:
+        if readback is not None:
+            return readback.profile_revision_availability
+        return captured_state.profile_revision_availability
+    if owned_field in {
+        RtssOwnedField.PROFILE_DELETION,
+        RtssOwnedField.VERIFIED_PROFILE_ABSENCE,
+    }:
+        if readback is not None and readback.verified and not readback.profile_exists:
+            return RtssFieldAvailability.VERIFIED_ABSENT
+        if readback is not None:
+            return _availability_from_readback_outcome(readback)
+        return RtssFieldAvailability.VERIFIED_ABSENT
+    if owned_field is RtssOwnedField.SAVE:
+        if save_evidence is None:
+            return RtssFieldAvailability.NOT_REQUESTED
+        return RtssFieldAvailability.READ_FAILED
+    if owned_field is RtssOwnedField.ACTIVATION:
+        if activation_evidence is None:
+            return RtssFieldAvailability.NOT_REQUESTED
+        return RtssFieldAvailability.READ_FAILED
+    if owned_field is RtssOwnedField.BACKEND_EPOCH:
+        return RtssFieldAvailability.AVAILABLE
+    if readback is not None and not readback.verified:
+        return _availability_from_readback_outcome(readback)
+    return RtssFieldAvailability.AVAILABLE
+
+
+def _derived_degraded_classification(
+    accounting: RtssDegradedFieldAccounting,
+    *,
+    readback: RtssReadback | None,
+    conflict_evidence: RtssConflictEvidence | None,
+) -> RtssDegradedClassification:
+    if conflict_evidence is not None:
+        return RtssDegradedClassification.EXTERNAL_CONFLICT
+    availabilities = {
+        evidence.availability for evidence in accounting.unresolved_evidence
+    }
+    if RtssFieldAvailability.READ_FAILED in availabilities:
+        return RtssDegradedClassification.READ_FAILURE
+    if availabilities & {
+        RtssFieldAvailability.NOT_REQUESTED,
+        RtssFieldAvailability.UNSUPPORTED,
+    }:
+        return RtssDegradedClassification.EVIDENCE_UNAVAILABLE
+    if readback is not None and readback.verified and accounting.resolved_fields:
+        return RtssDegradedClassification.PARTIAL_RESTORATION
+    return RtssDegradedClassification.UNRESOLVED_MUTATION
 
 
 @dataclass(frozen=True, slots=True)
@@ -2205,16 +2603,15 @@ class RtssDegradedState:
     request: RtssApplyRequest
     captured_state: CapturedProfileState
     evidence_generation: RtssGeneration
-    latest_backend_generation: int
-    capability_generation: int
     current_owner: RtssOwnershipToken
-    accounting: RtssDegradedFieldAccounting
     classification: RtssDegradedClassification
     reason: str
     readback: RtssReadback | None = None
-    save_state: RtssOperationState = RtssOperationState.NOT_APPLICABLE
-    activation_state: RtssOperationState = RtssOperationState.NOT_APPLICABLE
+    save_evidence: RtssOperationEvidence | None = None
+    activation_evidence: RtssOperationEvidence | None = None
+    conflict_evidence: RtssConflictEvidence | None = None
     ownership_retained: bool = True
+    accounting: RtssDegradedFieldAccounting = field(init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -2237,22 +2634,10 @@ class RtssDegradedState:
             raise TypeError("readback must be an RtssReadback or None")
         if not isinstance(self.current_owner, RtssOwnershipToken):
             raise TypeError("current_owner must be an RtssOwnershipToken")
-        if not isinstance(self.accounting, RtssDegradedFieldAccounting):
-            raise TypeError(
-                "accounting must be an RtssDegradedFieldAccounting"
-            )
         if not isinstance(self.classification, RtssDegradedClassification):
             raise TypeError(
                 "classification must be an RtssDegradedClassification"
             )
-        _require_nonnegative_int(
-            self.latest_backend_generation,
-            label="latest_backend_generation",
-        )
-        _require_nonnegative_int(
-            self.capability_generation,
-            label="capability_generation",
-        )
         if not isinstance(self.ownership_retained, bool):
             raise TypeError("ownership_retained must be a bool")
         if not self.ownership_retained:
@@ -2283,61 +2668,136 @@ class RtssDegradedState:
             )
         if self.current_owner.generation != generation:
             raise ValueError("degraded owner generation must match")
-        if (
-            self.current_owner.backend_generation
-            != self.captured_state.backend_generation
-        ):
+        if self.current_owner.captured_state != self.captured_state:
             raise ValueError(
-                "degraded owner backend epoch must match captured ownership"
+                "degraded owner must own the exact captured state"
             )
-        if (
-            self.current_owner.capability_generation
-            != self.capability_generation
+
+        for operation, expected_field in (
+            (self.save_evidence, RtssOwnedField.SAVE),
+            (self.activation_evidence, RtssOwnedField.ACTIVATION),
         ):
-            raise ValueError(
-                "degraded owner capability generation must match"
-            )
+            if operation is None:
+                continue
+            if not isinstance(operation, RtssOperationEvidence):
+                raise TypeError(
+                    "save and activation evidence must be RtssOperationEvidence"
+                )
+            if operation.operation is not expected_field:
+                raise ValueError("operation evidence is assigned to the wrong field")
+            if operation.generation != generation:
+                raise ValueError("operation evidence generation must match")
+        if self.conflict_evidence is not None:
+            if not isinstance(self.conflict_evidence, RtssConflictEvidence):
+                raise TypeError(
+                    "conflict_evidence must be an RtssConflictEvidence or None"
+                )
+            if self.conflict_evidence.generation != generation:
+                raise ValueError("conflict evidence generation must match")
 
         applicable = set(_captured_owned_fields(self.captured_state))
         resolved = set(
             _resolved_captured_fields(self.captured_state, self.readback)
         )
         applicable.add(RtssOwnedField.BACKEND_EPOCH)
-        if (
-            self.latest_backend_generation
-            == self.captured_state.backend_generation
+        observed_backend_generations = [self.captured_state.backend_generation]
+        if self.readback is not None and self.readback.backend_generation is not None:
+            observed_backend_generations.append(self.readback.backend_generation)
+        for operation in (self.save_evidence, self.activation_evidence):
+            if operation is not None:
+                observed_backend_generations.append(operation.backend_generation)
+        if self.conflict_evidence is not None:
+            observed_backend_generations.append(
+                self.conflict_evidence.backend_generation
+            )
+        if any(
+            observed < self.captured_state.backend_generation
+            for observed in observed_backend_generations
         ):
+            raise ValueError(
+                "degraded backend evidence cannot predate captured ownership"
+            )
+        latest_backend_generation = max(observed_backend_generations)
+        if latest_backend_generation == self.captured_state.backend_generation:
             resolved.add(RtssOwnedField.BACKEND_EPOCH)
         applicable.add(RtssOwnedField.RETAINED_OWNERSHIP)
         resolved.add(RtssOwnedField.RETAINED_OWNERSHIP)
 
-        save_applicable, save_resolved = _operation_field_partition(
-            RtssOwnedField.SAVE,
-            self.save_state,
-        )
-        activation_applicable, activation_resolved = (
-            _operation_field_partition(
-                RtssOwnedField.ACTIVATION,
-                self.activation_state,
-            )
-        )
-        applicable.update(save_applicable)
-        applicable.update(activation_applicable)
-        resolved.update(save_resolved)
-        resolved.update(activation_resolved)
+        for operation, owned_field in (
+            (self.save_evidence, RtssOwnedField.SAVE),
+            (self.activation_evidence, RtssOwnedField.ACTIVATION),
+        ):
+            if operation is None or operation.state is RtssOperationState.NOT_APPLICABLE:
+                continue
+            applicable.add(owned_field)
+            if operation.state is RtssOperationState.VERIFIED:
+                resolved.add(owned_field)
 
-        if self.accounting.applicable_fields != frozenset(applicable):
-            raise ValueError(
-                "degraded accounting does not match all applicable owned fields"
-            )
-        if self.accounting.resolved_fields != frozenset(resolved):
-            raise ValueError(
-                "degraded accounting claims resolution without matching evidence"
-            )
-        if not self.accounting.unresolved_fields:
+        unresolved_fields = applicable - resolved
+        if not unresolved_fields:
             raise ValueError(
                 "degraded state requires at least one unresolved applicable field"
             )
+        unresolved_evidence = tuple(
+            _make_unresolved_field_evidence(
+                owned_field,
+                _unresolved_availability(
+                    owned_field,
+                    self.captured_state,
+                    self.readback,
+                    self.save_evidence,
+                    self.activation_evidence,
+                ),
+                f"{owned_field.value} remains unresolved",
+            )
+            for owned_field in sorted(
+                unresolved_fields,
+                key=lambda item: item.value,
+            )
+        )
+        accounting = _make_degraded_accounting(
+            applicable,
+            resolved,
+            unresolved_evidence,
+        )
+        object.__setattr__(self, "accounting", accounting)
+        expected_classification = _derived_degraded_classification(
+            accounting,
+            readback=self.readback,
+            conflict_evidence=self.conflict_evidence,
+        )
+        if self.classification is not expected_classification:
+            raise ValueError(
+                "degraded classification is not justified by concrete evidence"
+            )
+
+    @property
+    def latest_backend_generation(self) -> int:
+        observations = [self.captured_state.backend_generation]
+        if self.readback is not None and self.readback.backend_generation is not None:
+            observations.append(self.readback.backend_generation)
+        for operation in (self.save_evidence, self.activation_evidence):
+            if operation is not None:
+                observations.append(operation.backend_generation)
+        if self.conflict_evidence is not None:
+            observations.append(self.conflict_evidence.backend_generation)
+        return max(observations)
+
+    @property
+    def capability_generation(self) -> int:
+        return self.current_owner.capability_generation
+
+    @property
+    def save_state(self) -> RtssOperationState:
+        if self.save_evidence is None:
+            return RtssOperationState.NOT_APPLICABLE
+        return self.save_evidence.state
+
+    @property
+    def activation_state(self) -> RtssOperationState:
+        if self.activation_evidence is None:
+            return RtssOperationState.NOT_APPLICABLE
+        return self.activation_evidence.state
 
     @property
     def profile_identity(self) -> CanonicalProfileIdentity:
@@ -2416,13 +2876,16 @@ class RtssHandoffResult:
             raise ValueError(
                 "accepted handoff profile and generation must match"
             )
-        if recipient.backend_generation != state.latest_backend_generation:
+        if recipient.captured_state != state.captured_state:
             raise ValueError(
-                "accepted handoff backend epoch must match latest evidence"
+                "accepted handoff must preserve the exact owned capture"
             )
-        if recipient.capability_generation != state.capability_generation:
+        if (
+            recipient.capability_evidence
+            != state.current_owner.capability_evidence
+        ):
             raise ValueError(
-                "accepted handoff capability generation must match"
+                "accepted handoff must preserve immutable capability evidence"
             )
 
     @property
@@ -2431,14 +2894,72 @@ class RtssHandoffResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RtssExactRestorationProof:
+    """One coherent proof joining an owner, its capture, capability, and restore."""
+
+    ownership: RtssOwnershipToken
+    restoration: RtssRestoreResult
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.ownership, RtssOwnershipToken):
+            raise TypeError("proof ownership must be an RtssOwnershipToken")
+        if not isinstance(self.restoration, RtssRestoreResult):
+            raise TypeError("proof restoration must be an RtssRestoreResult")
+        if not self.restoration.succeeded:
+            raise ValueError("restoration proof requires a verified restore result")
+        if (
+            self.restoration.transaction_identity
+            != self.ownership.transaction_identity
+        ):
+            raise ValueError(
+                "restoration proof transaction identity must match the exact owner"
+            )
+        if self.restoration.captured_state != self.ownership.captured_state:
+            raise ValueError(
+                "restoration proof must restore the owner's exact captured state"
+            )
+        if self.restoration.generation != self.ownership.generation:
+            raise ValueError(
+                "restoration proof generation must match the exact owner"
+            )
+        if (
+            self.restoration.readback is None
+            or self.restoration.readback.generation
+            != self.ownership.generation
+        ):
+            raise ValueError(
+                "restoration proof requires owner-matching verified readback"
+            )
+        if (
+            self.restoration.readback.backend_generation
+            != self.ownership.backend_generation
+        ):
+            raise ValueError(
+                "restoration proof backend epoch must match the exact owner"
+            )
+        capability = self.ownership.capability_evidence
+        if capability.transaction_identity != self.ownership.transaction_identity:
+            raise ValueError(
+                "restoration proof capability evidence must match the owner transaction"
+            )
+        if capability.generation != self.ownership.generation:
+            raise ValueError(
+                "restoration proof capability evidence must match the owner generation"
+            )
+        if capability.backend_generation != self.ownership.backend_generation:
+            raise ValueError(
+                "restoration proof capability evidence must match the owner backend"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class RtssOwnershipRelease:
     """Proof that ownership was released through one admitted invariant."""
 
     ownership: RtssOwnershipToken
     reason: RtssOwnershipReleaseReason
-    restoration: RtssRestoreResult | None = None
+    restoration_proof: RtssExactRestorationProof | None = None
     handoff: RtssHandoffResult | None = None
-    restoration_capability_generation: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.ownership, RtssOwnershipToken):
@@ -2451,50 +2972,22 @@ class RtssOwnershipRelease:
                 raise ValueError(
                     "exact-restoration release must not contain a handoff"
                 )
-            if self.restoration_capability_generation is None:
-                raise ValueError(
-                    "exact-restoration release requires capability generation"
-                )
-            _require_nonnegative_int(
-                self.restoration_capability_generation,
-                label="restoration_capability_generation",
-            )
-            if (
-                self.restoration_capability_generation
-                != self.ownership.capability_generation
+            if not isinstance(
+                self.restoration_proof,
+                RtssExactRestorationProof,
             ):
                 raise ValueError(
-                    "restoration release capability generation must match ownership"
+                    "exact-restoration release requires one immutable proof"
                 )
-            if not isinstance(self.restoration, RtssRestoreResult):
+            if self.restoration_proof.ownership != self.ownership:
                 raise ValueError(
-                    "exact-restoration release requires a restore result"
-                )
-            if not self.restoration.succeeded:
-                raise ValueError(
-                    "ownership release requires exact verified restoration"
-                )
-            if self.restoration.generation != self.ownership.generation:
-                raise ValueError(
-                    "restoration release generation must match ownership"
-                )
-            if (
-                self.restoration.captured_state.backend_generation
-                != self.ownership.backend_generation
-            ):
-                raise ValueError(
-                    "restoration release backend epoch must match ownership"
+                    "restoration proof belongs to a different ownership token"
                 )
             return
 
-        if self.restoration is not None:
+        if self.restoration_proof is not None:
             raise ValueError(
-                "accepted-handoff release must not contain restoration"
-            )
-        if self.restoration_capability_generation is not None:
-            raise ValueError(
-                "accepted-handoff release must not contain restoration "
-                "capability evidence"
+                "accepted-handoff release must not contain restoration proof"
             )
         if not isinstance(self.handoff, RtssHandoffResult):
             raise ValueError(
@@ -2511,3 +3004,11 @@ class RtssOwnershipRelease:
             raise ValueError(
                 "handoff release must match the retained current owner"
             )
+
+    @property
+    def restoration(self) -> RtssRestoreResult | None:
+        """Compatibility read access without a second caller-supplied proof path."""
+
+        if self.restoration_proof is None:
+            return None
+        return self.restoration_proof.restoration

@@ -7,20 +7,32 @@ No fix has been released from the review baseline.
 ### RTSS Stage 2 - prerequisite contract correction
 
 The first accepted Stage 2 sequence item adds deterministic closed read-only
-outcome and failure-step allowlists for `RtssReadback`, exact stored numerator
-and denominator evidence distinct from reduced `RationalCap` equality, and
-immutable complete degraded-state, handoff, retained-ownership, and
-proof-gated ownership-release contracts.
+outcome and failure-step allowlists for `RtssReadback` and exact stored
+numerator and denominator evidence distinct from reduced `RationalCap`
+equality. Its first implementation did not pass independent review because
+ownership release and degraded accounting were not yet sufficiently
+evidence-bound.
 
-New regressions exhaustively cover the readback and apply outcome/failure-step
-matrices, exact stored `120/2` versus normalized `60/1` restoration, evidence
-availability, complete degraded-field accounting, canonical identity and
+The focused local correction binds ownership to exact captured state and
+immutable transaction/capability evidence, requires one owner-bound exact
+restoration proof, preserves requested exact-field applicability after failed,
+unsupported, or asymmetric observations, derives degraded accounting and
+classification from concrete field/operation/conflict/backend evidence, adds
+typed numerator/denominator read-failure diagnostics, and hardens relevant
+enums against aliases.
+
+Regressions cover the readback and apply outcome/failure-step matrices, exact
+stored `120/2` versus normalized `60/1` restoration, foreign or stale ownership
+proofs, failed and unsupported exact-field applicability, derived degraded
+evidence, field-specific diagnostics, enum aliases, canonical identity and
 generation attribution, and accepted and rejected handoff behavior. The
-deterministic suite contains 122 passing tests.
+deterministic suite contains 146 passing tests.
 
 No transaction coordinator, mutation, production wiring, live RTSS behavior,
 profile write, capability/name policy, dependency, or external-system behavior
-changes in this prerequisite slice.
+changes in this prerequisite slice. Sequence item 1 remains unapproved pending
+independent read-only review of the corrective commit; sequence item 2 remains
+unauthorized.
 
 ### RTSS Stage 1 - preparatory internal infrastructure
 

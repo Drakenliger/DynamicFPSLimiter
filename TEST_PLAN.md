@@ -26,8 +26,9 @@ The harness currently covers pure legacy decrease characterization
 standard-library discovery and import isolation (`TEST-001`), and initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
 It also covers the RTSS Stage 1 contract and deterministic-fake validation plus
-the RTSS Stage 2 sequence item 1 prerequisite contracts recorded below. The
-complete suite contains 122 passing deterministic tests. It performs no live
+the RTSS Stage 2 sequence item 1 prerequisite contracts and focused review
+corrections recorded below. The complete suite contains 146 passing
+deterministic tests. It performs no live
 RTSS, GUI, sensor, process, registry, profile, or hardware interaction. CI and
 later production adapters remain outstanding.
 
@@ -67,7 +68,10 @@ established by this validation.
 ## RTSS Stage 2 deterministic coordinator tests
 
 The prerequisite contract matrices and exact stored/degraded ownership tests
-for sequence item 1 are implemented and passing locally. Coordinator,
+for sequence item 1 are implemented and passing locally. The first
+implementation at `c83aa281d961222eeeb70dbb994c4f33aef46381` did not pass
+independent review; the focused corrective regressions below now pass, but the
+corrective commit still requires independent read-only review. Coordinator,
 capability/name-policy, mutation, production-adapter, and physical tests in
 later subsections remain **planned** and must not be described as passing.
 
@@ -104,7 +108,7 @@ Scaling.
   one-below, exact, and one-above boundaries for DLL-name bytes and derived
   profile-filename components, including the `.cfg` suffix and Global mapping.
 
-### Implemented sequence item 1 evidence and ownership regressions
+### First implementation sequence item 1 evidence and ownership regressions
 
 - Exact stored numerator and denominator remain unreduced independent evidence;
   partial pairs and invalid availability/value combinations fail closed.
@@ -131,8 +135,43 @@ Scaling.
   missing acceptance, incomplete attribution, or a wrong recipient retains
   ownership. Exact verified restoration is the only other admitted release
   proof.
-- These 27 focused tests raise the complete deterministic result from 95 to
-  122 passing tests with zero failures, errors, or unexpected skips.
+- These original 27 focused tests raised the complete deterministic result from
+  95 to 122. They continue to pass, but independent review found that they did
+  not prove the five correction items below.
+
+### Implemented sequence item 1 corrective regressions
+
+- **Foreign exact-restoration proof:** reject reuse of one restore result across
+  transaction owners, a proof from another owner, proof reuse after holder or
+  capability change, same generations with different captures, canonical
+  profile or profile-kind mismatch, each application/session/profile/source
+  generation mismatch, backend-epoch mismatch, copied capability markers,
+  incomplete proof, and marker-only or raw-string substitutes.
+- **Exact stored-field applicability:** keep requested numerator and denominator
+  applicable after paired `READ_FAILED`, paired `UNSUPPORTED`, or asymmetric
+  evidence; distinguish not-requested and conclusively captured pairs; require
+  both responsibilities in degraded accounting; and fail closed through the
+  pre-mutation capture contract when requested exact evidence is incomplete.
+- **Derived degraded evidence:** reject caller-authored unresolved accounting,
+  fabricated `AVAILABLE`, classification without its required evidence,
+  conflict evidence with the wrong classification, stale backend observations,
+  false save or activation success, false verified absence, omitted requested
+  fields, resolved/unresolved rewriting through `dataclasses.replace()`, and
+  empty degraded accounting with retained ownership.
+- **Typed read-failure diagnostics:** require non-empty field-specific typed
+  diagnostics for `READ_FAILED`; reject missing, empty, incompatible, mutable,
+  raw-string, Boolean-integer, and value-bearing failed evidence; preserve
+  distinct numerator and denominator failure codes.
+- **Enum aliases:** assert both ordinary enum iteration and `Enum.__members__`
+  for all relevant enums, enforce unique values, and demonstrate with a
+  synthetic enum that iteration alone omits aliases.
+- The 24 corrective tests raise the complete deterministic result from 122 to
+  146 passing tests with zero failures, errors, or unexpected skips.
+
+These tests remain pure contract tests. They do not provide coordinator
+admission, capture execution, mutation, save, activation, rollback,
+restoration, production-adapter, or live-system coverage; that work remains in
+the later planned sections.
 
 ### Planned request, identity, path, and capability admission
 

@@ -29,12 +29,16 @@ approved for explicit user acceptance on 25 July 2026, and the user explicitly
 accepted it that day. Accepted Stage 2 decisions are recorded in
 `DECISIONS.md`.
 
-**Accepted Stage 2 design; prerequisite sequence item 1 implemented locally.**
-The readback correction, exact stored-field evidence, immutable degraded-state
-and retained-ownership contracts, and their deterministic matrices are
-implemented locally after separate authorization. The coordinator, capability
-and supported-name policy, mutation, and production integration are not
-implemented. The branch has not been pushed and no Stage 2 pull request exists.
+**Accepted Stage 2 design; prerequisite sequence item 1 corrected locally after
+its first implementation review failed.** Implementation commit
+`c83aa281d961222eeeb70dbb994c4f33aef46381` was not approved because its
+ownership proof, exact-field applicability, degraded evidence, failure
+diagnostics, and enum-alias coverage were insufficient. A focused corrective
+slice addresses only those confirmed contract defects and passes 146
+deterministic tests. Sequence item 1 remains at the independent-review gate.
+The coordinator, capability and supported-name policy, sequence item 2,
+mutation, and production integration are not implemented or authorized. The
+branch has not been pushed and no Stage 2 pull request exists.
 
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
@@ -146,9 +150,12 @@ slice:
   failure, retained ownership, and explicit degraded handoff. Silent ownership
   release is invalid.
 
-These corrections now have focused regression tests in the 122-test
-deterministic suite. Independent read-only review of the implementation commit
-remains required before later Stage 2 logic may rely on them.
+The first implementation supplied focused coverage in the 122-test
+deterministic suite but did not pass independent review. The corrective slice
+adds foreign-proof, exact applicability, derived degraded-evidence,
+field-specific diagnostic, and enum-alias regressions; all 146 deterministic
+tests pass. Independent read-only review of the corrective commit remains
+required before later Stage 2 logic may rely on these contracts.
 
 ### Mandatory degraded-state identity and handoff schema
 
@@ -522,14 +529,17 @@ recovery mechanism, universal component limit, or compatibility claim.
 
 The independently verified and explicitly accepted implementation sequence is:
 
-1. **Prerequisite contract correction - completed locally**
+1. **Prerequisite contract correction - corrected locally; review pending**
    - restrict `RtssReadback` to read-only outcome/failure-step allowlists;
    - add the exhaustive readback matrix and a justified exhaustive apply
      matrix;
    - add exact stored-field evidence types; and
    - add the immutable degraded-state and retained-ownership schema.
+   - the first implementation did not pass independent review; the focused
+     corrective slice changes only its confirmed contract defects;
    - completed without transaction coordination, mutation, or production
-     integration; independent read-only review is the next gate.
+     integration; independent read-only review of the corrective commit is the
+     next gate.
 2. **Capability and supported-name policy**
    - add configured/backend range intersections, exact-field capabilities,
      component lengths, lexical/path rejection, and exact encoding policy.
@@ -657,13 +667,14 @@ Stage 2 coordinator implementation is complete only when:
 - an independent read-only review accepts the contract changes, coordinator
   ordering, test matrices, and production-integration boundary.
 
-The planning-review and explicit-acceptance gates are satisfied, and sequence
-item 1 is implemented locally with no admitted mutation. The next gate is an
-independent read-only review of that implementation commit. Sequence item 2 and
-each later mutation-bearing slice remain unauthorized and gated by their
-applicable review, rollback, degraded-state, ownership, and failure-matrix
-requirements. Push and pull-request creation require separate explicit
-approval.
+The planning-review and explicit-acceptance gates are satisfied. Sequence item
+1 is corrected locally with no admitted mutation after its first implementation
+review failed. The next gate is an independent read-only review of the
+corrective commit. Sequence item 2 and each later mutation-bearing slice remain
+unauthorized and gated by their applicable review, rollback, degraded-state,
+ownership, and failure-matrix requirements. The accepted 12-item focused
+sequence above is unchanged. Push and pull-request creation require separate
+explicit approval.
 
 ### Rollback considerations
 
@@ -724,10 +735,10 @@ generation-aware, reversible RTSS boundary.
   recommendation was **Approved for explicit user acceptance**, and the user
   explicitly accepted the corrected plan on 25 July 2026. Acceptance commit
   `d10feead8a3707ee52a54f80e4e53c14945309d0` records that gate. The focused
-  prerequisite contract/test sequence item is implemented locally and passes
-  all 122 deterministic tests. No coordinator or mutation exists, no
-  production caller uses the contracts, and production integration remains
-  later work.
+  prerequisite contract/test sequence item was corrected locally after its
+  first implementation review failed and now passes all 146 deterministic
+  tests. No coordinator or mutation exists, no production caller uses the
+  contracts, and production integration remains later work.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.

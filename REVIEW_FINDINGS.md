@@ -539,6 +539,81 @@ active technical-review ledger.
   recorded in `DECISIONS.md`; implementation and production integration remain
   separate, unauthorized work.
 
+## RTSS Stage 2 sequence-item-1 implementation-review findings
+
+These supplemental findings record the independent read-only review of
+implementation commit `c83aa281d961222eeeb70dbb994c4f33aef46381`. They are
+outside the unchanged original 50-row active technical-review ledger and do
+not close any production RTSS finding.
+
+The review disposition was **Not approved - blocking findings require
+correction**. A focused local corrective change now passes 146 deterministic
+tests. Each finding remains at the corrective-commit independent-review gate;
+none is independently verified closed.
+
+### `S2-OWNERSHIP-IMPL-001` - Blocking / corrected locally, review pending
+
+- **Problem:** The same verified restore result could release different
+  transaction owners because restoration lacked transaction identity and
+  capability generation was a separately copied integer.
+- **Local correction:** Ownership now contains exact captured state and
+  immutable transaction-bound capability evidence. Verified restore results
+  used for release carry transaction identity. One immutable exact-restoration
+  proof binds that owner, capture, capability evidence, restore result,
+  readback, canonical identity, profile kind, all generations, backend epoch,
+  and exact stored representation. Release accepts only a proof for the exact
+  ownership token.
+- **Regressions:** Foreign transaction and owner, proof reuse, different
+  capture, copied capability marker, profile identity/kind, each generation,
+  backend epoch, incomplete proof, and `120/2` versus `60/1`.
+
+### `S2-DEGRADED-IMPL-001` - Blocking / corrected locally, review pending
+
+- **Problem:** Exact numerator and denominator applicability was inferred from
+  successful `AVAILABLE` evidence, so requested failed or unsupported fields
+  could disappear.
+- **Local correction:** Exact-pair status now distinguishes not requested,
+  captured, failed, unsupported, verified absent, and asymmetric/inconsistent
+  evidence. Applicability follows request/ownership responsibility rather than
+  observation success; both pair fields remain applicable together.
+  `CapturedProfileState.require_pre_mutation_capture()` fails closed when
+  requested exact evidence is incomplete.
+- **Regressions:** Failed, unsupported, asymmetric, unrequested, and captured
+  pairs; unresolved degraded accounting; and pre-mutation fail-closed checks.
+
+### `S2-DEGRADED-IMPL-002` - Blocking / corrected locally, review pending
+
+- **Problem:** Callers could author unresolved availability, classification,
+  operation success, and latest backend claims without concrete evidence.
+- **Local correction:** Degraded accounting and unresolved field evidence are
+  derived-only. Save and activation use typed operation evidence; conflicts use
+  immutable field-specific differing observations; latest backend epoch is
+  derived from capture/readback/operation/conflict observations; and
+  classification is validated against those sources.
+- **Regressions:** Fabricated `AVAILABLE`, unsupported classification claims,
+  conflict presence/absence, stale backend observations, false save/activation
+  success, false verified absence, omitted or double-resolved fields, and empty
+  degraded state with retained ownership.
+
+### `S2-EVIDENCE-IMPL-001` - Non-blocking / corrected locally, review pending
+
+- **Problem:** `RtssStoredFieldEvidence` represented only availability and
+  value, so `READ_FAILED` had no required typed field-specific diagnostic.
+- **Local correction:** Immutable `RtssReadFailureDiagnostic` records exact
+  numerator or denominator, a non-empty code, and optional secondary text.
+  It is mandatory for `READ_FAILED`, prohibited for incompatible availability,
+  and never stores exception objects.
+- **Regressions:** Missing and empty diagnostics, incompatible diagnostics,
+  numerator/denominator distinction, immutability, and accidental failed value.
+
+### `S1-READBACK-ALIAS-001` - Non-blocking / corrected locally, review pending
+
+- **Problem:** Normal enum iteration and set comparisons omit aliases, allowing
+  a future alias to bypass exhaustive-matrix review.
+- **Local correction:** Relevant enums use `@unique`; tests compare
+  `Enum.__members__`, normal iteration, and unique values and demonstrate the
+  alias gap with a synthetic enum.
+
 ## Active finding ledger
 
 `Owner` names the responsible workstream, not an assigned individual.

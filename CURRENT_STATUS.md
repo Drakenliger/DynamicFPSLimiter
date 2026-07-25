@@ -6,8 +6,8 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 sequence item 1 implemented locally; independent
-  implementation review pending
+- Current phase: RTSS Stage 2 sequence item 1 corrected locally after failed
+  implementation review; corrective-commit review pending
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -164,11 +164,36 @@ The deterministic suite passes all 122 tests with
 execution, mutation, rollback execution, production integration, live adapter,
 dependency, or external-system behavior was added.
 
-This implementation remains local. It has not been pushed and has no pull
-request. Its next gate is an independent read-only review of the single local
-implementation commit. Stage 2 sequence item 2, capability and supported-name
-policy, remains unauthorized until that review is complete and separately
-accepted for further work.
+Independent read-only review of implementation commit
+`c83aa281d961222eeeb70dbb994c4f33aef46381` did not approve the implementation.
+It confirmed three blocking findings and two non-blocking findings:
+
+- `S2-OWNERSHIP-IMPL-001`: exact restoration was not bound to the releasing
+  transaction owner and used a separately copied capability-generation marker;
+- `S2-DEGRADED-IMPL-001`: requested failed or unsupported exact stored fields
+  could disappear from applicability and degraded accounting;
+- `S2-DEGRADED-IMPL-002`: generic caller-authored unresolved, classification,
+  operation, and backend claims were not proven by concrete evidence;
+- `S2-EVIDENCE-IMPL-001`: exact-field read failures lacked required typed,
+  field-specific diagnostics; and
+- `S1-READBACK-ALIAS-001`: enum iteration alone did not guard exhaustive
+  matrices against aliases.
+
+A focused local correction binds ownership to exact captured state and
+immutable transaction/capability evidence, requires a transaction-bound exact
+restoration proof, keeps requested exact-pair responsibilities applicable
+through failed, unsupported, and asymmetric evidence, derives degraded
+accounting and classification from concrete observations, adds typed
+field-specific read-failure diagnostics, and enforces/tests enum uniqueness
+through `Enum.__members__`.
+
+The complete deterministic suite now passes all 146 tests with
+`PYTHONDONTWRITEBYTECODE=1`. The correction remains contract/test-only: no
+coordinator, mutation, production integration, capability/name policy, or live
+system behavior was added. It has not been pushed and has no pull request.
+Sequence item 1 is not approved or complete; its next gate is an independent
+read-only review of the local corrective commit. Stage 2 sequence item 2
+remains unauthorized.
 
 ## Current work
 
@@ -179,8 +204,10 @@ ownership, evidence, and result contracts with deterministic tests.
 RTSS Stage 2 planning, both planning corrections, all three independent
 reviews, and explicit user acceptance are recorded on
 `feature/rtss-transaction-coordinator`. The first accepted Stage 2
-contract/test-only sequence item is implemented locally. No transaction
-coordinator exists, and no production caller uses these contracts.
+contract/test-only sequence item and its focused review correction are
+implemented locally. The corrective commit still requires independent
+read-only review. No transaction coordinator exists, and no production caller
+uses these contracts.
 
 The initial local Stage 2 planning commit changed exactly:
 
@@ -205,8 +232,8 @@ request exists.
 
 ## Design-review status
 
-**Accepted Stage 2 design; sequence item 1 implemented locally and awaiting
-independent read-only review.**
+**Accepted Stage 2 design; sequence item 1 corrected locally after a failed
+implementation review and awaiting corrective-commit review.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -232,10 +259,11 @@ coordinator:
   GUI, lifecycle, and production-caller integration.
 
 The readback, exact stored-field, degraded-state, handoff, and retained-
-ownership prerequisites in sequence item 1 are now implemented and passing
-locally. Capability-driven name policy, coordinator logic, mutation,
-production integration, and their later tests remain planned, unimplemented,
-and non-production-reachable.
+ownership prerequisites in sequence item 1 are corrected and pass locally, but
+remain unapproved pending independent review of the corrective commit.
+Capability-driven name policy, coordinator logic, mutation, production
+integration, and their later tests remain planned, unimplemented, and
+non-production-reachable.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -280,9 +308,10 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The planning-review and explicit-acceptance gates are satisfied, and Stage 2
-sequence item 1 is implemented locally without mutation. The next action is an
-independent read-only review of its single implementation commit.
+The planning-review and explicit-acceptance gates are satisfied. The first
+implementation review of Stage 2 sequence item 1 failed, and a focused
+contract/test correction is implemented locally without mutation. The next
+action is an independent read-only review of the single corrective commit.
 
 Sequence item 2 remains unauthorized until that review. Coordinator admission,
 capture, rollback foundations, every mutation-bearing slice, production
