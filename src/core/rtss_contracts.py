@@ -2265,17 +2265,12 @@ class RtssReadbackEvidence:
             raise ValueError(
                 "transaction-bound readback evidence requires a backend epoch"
             )
-        if readback.backend_generation < ownership.backend_generation:
+        if readback.backend_generation != ownership.backend_generation:
             raise ValueError(
-                "readback evidence cannot predate captured ownership"
+                "readback backend evidence must match captured ownership"
             )
 
         if capability_evidence is None:
-            if readback.backend_generation != ownership.backend_generation:
-                raise ValueError(
-                    "advanced readback backend evidence requires a matching "
-                    "capability observation"
-                )
             capability_evidence = ownership.capability_evidence
         elif not isinstance(capability_evidence, RtssCapabilityEvidence):
             raise TypeError(
@@ -2294,19 +2289,9 @@ class RtssReadbackEvidence:
             raise ValueError(
                 "readback capability evidence must describe the observed backend"
             )
-        if (
-            readback.backend_generation == ownership.backend_generation
-            and capability_evidence != ownership.capability_evidence
-        ):
+        if capability_evidence != ownership.capability_evidence:
             raise ValueError(
-                "same-backend readback must preserve exact owner capability evidence"
-            )
-        if (
-            capability_evidence.capability_generation
-            < ownership.capability_generation
-        ):
-            raise ValueError(
-                "readback capability evidence cannot predate captured ownership"
+                "readback must preserve exact owner capability evidence"
             )
 
         evidence = object.__new__(cls)

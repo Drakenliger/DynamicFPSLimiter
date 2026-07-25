@@ -27,7 +27,7 @@ standard-library discovery and import isolation (`TEST-001`), and initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
 It also covers the RTSS Stage 1 contract and deterministic-fake validation plus
 the RTSS Stage 2 sequence item 1 prerequisite contracts and focused review
-corrections recorded below. The complete suite contains 171 passing
+corrections recorded below. The complete suite contains 181 passing
 deterministic tests. It performs no live
 RTSS, GUI, sensor, process, registry, profile, or hardware interaction. CI and
 later production adapters remain outstanding.
@@ -71,8 +71,11 @@ The prerequisite contract matrices and exact stored/degraded ownership tests
 for sequence item 1 are implemented and passing locally. The first
 implementation at `c83aa281d961222eeeb70dbb994c4f33aef46381` and first
 correction at `c323ddeb5cd62636a608d312af873a1552142f67` did not pass
-independent review. The second focused corrective regressions below now pass,
-but the new corrective commit still requires independent read-only review.
+independent review. Second correction
+`ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` also did not pass independent
+review because caller-forged future backend and capability generations remained
+trusted. The third focused corrective regressions below now pass, but the new
+corrective commit still requires independent read-only review.
 Coordinator, capability/name-policy, mutation, production-adapter, and physical
 tests in later subsections remain **planned** and must not be described as
 passing.
@@ -204,6 +207,29 @@ Scaling.
   responsibility and is deliberately not implemented.
 - These 25 second-correction tests raise the complete deterministic result from
   146 to 171 passing tests with zero failures, errors, or unexpected skips.
+
+### Implemented sequence item 1 third corrective regressions
+
+- **Captured-generation anchoring:** reject readback backend generations before
+  or after the ownership token's captured backend generation, even when a
+  caller-created capability object agrees with the forged epoch.
+- **Exact capability anchoring:** reject caller-created future capability
+  generations and require accepted capability evidence to equal the owner's
+  captured immutable capability evidence.
+- **Nested substitution:** reject future backend and capability generations
+  introduced through nested `dataclasses.replace()` calls or copied into an
+  otherwise structurally equal ownership token.
+- **Downstream fail-closed paths:** reject verified and uncertain operation
+  evidence, conflict evidence, direct degraded-state construction, and
+  degraded-state replacement when their supporting graph attempts to introduce
+  a future generation.
+- **Valid controls:** accept exact-current bound readback, verified operation,
+  same-generation conflict, and degraded-state derivation; retain verified
+  complete-pair, numerator-only partial, denominator-only partial, failed-pair,
+  and unsupported-pair behavior from the prior matrices.
+- These 10 third-correction tests raise the complete deterministic result from
+  171 to 181 passing tests with zero failures, errors, skips, or warnings.
+  They add no trusted advanced-generation observation mechanism.
 
 These tests remain pure contract tests. They do not provide coordinator
 admission, capture execution, mutation, save, activation, rollback,

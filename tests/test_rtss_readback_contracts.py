@@ -1382,7 +1382,7 @@ class DegradedOwnershipContractTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             replace(conflict, backend_generation=999)
 
-    def test_S2_DEGRADED_IMPL_002_latest_backend_is_derived_from_observations(self):
+    def test_S2_DEGRADED_IMPL_002_latest_backend_is_anchored_to_capture(self):
         with self.assertRaises(TypeError):
             self.state(latest_backend_generation=99)
         stale_readback = RtssReadback(
@@ -1398,7 +1398,7 @@ class DegradedOwnershipContractTests(unittest.TestCase):
                 denominator_code="den-failed",
             ),
         )
-        with self.assertRaisesRegex(ValueError, "cannot predate"):
+        with self.assertRaisesRegex(ValueError, "must match captured"):
             RtssReadbackEvidence.bind(self.owner, stale_readback)
 
         future_readback = replace(stale_readback, backend_generation=8)
@@ -1408,18 +1408,15 @@ class DegradedOwnershipContractTests(unittest.TestCase):
             8,
             12,
         )
-        future_observation = RtssReadbackEvidence.bind(
-            self.owner,
-            future_readback,
-            capability_evidence=future_capability,
-        )
-        state = self.state(
-            readback_evidence=future_observation,
-            save_evidence=None,
-            activation_evidence=None,
-        )
-        self.assertEqual(state.latest_backend_generation, 8)
-        self.assertEqual(state.latest_capability_evidence, future_capability)
+        with self.assertRaisesRegex(ValueError, "must match captured"):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+        state = self.state(save_evidence=None, activation_evidence=None)
+        self.assertEqual(state.latest_backend_generation, 7)
+        self.assertEqual(state.latest_capability_evidence, self.capability)
 
     def test_S2_DEGRADED_IMPL_002_operation_success_requires_operation_evidence(self):
         for operation in (
@@ -2117,7 +2114,7 @@ class DegradedEvidenceProvenanceRegressionTests(unittest.TestCase):
                 resolving_observation,
             )
 
-    def test_S2_DEGRADED_IMPL_002_B_latest_epoch_requires_bound_observation(self):
+    def test_S2_DEGRADED_IMPL_002_B_latest_epoch_stays_at_captured_observation(self):
         failed = self.failed_readback(
             RtssStoredCapEvidence.read_failed(
                 numerator_code="numerator-failed",
@@ -2131,16 +2128,230 @@ class DegradedEvidenceProvenanceRegressionTests(unittest.TestCase):
             8,
             12,
         )
-        observation = RtssReadbackEvidence.bind(
-            self.owner,
-            failed,
-            capability_evidence=capability,
-        )
-        state = self.state(readback_evidence=observation)
 
-        self.assertEqual(state.latest_backend_generation, 8)
+        with self.assertRaises(ValueError):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                failed,
+                capability_evidence=capability,
+            )
+        state = self.state()
+        self.assertEqual(state.latest_backend_generation, 7)
+        self.assertEqual(state.capability_generation, 11)
         with self.assertRaises(TypeError):
             replace(state, latest_backend_generation=999)
+
+    def test_S2_DEGRADED_IMPL_002_B_future_backend_generation_is_rejected(self):
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        matching_capability = replace(
+            self.capability,
+            backend_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=matching_capability,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_future_capability_generation_is_rejected(self):
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_nested_future_replacements_are_rejected(self):
+        owner_copy = replace(self.owner)
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            owner_copy.capability_evidence,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            RtssReadbackEvidence.bind(
+                owner_copy,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_exact_current_generation_is_accepted(self):
+        observation = RtssReadbackEvidence.bind(
+            replace(self.owner),
+            replace(self.matching_readback()),
+            capability_evidence=replace(self.capability),
+        )
+
+        self.assertEqual(observation.backend_generation, 7)
+        self.assertEqual(observation.capability_evidence, self.capability)
+
+    def test_S2_DEGRADED_IMPL_002_B_verified_operation_rejects_future_graph(self):
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            observation = RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+            RtssOperationEvidence.verified(
+                RtssOwnedField.SAVE,
+                self.owner,
+                observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_uncertain_operation_rejects_future_graph(self):
+        future_readback = replace(
+            self.failed_readback(
+                RtssStoredCapEvidence.read_failed(
+                    numerator_code="numerator-failed",
+                    denominator_code="denominator-failed",
+                )
+            ),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            observation = RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+            RtssOperationEvidence.uncertain(
+                RtssOwnedField.SAVE,
+                self.owner,
+                RtssDiagnostic("save-uncertain"),
+                readback_evidence=observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_conflict_rejects_future_graph(self):
+        future_readback = replace(
+            self.matching_readback(revision="revision-2"),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            observation = RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+            RtssConflictEvidence.from_readback(
+                RtssOwnedField.PROFILE_REVISION,
+                self.owner,
+                observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_degraded_state_rejects_future_truth(self):
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            observation = RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+            state = self.state(readback_evidence=observation)
+            self.assertEqual(state.latest_backend_generation, 999)
+            self.assertEqual(state.capability_generation, 999)
+
+    def test_S2_DEGRADED_IMPL_002_B_state_replace_rejects_future_truth(self):
+        current_state = self.state()
+        future_readback = replace(
+            self.matching_readback(),
+            backend_generation=999,
+        )
+        future_capability = replace(
+            self.capability,
+            backend_generation=999,
+            capability_generation=999,
+        )
+
+        with self.assertRaises(ValueError):
+            observation = RtssReadbackEvidence.bind(
+                self.owner,
+                future_readback,
+                capability_evidence=future_capability,
+            )
+            replaced_state = replace(
+                current_state,
+                readback_evidence=observation,
+            )
+            self.assertEqual(replaced_state.latest_backend_generation, 999)
+            self.assertEqual(replaced_state.capability_generation, 999)
+
+    def test_S2_DEGRADED_IMPL_002_B_current_generation_paths_are_accepted(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(revision="revision-2"),
+            capability_evidence=self.capability,
+        )
+        operation = RtssOperationEvidence.verified(
+            RtssOwnedField.SAVE,
+            self.owner,
+            observation,
+        )
+        conflict = RtssConflictEvidence.from_readback(
+            RtssOwnedField.PROFILE_REVISION,
+            self.owner,
+            observation,
+        )
+        state = self.state(
+            readback_evidence=observation,
+            save_evidence=operation,
+            conflict_evidence=conflict,
+        )
+
+        self.assertEqual(operation.backend_generation, 7)
+        self.assertEqual(conflict.backend_generation, 7)
+        self.assertEqual(state.latest_backend_generation, 7)
+        self.assertEqual(state.capability_generation, 11)
 
     def test_S2_DEGRADED_IMPL_002_B_state_replace_revalidates_provenance(self):
         observation = RtssReadbackEvidence.bind(

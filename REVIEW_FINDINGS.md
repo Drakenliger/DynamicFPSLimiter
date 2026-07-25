@@ -624,11 +624,12 @@ outside the unchanged original 50-row active technical-review ledger and do
 not close any production RTSS finding.
 
 The review disposition was **Not approved - blocking findings require
-correction**. A second focused local correction now passes 171 deterministic
-tests. Each finding remains at the new corrective-commit independent-review
-gate; none is independently verified closed.
+correction**. Second focused local correction
+`ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` passed 171 deterministic tests
+but also did not pass independent review. Its review disposition and the third
+focused local correction are recorded below.
 
-### `S2-DEGRADED-IMPL-002-A` - Blocking / corrected locally, review pending
+### `S2-DEGRADED-IMPL-002-A` - Blocking / corrected and independently confirmed
 
 - **Problem:** A failed or unsupported `RtssReadback` could contain a complete
   exact stored pair whose two components were both `AVAILABLE`. Degraded
@@ -644,8 +645,10 @@ gate; none is independently verified closed.
   evidence; asymmetric evidence; aggregate failure availability; requested
   responsibility retention; and direct-constructor and `dataclasses.replace()`
   rejection.
+- **Second-correction review result:** Corrected. The independent review of
+  `ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` confirmed this protection.
 
-### `S2-DEGRADED-IMPL-002-B` - Blocking / corrected locally, review pending
+### `S2-DEGRADED-IMPL-002-B` - Blocking / corrected locally again, review pending
 
 - **Problem:** Readback lacked transaction attribution; operation success,
   conflict values, capability markers, and backend epochs remained
@@ -673,8 +676,20 @@ gate; none is independently verified closed.
   evidence defines a different token. Single consumption and duplicate-release
   prevention remain future coordinator-registry responsibilities and are not
   implemented here.
+- **Second-correction review result:** Not corrected. A caller could construct
+  a mutually consistent future `backend_generation` and
+  `capability_generation`, bind it to the owner, and reuse it as trusted
+  operation, conflict, and degraded latest-generation evidence.
+- **Third local correction:** Bound readback backend generation must equal the
+  ownership token's captured backend generation, and bound capability evidence
+  must equal the owner's captured immutable capability evidence. No trusted
+  advanced-generation observation mechanism is implemented.
+- **Third-correction regressions:** Direct binding, verified and uncertain
+  operations, conflicts, degraded latest backend/capability truth, structural
+  owner copies, nested `dataclasses.replace()` substitution, and exact-current
+  valid controls. The complete deterministic suite contains 181 passing tests.
 
-### `DOC-S2-DEGRADED-COVERAGE-001` - Non-blocking / corrected locally, review pending
+### `DOC-S2-DEGRADED-COVERAGE-001` - Non-blocking / corrected locally again, review pending
 
 - **Problem:** Tracked status, test, plan, and release documentation overstated
   protection against fabricated availability, Boolean operation success,
@@ -685,6 +700,36 @@ gate; none is independently verified closed.
   transaction-bound provenance rules, record 171 passing deterministic tests,
   preserve the sequence-item-1 review gate, and make no coordinator,
   production, mutation, or compatibility claim.
+- **Second-correction review result:** Not corrected accurately because those
+  records described arbitrary backend epochs as protected while the
+  caller-forged future-generation path remained constructible.
+- **Third local correction:** The records now preserve the third failed review,
+  distinguish `S2-DEGRADED-IMPL-002-A` as corrected from
+  `S2-DEGRADED-IMPL-002-B` as requiring this additional correction, record the
+  captured-generation anchor and 181-test result, and continue to claim no
+  approval, coordinator, mutation, production behavior, or compatibility.
+
+## RTSS Stage 2 sequence-item-1 second-correction review outcome
+
+Independent read-only review of
+`ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` ended **Not approved - blocking
+findings require correction**. It confirmed `S2-DEGRADED-IMPL-002-A`
+corrected, found `S2-DEGRADED-IMPL-002-B` not corrected, and found
+`DOC-S2-DEGRADED-COVERAGE-001` not corrected accurately. The remaining root
+cause was internally consistent but caller-forged future backend and
+capability evidence.
+
+The third focused local correction is contract/test/documentation-only and
+fails closed by anchoring accepted readback and capability generations to the
+owner's captured evidence. It has not been independently approved, pushed, or
+published in a pull request. Stage 2 sequence item 2 remains unauthorized, and
+no live RTSS, Windows, GPU, Lossless Scaling, display, VRR, or frame-generation
+compatibility claim is made.
+
+The durable sequence remains: initial sequence-item-1 implementation; first
+failed review; first correction; second failed review; second correction; third
+failed review; this third focused correction; and another independent review
+still required.
 
 ## Active finding ledger
 

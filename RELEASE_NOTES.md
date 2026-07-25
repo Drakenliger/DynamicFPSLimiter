@@ -31,6 +31,14 @@ or cross-transaction evidence. Immutable ownership-token copies use structural
 logical identity; single-consumption enforcement remains deferred to the
 future coordinator registry.
 
+Independent review of the second correction confirmed its complete-pair
+protection but did not approve it: internally consistent caller-created future
+backend and capability generations could still become trusted readback,
+operation, conflict, and degraded-state evidence. The third focused local
+correction anchors bound readback and capability generations to the ownership
+token's captured evidence. It intentionally adds no mechanism for trusting an
+advanced generation.
+
 Regressions cover the readback and apply outcome/failure-step matrices, exact
 stored `120/2` versus normalized `60/1` restoration, foreign or stale ownership
 proofs, failed and unsupported exact-field applicability, non-verified
@@ -38,8 +46,8 @@ complete-pair rejection, partial field observations, transaction/profile/kind/
 generation/capability provenance, trusted operation evidence, owned conflict
 derivation, backend-epoch observations, contradictory evidence,
 `dataclasses.replace()` bypasses, structural token copies, field-specific
-diagnostics, enum aliases, and accepted and rejected handoff behavior. The
-deterministic suite contains 171 passing tests.
+diagnostics, enum aliases, forged future generations, and accepted and rejected
+handoff behavior. The deterministic suite contains 181 passing tests.
 
 No transaction coordinator, mutation, production wiring, live RTSS behavior,
 profile write, capability/name policy, dependency, or external-system behavior

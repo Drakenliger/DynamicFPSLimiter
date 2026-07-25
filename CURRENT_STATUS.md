@@ -6,8 +6,8 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 sequence item 1 corrected locally a second time
-  after two failed implementation reviews; new corrective-commit review pending
+- Current phase: RTSS Stage 2 sequence item 1 corrected locally a third time
+  after three failed implementation reviews; new corrective-commit review pending
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -204,13 +204,30 @@ observations, and derives degraded classification and accounting. Structural
 ownership-token equality is documented and tested without implementing
 single-consumption coordinator behavior.
 
-The complete deterministic suite now passes all 171 tests with
-`PYTHONDONTWRITEBYTECODE=1`. The second correction remains contract/test-only:
+Independent read-only review of second corrective commit
+`ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` did not approve the
+implementation. It confirmed `S2-DEGRADED-IMPL-002-A` corrected, but found
+`S2-DEGRADED-IMPL-002-B` still open because mutually consistent caller-created
+future backend and capability generations could be bound and then trusted by
+operation, conflict, and degraded-state evidence. It also found
+`DOC-S2-DEGRADED-COVERAGE-001` not corrected accurately.
+
+A third focused local correction fails closed by requiring bound readback
+backend generation and capability evidence to equal the ownership token's
+captured evidence. No trusted advanced-generation observation mechanism is
+introduced. Regressions cover direct construction, nested
+`dataclasses.replace()` substitution, operation and conflict factories,
+degraded latest-generation derivation, structural token copies, and valid
+current-generation controls.
+
+The complete deterministic suite now passes all 181 tests with
+`PYTHONDONTWRITEBYTECODE=1`. The third correction remains contract/test-only:
 no coordinator, mutation, production integration, capability/name policy, or
 live system behavior was added. It has not been pushed and has no pull request.
 Sequence item 1 is not approved or complete; its next gate is an independent
 read-only review of the new local corrective commit. Stage 2 sequence item 2
-remains unauthorized.
+remains unauthorized. Display and Frame Generation Awareness remains future
+planning only and is not implemented by this correction.
 
 ## Current work
 
@@ -221,7 +238,7 @@ ownership, evidence, and result contracts with deterministic tests.
 RTSS Stage 2 planning, both planning corrections, all three independent
 reviews, and explicit user acceptance are recorded on
 `feature/rtss-transaction-coordinator`. The first accepted Stage 2
-contract/test-only sequence item and its two focused review corrections are
+contract/test-only sequence item and its three focused review corrections are
 implemented locally. The new corrective commit still requires independent
 read-only review. No transaction coordinator exists, and no production caller
 uses these contracts.
@@ -249,8 +266,8 @@ request exists.
 
 ## Design-review status
 
-**Accepted Stage 2 design; sequence item 1 corrected locally a second time
-after two failed implementation reviews and awaiting new corrective-commit
+**Accepted Stage 2 design; sequence item 1 corrected locally a third time
+after three failed implementation reviews and awaiting new corrective-commit
 review.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
@@ -326,8 +343,8 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The planning-review and explicit-acceptance gates are satisfied. Two
-implementation reviews of Stage 2 sequence item 1 failed, and a second focused
+The planning-review and explicit-acceptance gates are satisfied. Three
+implementation reviews of Stage 2 sequence item 1 failed, and a third focused
 contract/test correction is implemented locally without mutation. The next
 action is an independent read-only review of the new single corrective commit.
 
