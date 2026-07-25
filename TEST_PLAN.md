@@ -115,14 +115,19 @@ Scaling.
 - Exact rational handling for reducible, irreducible, high-precision, minimum,
   maximum, and boundary caps without any float conversion.
 - Exact stored numerator/denominator evidence distinct from reduced effective
-  rational equality, including prior `120/2` restored as `120/2`, not `60/1`.
-- Capability-driven DLL and filename component lengths with ASCII byte count,
-  suffix expansion, and backend-policy changes.
-- Rejection matrix for empty input, whitespace, controls, Unicode/lossy
-  encoding, missing `.exe`, dot components, trailing dot/space, reserved
-  Windows stems, forward/back separators, mixed separators, drive-rooted,
-  drive-relative, rooted, UNC, extended/device, `\??\`, ADS/colon, and
-  containment-escape forms.
+  rational equality, including rejection of prior `120/2` being treated as
+  exactly restored by `60/1`.
+- Capability-driven DLL and filename component lengths with separate encoded-
+  byte and character boundaries, suffix expansion, and backend-policy changes.
+- Always-invalid rejection matrix for empty input, whitespace, controls,
+  missing `.exe`, dot components, trailing dot/space, reserved Windows stems,
+  forward/back separators, mixed separators, drive-rooted, drive-relative,
+  rooted, UNC, extended/device, `\??\`, ADS/colon, and containment-escape forms.
+- Default rejection of unsupported Unicode; acceptance only with an explicit
+  supported-name capability, exact lossless encoding, defined case
+  canonicalization, and satisfied character and encoded-byte limits.
+- Lossy encoding rejection, suffix-expanded filename boundaries, and
+  capability/encoding changes across backend generations.
 - Abstract-root containment failure and a simulated reparse escape reported by
   the adapter; no real filesystem or reparse point is required.
 - No capture or mutation operation after any admission rejection.
@@ -187,8 +192,14 @@ Scaling.
   ordinary `FAILED` and performs no unnecessary restoration write.
 - False-return and exception paths for every rollback mutation, save, update,
   delete, and readback operation.
-- Partial rollback of cap, denominator, document, revision, existence, or flags
-  produces durable degraded-state reporting for every unresolved owned field.
+- Partial rollback produces immutable degraded-state reporting for every
+  unresolved owned field independently and in combinations: exact numerator,
+  exact denominator, reduced effective cap, profile existence, deletion state,
+  document evidence, revision evidence, limiter flags, save state,
+  update/activation state, backend generation, and retained ownership.
+- Degraded state distinguishes partial restoration, unresolved post-mutation
+  state, external-edit conflict, unavailable evidence, read failure, ownership
+  retained, and ownership transferred to a defined handoff recipient.
 - Unresolved owned limiter-bit masks are exact for all bits, requested subsets,
   missing flag readback, and backend-generation mismatch; unrelated bits are
   excluded.
@@ -198,6 +209,15 @@ Scaling.
 - Backend restart before mutation is state-free rejection; restart after
   possible mutation attempts permitted rollback and otherwise reports durable
   degradation with the lost backend generation.
+- Reject a degraded result that omits any unresolved owned field, save/update
+  uncertainty, evidence availability, backend epoch, or retained ownership.
+- Reject silent ownership release, a handoff without a defined recipient, and a
+  handoff that omits any unresolved state or ownership responsibility.
+- Reject an exact-restoration result when required evidence is unavailable or
+  unreadable, or when rational equivalence is substituted for exact stored-
+  field equality.
+- Reject degraded results that omit partial save or update/activation
+  uncertainty, including backend-epoch change with unresolved ownership.
 
 ### Planned external edits and revision conflicts
 
@@ -263,6 +283,19 @@ Scaling.
   profile owner, pending barrier, or unconsumed scripted operation remains.
 - Running the planned suite with `PYTHONDONTWRITEBYTECODE=1` must leave no
   `__pycache__`, `.pyc`, or `.pyo` artifact in the repository.
+
+### Planned implementation-sequence gates
+
+- No mutation test or implementation path becomes enabled before the
+  applicable rollback interfaces, degraded-state construction, and failure
+  tests exist.
+- Every mutation-bearing commit passes its complete applicable Boolean-failure,
+  exception, readback-mismatch, rollback, and unresolved-ownership matrix.
+- Intermediate admission, capture, no-change, journal, or rollback-foundation
+  commits remain fail closed for ordinary mutation.
+- A deterministic guard proves that an admitted mutation cannot terminate
+  without exact verified apply, exact verified rollback, or complete degraded
+  state with retained or explicitly transferred ownership.
 
 ## Pure controller unit tests
 
@@ -442,7 +475,7 @@ For every candidate supported RTSS version, use disposable profiles and record:
 - exact readback, normalization, unrelated-field preservation, and write timing;
 - prior cap/denominator/flags restoration on stop, switch, exit, handled failure,
   RTSS restart, and external-edit conflict;
-- Unicode/canonical name policy and containment;
+- capability-dependent exact encoding, canonical name policy, and containment;
 - failure behavior while RTSS exits/restarts.
 
 No compatibility claim is made for a version until its complete required row

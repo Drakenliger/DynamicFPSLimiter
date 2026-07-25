@@ -314,6 +314,117 @@ ledger and its identifiers; they are not duplicate ledger entries.
 - **Disposition:** Deferred to the Stage 2 capability and supported-name
   policy.
 
+## RTSS Stage 2 planning-review findings
+
+These supplemental findings record the independent read-only review of local
+planning commit `7adfb5406b091ccd8c55872fc1b75036029fee8a`. They do not alter,
+renumber, close, or replace any entry in the original 50-item active technical
+review ledger.
+
+### `S2-DEGRADED-001` - High / Confirmed / correction required before implementation
+
+- **Location:** Stage 1 restoration-result contracts and the Stage 2
+  degraded-state, rollback, restoration, and ownership plan.
+- **Problem:** The current Stage 1 schema explicitly accounts for unresolved
+  owned limiter bits but does not unambiguously represent every other unresolved
+  owned field.
+- **Required correction:** Stage 2 must unconditionally define an immutable
+  degraded-state representation covering, where owned or applicable, exact
+  stored numerator and denominator, effective rational cap, profile existence
+  or deletion state, complete profile-document evidence, revision evidence,
+  limiter-flag bits, save uncertainty, update/activation uncertainty, backend
+  generation or epoch, ownership retained after failure, unavailable or
+  unreadable evidence, and conflicts caused by external edits.
+- **Required distinctions:** Exact verified restoration, partial restoration,
+  unresolved post-mutation state, external-edit conflict, unavailable evidence,
+  read failure, retained ownership, and ownership transferred through an
+  explicit degraded handoff must be distinct. Silent ownership release is
+  invalid.
+- **Gate:** The coordinator must not be implemented until this contract
+  extension and its deterministic tests are defined. Persistence across a
+  complete application-process restart may remain a later production-
+  integration decision, but deterministic Stage 2 ownership and degraded
+  classification are mandatory.
+
+### `S2-NAME-001` - Medium / Confirmed / correction required before implementation
+
+- **Location:** Canonical identity, capability, supported-name, encoding, and
+  component-length planning.
+- **Problem:** Encoding support must not become a permanent ASCII-only identity
+  invariant.
+- **Required correction:** Canonical identity must always reject lexically or
+  path-unsafe names independently of capabilities. The policy must separately
+  represent names unsupported by the selected backend and names permitted only
+  when exact encoding and supported-name capabilities prove lossless handling.
+- **Default policy:** Non-ASCII names remain rejected by default. Future Unicode
+  acceptance requires explicit capability and policy evidence, exact lossless
+  encoding, defined canonicalization behavior, and applicable encoded-byte and
+  character limits. No Unicode support is claimed.
+
+### `S2-SEQUENCE-001` - High / Confirmed / correction required before implementation
+
+- **Location:** Proposed Stage 2 implementation commits.
+- **Problem:** A mutation-bearing intermediate commit was planned before
+  complete rollback handling, while the following commit combined too many
+  failure, restoration, conflict, cancellation, and ownership concerns.
+- **Required correction:** Prerequisite contracts and matrices must precede
+  policy and evidence contracts; admission, serialization, capture, and
+  verified no-change must initially enable no mutation; rollback foundations
+  and degraded classification must exist before mutation admission; every
+  mutation slice must arrive with save, update, readback, rollback, and its
+  complete applicable failure matrix; restoration/deletion and then
+  conflict/cancellation/generation work must remain focused later units.
+- **Gate:** No intermediate implementation commit may admit a mutation without
+  complete rollback or degraded-state handling for every mutation it can
+  perform. Production adapters remain separate.
+
+### `S1-PROVENANCE-001` - Medium / Confirmed / correction required before implementation
+
+- **Location:** Treatment of `S1-FINAL-005`, `S1-FINAL-006`, and
+  `S1-FINAL-007`.
+- **Problem:** Durable tracked sources define these only as deferred identifiers
+  and do not support a test-maintenance, provenance-cleanup, coordinator, or
+  other technical allocation.
+- **Required correction:** Their technical definitions require provenance
+  recovery before disposition. They are not closed and are not treated as
+  coordinator prerequisites unless recovered evidence proves that they are.
+  Ignored local reports must not be required by a fresh clone.
+- **Evidence rule:** Any recovered requirement must be added durably and receive
+  appropriate regression coverage before technical allocation or closure. No
+  content is inferred for these identifiers.
+
+### `S2-STATUS-001` - Low / Confirmed
+
+- **Location:** `CURRENT_STATUS.md`.
+- **Problem:** Self-referential wording described committed planning work as
+  “the current planning task.”
+- **Correction:** Use stable historical wording identifying the local Stage 2
+  planning commit and its exact scope.
+
+### `S2-INVENTORY-001` - Low / Confirmed
+
+- **Location:** Production inventory for
+  `RTSSController.set_fractional_framerate`.
+- **Problem:** The inventory described the denominator profile-file rewrite as
+  optional.
+- **Correction:** The method calculates a positive denominator, always attempts
+  the direct denominator rewrite through `set_limit_denominator`, then writes
+  the numerator through the RTSS property path and performs one eventual update
+  according to the current call flow. Only update timing is conditional.
+
+### `S2-DECISION-001` - Medium / Improvement
+
+- **Location:** Stage 2 planning status and decision provenance.
+- **Problem:** Accepted repository decisions, proposed Stage 2 design, and
+  unresolved evidence-dependent decisions were not distinguished clearly
+  enough.
+- **Correction:** Stage 2-specific architecture and sequencing remain proposed
+  pending correction review and explicit user acceptance. They become accepted
+  only after the correction is independently reviewed, the user explicitly
+  accepts the corrected plan, and accepted decisions are durably recorded
+  before implementation where needed. Existing accepted decisions in
+  `DECISIONS.md` remain unchanged.
+
 ## Active finding ledger
 
 `Owner` names the responsible workstream, not an assigned individual.

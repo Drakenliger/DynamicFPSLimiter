@@ -6,11 +6,14 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 planning
+- Current phase: RTSS Stage 2 planning correction review
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
   (`Add deterministic RTSS transaction contracts (#3)`)
+- Stage 2 planning baseline:
+  `7adfb5406b091ccd8c55872fc1b75036029fee8a`
+  (`docs: begin RTSS Stage 2 planning`)
 
 ## Verified Stage 1 merge state
 
@@ -39,26 +42,62 @@ The deterministic command
 created. The repository remained clean and contained no `__pycache__`, `.pyc`,
 or `.pyo` artifacts.
 
+## Independent Stage 2 planning review
+
+The local planning commit
+`7adfb5406b091ccd8c55872fc1b75036029fee8a` changed exactly:
+
+- `CURRENT_STATUS.md`;
+- `IMPLEMENTATION_PLAN.md`; and
+- `TEST_PLAN.md`.
+
+An independent read-only review of that commit completed on 25 July 2026. Its
+result was **Approved after specified documentation corrections**. During the
+review, all 95 deterministic tests passed, the worktree and index remained
+clean, and no cache or bytecode artifacts were produced.
+
+The review confirmed that no Stage 2 source implementation exists, no
+production caller uses the Stage 1 contracts, and no remote Stage 2 branch,
+configured branch upstream, push, or pull request exists.
+
+The accepted correction-required blockers are:
+
+- `S2-DEGRADED-001`;
+- `S2-NAME-001`;
+- `S2-SEQUENCE-001`; and
+- `S1-PROVENANCE-001`.
+
+The smaller required corrections are:
+
+- `S2-STATUS-001`;
+- `S2-INVENTORY-001`; and
+- `S2-DECISION-001`.
+
+The correction containing this status update addresses those findings but has
+not itself passed independent review. Stage 2 implementation remains blocked.
+
 ## Current work
 
 RTSS Stage 1 is complete and merged. It provides deterministic identity,
 rational-cap, generation, capability, capture, readback, apply, restoration,
 ownership, evidence, and result contracts with deterministic tests.
 
-RTSS Stage 2 planning has started on
+RTSS Stage 2 planning and its independent review are recorded on
 `feature/rtss-transaction-coordinator`. Stage 2 source implementation has not
 started. No transaction coordinator exists, and no production caller uses the
 Stage 1 contracts.
 
-The current planning task changes exactly:
+The local Stage 2 planning commit changed exactly:
 
 - `CURRENT_STATUS.md`;
 - `IMPLEMENTATION_PLAN.md`; and
 - `TEST_PLAN.md`.
 
-It does not change production source, tests, configuration, workflows, ignored
-review inputs, or external state. The branch is local only: no Stage 2 push,
-remote branch, configured upstream for this branch, or pull request exists.
+It did not change production source, tests, configuration, workflows, ignored
+review inputs, or external state. This correction is also documentation-only
+and is limited to the four durable documents authorized by its task. The branch
+remains local only: no Stage 2 push, remote branch, configured upstream for this
+branch, or pull request exists.
 
 ## Design-review status
 
@@ -75,21 +114,27 @@ coordinator:
 - add exact stored numerator and denominator capture because the existing
   reduced `RationalCap` represents the effective value but cannot alone prove
   representation-exact restoration;
+- require immutable degraded-state accounting for every unresolved owned field,
+  save/update uncertainty, backend epoch, retained ownership, unavailable or
+  unreadable evidence, and external conflicts;
+- distinguish always-invalid lexical/path forms from capability-dependent,
+  exactly encoded supported names, with non-ASCII rejected by default;
 - add explicit transaction identity/admission around immutable Stage 1
   requests so duplicates and concurrent writers can be rejected; and
 - keep deterministic coordination separate from later live DLL, profile-file,
   GUI, lifecycle, and production-caller integration.
 
-These items are planned only. They are not implemented, tested, closed, or
-production-reachable.
+These items and their tests are planned only. They are not implemented, tested,
+closed, or production-reachable.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
-`S1-FINAL-007` only as deferred, non-blocking items and does not retain their
-root-cause or acceptance text. This planning task therefore does not invent or
-silently close them. Each remains deferred test-maintenance/provenance cleanup
-until an independent review supplies durable definitions; any item then shown
-to affect coordinator correctness must be promoted into a separately reviewed
-Stage 2 prerequisite.
+`S1-FINAL-007` only as deferred identifiers and does not retain their
+root-cause or acceptance text. No technical allocation or closure is permitted
+without provenance recovery. They are not treated as coordinator prerequisites
+unless recovered evidence proves that they are. Any recovered requirement must
+be added to durable tracked documentation and receive appropriate regression
+coverage before disposition; ignored local reports must never be required by a
+fresh clone.
 
 ## Production status
 
@@ -125,13 +170,15 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The next action is an independent, read-only review of the local planning
-commit.
+The next action is an independent, read-only review of the local documentation
+correction that addresses the Stage 2 planning-review findings.
 
-Stage 2 implementation, any push, and pull-request creation remain blocked
-pending that review. A later implementation task must use small, independently
-reviewable commits and must not wire production callers in the first
-coordinator implementation commit.
+Stage 2 implementation remains blocked pending that correction review and
+explicit user acceptance of the corrected plan. Any push and pull-request
+creation remain separately blocked and require explicit approval. A later
+implementation task must use small, independently reviewable commits, may not
+admit mutation before its complete applicable rollback and degraded-state
+handling exist, and must keep production callers out of the coordinator phase.
 
 ## Physical validation still required
 

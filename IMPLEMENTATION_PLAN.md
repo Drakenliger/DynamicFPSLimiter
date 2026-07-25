@@ -1,6 +1,7 @@
 # Implementation Plan
 
-The sequence below is accepted for work after the review baseline
+The repository-wide sequence and accepted decisions already recorded in
+`DECISIONS.md` apply after the review baseline
 `5f89c49a9e18612b4645bb46a3b6a6e875612e04`. Each phase uses a focused branch
 and draft pull request. Branch names describe scope; they do not imply work has
 started.
@@ -26,6 +27,14 @@ Planning is active on local branch
 corrections, fakes, and tests are not implemented. The branch has not been
 pushed and no Stage 2 pull request exists.
 
+**Proposed Stage 2 design pending correction review and explicit acceptance.**
+The Stage 2-specific architecture and sequence below are not accepted merely
+because the older repository-wide implementation order predates them. They
+become accepted only after this correction is independently reviewed, the user
+explicitly accepts the corrected plan, and accepted decisions are durably
+recorded before implementation where needed. Existing accepted decisions in
+`DECISIONS.md` remain unchanged.
+
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
 `config_manager.py`, Autopilot, Dear PyGui, lifecycle workers, or live RTSS.
@@ -37,22 +46,24 @@ coordinator is independently reviewed.
 The coordinator must enforce these invariants:
 
 1. One canonical, case-insensitive application/profile identity is admitted
-   before any backend call.
+   before any backend call. Always-invalid lexical and path forms are rejected
+   independently of backend capabilities; encoding and supported-name admission
+   are separate capability-policy decisions.
 2. Application, session, profile, and backend generations are checked before
    capture, immediately before the first mutation, and before accepting
    readback or restoration.
 3. Request structure, policy, capabilities, and the intersection of configured
    and backend ranges are validated before state capture or mutation.
 4. DLL names and derived profile filenames are single validated components
-   whose byte/character limits come from explicit capabilities, not guessed
-   RTSS constants.
+   whose encoded-byte and character limits, exact encoding, and supported-name
+   policy come from explicit capabilities, not guessed RTSS constants.
 5. Traversal, rooted, drive-relative, UNC, device, alternate-data-stream,
    separator, reserved-name, trailing-dot/space, control-character, lossy
    encoding, and containment failures are rejected.
 6. Every mutation has an exact pre-mutation capture, including profile
-   existence, stored numerator, stored denominator, effective rational cap,
-   owned limiter bits, backend generation, and required document/revision
-   evidence.
+   existence, exact stored numerator, exact stored denominator, reduced
+   effective rational cap, owned limiter bits, backend generation, and required
+   document/revision evidence.
 7. A profile created by a transaction is session-owned and exact restoration
    deletes it and verifies absence.
 8. All loaded-profile operations and all global limiter-flag operations pass
@@ -65,12 +76,18 @@ The coordinator must enforce these invariants:
     possible partial mutation triggers rollback unless cancellation or backend
     loss makes rollback impossible, in which case the result is durably
     degraded.
-12. Exact restoration verifies every owned field. Partial restoration reports
-    all unresolved owned limiter bits plus the cap, profile, document, and
-    revision uncertainty that remains.
+12. Exact restoration verifies every owned field. Partial restoration uses an
+    immutable degraded-state representation that accounts for every unresolved
+    owned field and evidence state: stored numerator, stored denominator,
+    effective cap, profile existence/deletion, document, revision, limiter
+    bits, save, update/activation, backend epoch, retained ownership,
+    unavailable or unreadable evidence, and external conflict.
 13. Duplicate commands, concurrent writers, stale generations, and stale
     ownership tokens are rejected before mutation.
-14. Restore, stop, cancellation, and ownership release are idempotent.
+14. Restore, stop, cancellation, and ownership release are idempotent. Silent
+    ownership release is invalid: release requires exact verified restoration
+    or transfer to a defined degraded-handoff recipient with complete unresolved
+    state and retained-ownership evidence.
 15. Coordinator behavior and operation ordering are deterministic without
     RTSS, Windows, a GPU, a game, a GUI, LHM, PDH, or Lossless Scaling.
 
@@ -80,14 +97,15 @@ The implementation should keep these explicit boundaries:
 
 | Boundary | Responsibility |
 | --- | --- |
-| `RtssIdentityCapabilityPolicy` | Canonical identity admission, supported-name rules, resolved denominator policy, configured/backend range intersection, and capability-driven DLL/profile component limits. |
+| `RtssIdentityCapabilityPolicy` | Canonical identity, always-invalid lexical/path forms, exact encoding and supported-name admission, resolved denominator policy, configured/backend range intersection, and capability-driven DLL/profile character and encoded-byte component limits. |
 | `RtssCapabilitySource` | Return immutable capabilities and the current backend generation without choosing an unsupported version or mechanism. |
-| `RtssStateReader` | Read profile existence, exact stored numerator/denominator, effective cap, owned flags, document evidence, revision evidence, and verified absence. |
+| `RtssStateReader` | Read profile existence, exact stored numerator/denominator as independent evidence, reduced effective cap, owned flags, document evidence, revision evidence, and verified absence. |
 | `RtssProfileMutator` | Load/create/delete one admitted profile and mutate exact cap fields or owned flag bits without saving or activating implicitly. |
 | `RtssActivationPort` | Save the loaded profile and request RTSS profile activation/update as separately injectable operations. |
 | `RtssReadbackPort` | Perform an exact post-save/update readback with backend-generation evidence. |
 | `RtssLifecycleAdmission` | Admit current application/session/profile/backend generations, cancellation state, profile ownership, and ownership transfer. |
 | `RtssTransactionCoordinator` | Serialize apply/restore, reject duplicates, enforce phase ordering, classify failures, invoke rollback, retain or release ownership, and return structured results. |
+| Degraded-state and handoff model | Account immutably for every unresolved owned field, save/update uncertainty, unavailable evidence, conflict, backend epoch, retained ownership, and an explicit handoff recipient. |
 | Controller-facing port | Accept immutable commands and return `RtssApplyResult` or `RtssRestoreResult`; expose no GUI or monitoring state. |
 | Deterministic fake backend | Model loaded-profile semantics, profiles, flags, revisions, document bytes, backend restarts, barriers, operation logs, false returns, and exceptions. |
 | Event sink | Record transaction identity, generation, phase, reason, evidence summary, result, and degradation without affecting control flow. |
@@ -109,18 +127,22 @@ The first implementation work must be contract/test-only:
   `RtssOutcome` and `RtssFailureStep`, with a fail-closed assertion when either
   enum changes.
 - `S1-DESIGN-001`: introduce explicit capability fields and policy checks for
-  DLL-name byte length and derived-profile-filename component length, including
-  exact boundary tests.
-- Add representation-exact stored numerator and denominator evidence to
-  capture/readback planning. `RationalCap` deliberately reduces equivalent
-  values, so it proves effective-cap equality but cannot by itself prove exact
-  restoration of a prior stored pair such as `120/2`. Any contract extension
-  must retain the effective `RationalCap` and add, rather than infer, stored
-  representation.
-- Add structured unresolved-state accounting for cap/profile/document/revision
-  fields alongside the existing exact `unrestored_flag_mask`, unless an
-  independent review demonstrates that the current restore result expresses
-  every durable degraded state without ambiguity.
+  DLL-name encoded-byte and character length, exact encoding support, and
+  derived-profile-filename component length, including exact boundary tests.
+- Add required representation-exact stored numerator and denominator evidence
+  to capture and readback contracts. `RationalCap` is the reduced effective
+  mathematical cap: `60/1` cannot alone prove prior storage as `120/2`. Exact
+  restoration compares and restores the independently captured stored fields
+  wherever the selected mechanism exposes them. Adapter capabilities declare
+  which exact stored fields can be read and written.
+- Add an immutable degraded-state and retained-ownership schema covering every
+  unresolved owned field: exact numerator, denominator, effective cap,
+  existence/deletion, document, revision, limiter bits, save,
+  update/activation, backend epoch, unavailable or unreadable evidence, and
+  external conflict. It must distinguish exact restoration, partial
+  restoration, unresolved mutation, conflict, unavailable evidence, read
+  failure, retained ownership, and explicit degraded handoff. Silent ownership
+  release is invalid.
 
 These corrections require focused regression tests and independent review
 before coordinator logic relies on them.
@@ -135,21 +157,33 @@ capabilities. It computes their intersection for:
 - effective-cap minimum/maximum and inclusivity;
 - supported denominator strategies;
 - exact readback, flag read/write, document, revision, create, and delete
-  support; and
-- DLL-name and profile-filename component limits.
+  support;
+- exact stored-field read/write support;
+- supported name encodings and lossless conversion;
+- DLL-name and profile-filename encoded-byte and character component limits.
 
 An empty intersection is `UNSUPPORTED_CAPABILITY`; an unresolved mechanism is
 `POLICY_REQUIRED`. The policy must not silently fall back from an API strategy
 to profile-file editing.
 
-Name admission first validates `CanonicalProfileIdentity`, then derives the DLL
-name and relative profile filename, then checks capability limits and lexical
-containment under an abstract profiles root. Both raw input and derived names
-are rejected for `/`, `\`, rooted or drive-relative forms, UNC/device prefixes,
-ADS colons, dot components, reserved Windows stems, controls, trailing
-dot/space, unsupported encoding, or a resolved target outside the admitted
-root. Reparse-point enforcement belongs to the later filesystem adapter, but
-the deterministic policy and fake model must express containment failure.
+Name admission separates four concerns:
+
+1. canonical case-insensitive profile identity;
+2. always-invalid lexical and path forms;
+3. backend supported-name and exact-encoding capabilities; and
+4. capability-driven encoded-byte and character length limits.
+
+Raw and derived names are always rejected for `/`, `\`, rooted or
+drive-relative forms, UNC/device prefixes, ADS colons, dot components, reserved
+Windows stems, controls, trailing dot/space, or a resolved target outside the
+admitted root. Non-ASCII names are rejected by default, but are not permanently
+invalid identity: future admission requires explicit supported-name evidence,
+lossless exact encoding, defined case canonicalization, and applicable DLL and
+derived-filename limits including suffix expansion. Lossy conversion is always
+rejected. Capability or encoding changes across backend generations require
+fresh admission. Reparse-point enforcement belongs to the later filesystem
+adapter, but the deterministic policy and fake model must express containment
+failure. No Unicode support is claimed.
 
 ### Transaction phase ordering
 
@@ -191,9 +225,13 @@ One apply transaction proceeds in this exact logical order:
     deleted and verified absent.
 19. Return `FAILED_ROLLED_BACK` only after exact verified restoration;
     otherwise return a durable `DEGRADED`, `CONFLICT`, or
-    `UNSUPPORTED_CAPABILITY` result with complete unresolved ownership.
+    `UNSUPPORTED_CAPABILITY` result with complete per-field unresolved state,
+    evidence availability, backend epoch, and retained ownership.
 20. Release the serialization lease. Release profile/session ownership only
-    after verified restore or an explicit durable degraded handoff.
+    after exact verified restoration or transfer to a defined degraded-handoff
+    recipient carrying complete unresolved state and ownership responsibility.
+    A result with no defined recipient or incomplete state cannot release
+    ownership.
 
 A normal restore uses the same serialized capture-conflict, mutation,
 save/update, and exact-readback phases. Repeated restore after verified release
@@ -234,8 +272,10 @@ mutation.
   restoration.
 - `CONFLICT`: external revision/document change for which policy forbids
   overwrite.
-- `DEGRADED`: possible mutation with incomplete rollback, missing verification,
-  backend-generation loss, or unresolved owned state.
+- `DEGRADED`: possible mutation with incomplete rollback, save or activation
+  uncertainty, missing/unreadable evidence, backend-generation loss, or any
+  unresolved owned state. The result retains ownership unless a complete
+  explicit degraded handoff transfers responsibility.
 
 External edits are detected by comparing captured and current revision/document
 evidence before destructive restoration. The default safe planning assumption
@@ -269,6 +309,8 @@ The fake backend must:
 - model RTSS shared loaded-profile semantics and global flags;
 - retain exact stored numerator/denominator separately from the reduced
   effective cap;
+- model immutable per-field degraded state, save/update activation uncertainty,
+  retained ownership, and explicit handoff recipients;
 - expose immutable capabilities and incrementable backend generation;
 - retain complete document bytes/digests, revisions, and verified absence;
 - append every operation and argument to an ordered log;
@@ -296,7 +338,7 @@ The current production call sites remain unchanged in Stage 2:
 | `RTSSController.delete_profile` and `ConfigManager.delete_selected_profile_callback` | GUI configuration deletion directly calls DLL deletion. | Raw GUI/config section name; no update/readback, generation, created-profile ownership, or restoration policy. | Later profile-management integration, using coordinator ownership rules. |
 | `RTSSController.reset_profile` | Direct DLL reset. | Raw identity and no verification; no active production caller was found. | Exclude until a later adapter plan proves a safe use. |
 | `RTSSController.set_limit_denominator` | Build `Profiles/<name>.cfg` -> read lines -> rewrite file -> optional update. | Raw path component, non-atomic complete-file rewrite, no capture/revision/containment/readback. | Later profile-file adapter only if the supported-version decision approves it. |
-| `RTSSController.set_fractional_framerate` | Float-derived numerator/denominator -> optional file denominator write -> DLL cap write/save -> update. | Raw identity, float conversion, split mechanisms, ignored failure, no exact readback or rollback. | Later composition adapter; do not reuse as coordinator logic. |
+| `RTSSController.set_fractional_framerate` | Calculates a positive denominator -> always attempts the direct denominator profile-file rewrite through `set_limit_denominator` -> applies the numerator through the RTSS property path -> performs one eventual update according to the current call flow. | Raw identity, float conversion, split mechanisms, ignored failure, no exact readback or rollback. Every active cap path using this method traverses the direct denominator-file rewrite; only update timing is conditional. | Later composition adapter; do not reuse as coordinator logic. |
 | `RTSSController.set_fractional_fps_direct` | Directly read/rewrite `Limit` and `LimitDenominator` -> optional update. | Raw path component, direct non-atomic file edit, no complete prior capture or verification; current local variables also permit a pre-write failure. | Later profile-file adapter or removal after capability decision. |
 | `RTSSController.get_framerate_limit` | DLL numerator read, optional profile-file denominator read, then float division. | Split, non-atomic evidence and lossy effective cap; no active production caller was found. | Later exact state-reader adapter, replaced rather than reused as-is. |
 | `RTSSController.enable_limiter` from `DFL_v5.py` module startup | Set global flags -> update during application opening. | Unconditional global mutation with no prior flag capture, session owner, exact readback, or restoration. | Later startup integration; startup mutation must be removed or transaction-owned. |
@@ -346,15 +388,14 @@ authorizes it.
 `S1-READBACK-001`, `S1-TEST-001`, and `S1-DESIGN-001` are mandatory Stage 2
 coordinator prerequisites.
 
-The durable tracked ledger gives no root-cause, location, or acceptance text
-for `S1-FINAL-005`, `S1-FINAL-006`, or `S1-FINAL-007`; it records only that
-they are deferred and non-blocking. All three remain allocated to deferred
-test-maintenance/provenance cleanup until independent review supplies their
-definitions. They are not silently closed. If recovered evidence shows that
-one affects coordinator correctness, it must be promoted to the Stage 2
-coordinator implementation through a focused plan correction; production
-adapter, controller, or integration concerns remain in their corresponding
-later phases.
+The durable tracked ledger gives no root-cause, location, acceptance text, or
+technical definition for `S1-FINAL-005`, `S1-FINAL-006`, or `S1-FINAL-007`; it
+records only deferred identifiers. No technical allocation or closure is
+permitted without provenance recovery, and ignored local reports must not be
+required for a fresh clone. They are not treated as coordinator prerequisites
+unless recovered evidence proves that they are. Any recovered requirement must
+be added to durable tracked documentation, receive appropriate regression
+coverage, and pass focused review before disposition.
 
 ### Unresolved decisions
 
@@ -368,41 +409,65 @@ Independent review or later physical evidence must still decide:
   SHA-256, are approved;
 - whether and how stop handles external edits, including merge, refuse, or
   explicitly authorized overwrite;
-- how durable degraded ownership survives process restart;
 - whether RTSS exposes a usable cross-process serialization or revision token;
 - whether deletion and exact absence can be verified by every supported
   backend;
 - backend restart recovery and whether ownership can be safely reacquired; and
-- whether the existing result contracts need explicit non-flag unresolved
-  ownership fields.
+- how degraded ownership persists across a complete application-process
+  restart.
 
-No Stage 2 plan selects an RTSS version, fractional mechanism, overwrite policy,
-or compatibility claim.
+The deterministic Stage 2 model must account for every unresolved owned field
+and retain or explicitly hand off ownership. It does not claim that
+restart-persistent storage has been designed. No Stage 2 plan selects an RTSS
+version, fractional mechanism, overwrite policy, cross-process lock, restart
+recovery mechanism, universal component limit, or compatibility claim.
 
 ### Proposed small implementation commits
 
-1. `test: close RTSS readback and name-policy prerequisites`
-   - implement `S1-READBACK-001`, `S1-TEST-001`, and `S1-DESIGN-001` with
-     exhaustive matrices and component-boundary tests.
-2. `test: model exact RTSS capture and transaction admission`
-   - add stored numerator/denominator evidence, transaction identity,
-     ownership/admission contracts, and focused regression tests.
-3. `test: add deterministic RTSS coordinator fakes`
-   - add ordered operation logs, barriers, generation/restart controls, and
-     false/exception injection without coordinator behavior.
-4. `feat: coordinate verified RTSS apply transactions`
-   - implement admission, serialization, exact capture, no-change, mutation,
-     save/update, readback, and structured results.
-5. `feat: coordinate RTSS rollback and restoration`
-   - add partial-failure rollback, exact restore, created-profile deletion,
-     conflict handling, degraded accounting, cancellation, and idempotent
-     ownership release.
-6. `docs: record RTSS Stage 2 coordinator review`
-   - update durable status, findings/decisions if independently accepted, test
-     results, limitations, and later integration gate.
+This sequence is proposed pending correction review and explicit acceptance:
 
-Each commit requires the complete deterministic suite and an independent
-read-only scope/design review before the next behavior-bearing commit.
+1. **Prerequisite contract correction**
+   - restrict `RtssReadback` to read-only outcome/failure-step allowlists;
+   - add the exhaustive readback matrix and a justified exhaustive apply
+     matrix;
+   - add exact stored-field evidence types; and
+   - add the immutable degraded-state and retained-ownership schema.
+2. **Capability and supported-name policy**
+   - add configured/backend range intersections, exact-field capabilities,
+     component lengths, lexical/path rejection, and exact encoding policy.
+3. **Coordinator admission and capture**
+   - add process-local serialization, generation and transaction admission,
+     exact state capture, and verified no-change flow;
+   - enable no mutation.
+4. **Rollback foundations**
+   - add a mutation journal or equivalent deterministic operation record,
+     rollback operation interfaces, failure classification, and degraded-state
+     construction;
+   - retain fail-closed mutation admission until rollback coverage exists.
+5. **Atomic apply slice**
+   - introduce only the first mutation set together with save, update, exact
+     readback, rollback, and its complete applicable false/exception/mismatch
+     matrix.
+6. **Restoration and created-profile ownership**
+   - add exact restore, created-profile deletion, verified absence, repeated
+     restore, retained ownership, and explicit degraded handoff.
+7. **Conflicts, cancellation, and generations**
+   - add external edits, backend epoch changes, stop during every phase,
+     stale-generation rejection, profile switching, and ownership transfer.
+8. **Coordinator regression completion**
+   - complete the deterministic state-machine and interleaving matrix, import
+     isolation, and durable documentation synchronization.
+9. **Separate later production integration**
+   - plan and implement production adapters/callers, supported mechanism
+     selection, and Windows disposable-profile validation only after separate
+     review.
+
+No intermediate commit may permit mutation without its complete applicable
+rollback and degraded-state behavior. Each mutation-bearing commit must include
+its applicable false, exception, readback-mismatch, rollback, and unresolved-
+ownership matrix. Every commit requires the complete deterministic suite and an
+independent read-only scope/design review before the next behavior-bearing
+commit.
 
 ### Explicit exclusions
 
@@ -428,7 +493,10 @@ Stage 2 coordinator implementation is complete only when:
 - apply success and no-change require exact readback;
 - partial mutation always produces exact verified rollback or complete durable
   degraded accounting;
-- created profiles and owned limiter bits restore exactly;
+- no intermediate commit admits mutation before its complete applicable
+  rollback and degraded-state path exists;
+- exact stored fields, created profiles, documents/revisions, and owned limiter
+  bits restore exactly;
 - repeated restore/stop is idempotent;
 - controller-facing results cannot imply advancement before verified apply;
 - tests import no production runtime dependency and require none of the
@@ -437,9 +505,9 @@ Stage 2 coordinator implementation is complete only when:
 - an independent read-only review accepts the contract changes, coordinator
   ordering, test matrices, and production-integration boundary.
 
-The implementation remains blocked until the present planning commit receives
-that independent review. Push and pull-request creation require separate
-explicit approval.
+The implementation remains blocked until this planning correction receives
+independent read-only review and the user explicitly accepts the corrected
+plan. Push and pull-request creation require separate explicit approval.
 
 ### Rollback considerations
 
@@ -492,34 +560,45 @@ generation-aware, reversible RTSS boundary.
   unit tests. Stage 1 provides identity, request, capture, readback, apply,
   restore, ownership, evidence, and result contracts plus deterministic fakes
   and regressions.
-- **Stage 2 status:** Planning started on local branch
-  `feature/rtss-transaction-coordinator`. No coordinator source or planned
-  Stage 2 test is implemented, no production caller uses the Stage 1
-  contracts, and production integration remains later work.
+- **Stage 2 status:** Planning and an independent review of planning commit
+  `7adfb5406b091ccd8c55872fc1b75036029fee8a` are complete on local branch
+  `feature/rtss-transaction-coordinator`. The result was approved after
+  specified documentation corrections. This correction remains pending
+  independent review and explicit acceptance. No coordinator source or planned
+  Stage 2 test is implemented, no production caller uses the Stage 1 contracts,
+  and production integration remains later work.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.
-  3. Consider an exhaustive apply outcome/failure-step matrix.
-  4. Define capability-driven application and profile component-length limits
-     before filesystem integration.
-  5. Preserve every existing transaction, ownership, readback, rollback, and
+  3. Add a justified exhaustive apply outcome/failure-step matrix.
+  4. Add exact stored numerator/denominator evidence separate from reduced
+     effective-cap equality.
+  5. Add mandatory immutable degraded-state and retained-ownership accounting.
+  6. Define capability-driven encoding, supported-name, application-name, and
+     profile-filename component limits before filesystem integration.
+  7. Preserve every existing transaction, ownership, readback, rollback, and
      restoration requirement listed below.
 - **Included findings:** `RTSS-001` through `RTSS-009`, `SEC-002`, and the RTSS
   handshake portion of `RTSS-005`.
 - **Expected areas:** RTSS interface/controller boundary; canonical profile
-  identity; rational-cap validation; previous-state ownership; readback,
-  rollback, restoration, and limiter-flag handling.
-- **Required tests:** parser edge cases; path/name matrix; capability handling;
-  transaction interleavings; partial failures; readback mismatch; prior cap,
-  denominator, and flag restoration; created-profile and external-edit
-  conflicts; generation rejection; idempotent flag operations.
+  identity; capability-dependent exact encoding and supported-name policy;
+  rational-cap validation; exact stored-field evidence; previous-state and
+  degraded ownership; readback, rollback, restoration, and limiter-flag
+  handling.
+- **Required tests:** parser edge cases; path/name/encoding matrix; capability
+  handling; transaction interleavings; partial failures; readback mismatch;
+  exact prior numerator, denominator, effective cap, existence, document,
+  revision, flag, save/update state, and retained ownership; created-profile and
+  external-edit conflicts; generation rejection; idempotent flag operations.
 - **Explicit exclusions:** controller thresholds; lifecycle worker rewrite;
   supported-version claims not backed by the physical matrix.
 - **Dependencies:** phase 1 fakes and deterministic result assertions.
 - **Completion criteria:** one write boundary owns every RTSS mutation; no
-  startup mutation; callers receive structured verified results; failed
-  applies do not advance logical state; owned state can be restored exactly or
-  a durable degraded result is returned.
+  startup mutation; no intermediate commit admits mutation without complete
+  applicable rollback/degraded handling; callers receive structured verified
+  results; failed applies do not advance logical state; owned state can be
+  restored exactly or a complete durable degraded result retains or explicitly
+  hands off ownership.
 - **Manual validation:** none in the deterministic coordinator stage.
   Disposable RTSS profiles across candidate versions, including
   Global/application, integer/fractional, flags, missing profiles, failures,
