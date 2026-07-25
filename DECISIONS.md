@@ -89,42 +89,78 @@ authority until the planning commit is independently reviewed and explicitly
 accepted.
 
 34. Capability and supported-name policy is pure, deterministic, immutable,
-    mechanism-specific, and fail-closed. Its terminal decision is one of
-    `SUPPORTED`, `UNSUPPORTED`, or `UNKNOWN`, with a typed diagnostic reason.
-35. Support state, evidence validity, and evidence origin are separate axes.
-    Direct or derived provenance does not imply support; missing, stale,
-    temporarily unavailable, contradictory, or foreign evidence cannot produce
-    `SUPPORTED`, while explicit `UNSUPPORTED` remains distinct from `UNKNOWN`.
-36. Read, write, save, activation, readback verification, exact restoration,
-    profile creation, deletion, verified absence, and coordinated multi-field
-    update are separate capability operations. One supported operation never
-    implies another, and no mechanism fallback is automatic.
-37. Supported-name policy is evaluated for the exact profile kind, operation,
-    mechanism, existing-profile or creation context, and admitted capability
-    observation. Encoding, encoded representation, length, character, case,
-    normalization, and collision rules require explicit evidence; no universal
-    RTSS rule is inferred from Windows filesystem behavior or current adapter
-    behavior.
-38. The exact original name is immutable audit evidence. Policy never silently
-    truncates, replaces, case-folds, normalizes, or rewrites it. A derived
-    canonical or encoded representation is usable only when admitted evidence
-    proves the derivation and collision behavior for the requested mechanism.
-    Evidence incompatible with the accepted case-insensitive ownership model
-    fails closed rather than collapsing potentially distinct names.
-39. `RtssCapabilityInfo` and caller-created `RtssCapabilityEvidence` remain
-    non-authoritative by themselves. A new factory-controlled admitted
-    capability observation will bind content, observation identity, backend
-    generation, capability generation, validity, and provenance. Sequence item
-    2 defines that contract and pure evaluation only; trusted observation and
-    admission of current or advanced generations belongs to sequence item 3
-    and production adapters.
-40. Sequence item 2 creates no coordinator registry, consumes no ownership
-    token, performs no capture or live query, and implements no operation,
-    conflict, rollback, restoration, or mutation. Unsupported real-world
-    evidence remains an explicit open decision and blocks only the affected
-    later admission or support claim, not the pure fail-closed contract.
+    mechanism-specific, and fail-closed. Its terminal decision is exactly one
+    of `SUPPORTED`, `UNSUPPORTED`, or `UNKNOWN`, with all applicable typed
+    reasons in one stable order.
+35. Every pure capability evaluation takes an immutable
+    `RtssCapabilityEvaluationContext` separate from the requirement and
+    evidence. It identifies the expected observation, backend generation,
+    capability generation, profile kind, and exact policy scope. It is matching
+    context, not support proof; structural equality is sufficient and caller-
+    authored context can never substitute for an admitted observation.
+36. Support state, evidence validity, and evidence origin are orthogonal. The
+    closed decision algebra validates the request, matches context, checks
+    authenticity and freshness, then evaluates primitive records and compound
+    dependencies. A current explicit unsupported dependency dominates a
+    current unknown dependency; unusable stale or invalid records remain
+    `UNKNOWN` while preserving any unsupported claim diagnostically.
+37. Contradictory source evidence has one representation: a factory-admitted
+    typed contradictory observation with no selectable support records. It
+    always evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`; construction does not
+    also choose a competing rejection policy.
+38. Primitive backend operations, compound capability requirements, and
+    verified postconditions are separate closed taxonomies. Compound support is
+    derived from an acyclic, ordered bundle of primitive records and required
+    future postconditions. A coordinated fractional update is an ordered,
+    reversible compound requirement, not an asserted atomic primitive.
+39. Integer limit, fractional numerator, fractional denominator, optional
+    effective rational representability, and stored-field bit width use
+    immutable domain-specific exact ranges. Missing evidence, explicitly
+    unsupported ranges, invalid observations, open bounds, inclusivity, empty
+    intersections, signedness, overflow, and denominator positivity have
+    distinct deterministic outcomes. Controller target bounds remain policy
+    input and never prove RTSS representability.
+40. Raw supported-name requests have a minimal non-overridable structural
+    safety boundary separate from current identity-model invariants and
+    capability-dependent rules. Backend evidence cannot override injection or
+    path-confusion protections, and unverified Windows/ASCII restrictions are
+    not declared universal RTSS facts.
+41. Sequence item 2 may inspect any structurally valid raw name, but may return
+    `SUPPORTED` only when the exact name is representable by the currently
+    accepted `CanonicalProfileIdentity`, `RtssGeneration`, and
+    `RtssOwnershipToken` model. Otherwise the deterministic result is
+    `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, even if backend evidence would
+    otherwise support it. Broader support requires a separately planned,
+    reviewed, and accepted identity-model migration.
+42. Namespace and collision evidence is immutable, factory-controlled,
+    observation-identity-bound, backend/capability-generation-bound, and
+    complete by either proved enumeration or authoritative exact-query
+    semantics. A public request references that evidence and never supplies a
+    peer set. Missing, stale, incomplete, foreign, or generation-mismatched
+    namespace evidence is `UNKNOWN`; a proved case, normalization, or encoding
+    collision is always `UNSUPPORTED`.
+43. Supported-name policy is evaluated for the exact profile kind, primitive
+    or compound requirement, mechanism, existing-profile or creation context,
+    and admitted capability/namespace observations. Exact original spelling is
+    immutable audit evidence; no truncation, replacement, case change,
+    normalization, basename extraction, suffix insertion, or fallback occurs.
+44. `RtssCapabilityInfo`, caller-created `RtssCapabilityEvidence`, raw reports,
+    Booleans, version labels, and caller-authored generations remain
+    non-authoritative. Sequence item 2 defines immutable shapes and pure
+    evaluation only. Item 3 or item 12 will later bind trusted live context;
+    item 2 admits no live observation and consumes no item-1 ownership.
+45. Sequence item 2 creates no coordinator registry, performs no capture,
+    query, filesystem access, operation, conflict handling, rollback,
+    restoration, or mutation. The detailed unresolved-fact and later-owner
+    table in `IMPLEMENTATION_PLAN.md` is authoritative; this file deliberately
+    does not duplicate it.
 
 ## Unresolved decisions
+
+This is a high-level project summary only. The sequence-item-2 IDs, exact
+fail-closed rules, owners, and gates in the
+`IMPLEMENTATION_PLAN.md` authoritative unresolved-decision table control if
+this summary is ever incomplete or appears inconsistent.
 
 | Decision | Evidence needed | Must be resolved by |
 | --- | --- | --- |

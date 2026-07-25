@@ -7,7 +7,8 @@
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
 - Current phase: RTSS Stage 2 sequence item 1 complete and independently
-  approved; sequence item 2 planning/design completed locally and awaiting
+  approved; the first sequence-item-2 planning commit was rejected, its
+  documentation-only correction is complete locally and awaits another
   independent read-only review and explicit acceptance; implementation remains
   unauthorized
 - Current approved source commit:
@@ -286,8 +287,46 @@ zero behind, clean, unpublished, and had no configured upstream or
 remote-tracking branch containing HEAD. No remote was contacted.
 No push or Stage 2 pull request exists.
 
-The planning review inspected the accepted item-1 contracts and tests and
-records these central conclusions:
+The first focused planning commit,
+`fd7e3d8aeb57bf7b8cd8acb8bd51448673dc2f1d`
+(`docs: plan RTSS capability and name policy`), received an independent,
+read-only review. The exact verdict was **Not approved - blocking planning
+findings require correction**. The review confirmed repository state, scope,
+all 181 deterministic tests, the 50-row production ledger, sequence boundaries,
+and the local unpublished state, but identified eight blocking planning
+findings:
+
+- `S2-CAP-PLAN-001`: no immutable evaluation context identified the expected
+  observation and generations;
+- `S2-CAP-PLAN-002`: evidence legality, terminal precedence, derived support,
+  mixed dependencies, contradictions, and reason ordering were not closed;
+- `S2-CAP-PLAN-003`: primitive operations, compound requirements, and verified
+  postconditions were mixed;
+- `S2-RANGE-PLAN-001`: exact range domains and intersection behavior were
+  incomplete;
+- `S2-NAME-PLAN-001`: policy could support a raw name that accepted item-1
+  identity and ownership contracts cannot represent;
+- `S2-NAME-PLAN-002`: structural safety, current identity-model constraints,
+  capability rules, and deferred facts were not exhaustively separated;
+- `S2-NAME-PLAN-003`: caller-supplied peer names could omit a collision and
+  case/normalization outcomes were ambiguous; and
+- `S2-TEST-PLAN-001`: the deterministic matrix did not cover those corrected
+  semantics through non-self-confirming public paths.
+
+The review also recorded non-blocking `S2-DOC-OPEN-001`: the detailed open
+decision table and the shorter decision summary could diverge.
+
+This focused local correction addresses those findings in the four planning
+documents without amending or rewriting the rejected commit. It defines a
+separate immutable matching context; a closed evidence and dependency algebra;
+separate primitive, compound, and postcondition taxonomies; domain-specific
+exact ranges; an exhaustive raw-name classification; the fail-closed current
+canonical-identity boundary; and factory-controlled, generation-bound complete
+namespace evidence. `IMPLEMENTATION_PLAN.md` is the authoritative detailed
+open-decision table and `DECISIONS.md` now cross-references it.
+
+The planning review and correction inspected the accepted item-1 contracts and
+tests and record these central conclusions:
 
 - existing `RtssCapabilityInfo` is a public range/Boolean description and
   existing `RtssCapabilityEvidence` is a public ownership provenance marker;
@@ -298,9 +337,10 @@ records these central conclusions:
 - sequence item 2 will use a pure typed `SUPPORTED` / `UNSUPPORTED` /
   `UNKNOWN` policy over a factory-controlled admitted immutable capability
   observation;
-- support is exact-mechanism, exact-operation, exact-field, profile-kind, and
-  generation specific, with read, write, save, activation, readback,
-  restoration, creation, deletion, and verified absence kept separate;
+- support is exact-mechanism, primitive-operation, exact-field, profile-kind,
+  and generation specific; compound requirements are derived from acyclic
+  primitive bundles, while verified postconditions remain distinct later
+  runtime results;
 - supported-name policy preserves the exact original name and admits no silent
   encoding, truncation, replacement, case change, normalization, collision, or
   mechanism fallback;
@@ -310,7 +350,7 @@ records these central conclusions:
   coordinator/adaptor admission responsibility, not a caller-authored Boolean
   or generation.
 
-The unresolved evidence includes supported RTSS versions and exact APIs;
+The unresolved live evidence includes supported RTSS versions and exact APIs;
 denominator mechanism; exact read/write/readback/restoration operation support;
 creation, deletion, and verified absence; encoding and encoded representation;
 component/total character and byte limits; invalid/reserved characters; case
@@ -319,9 +359,11 @@ backend restart/re-enumeration; external edits/cross-process conflict evidence;
 and durable degraded ownership after application restart. Each unresolved item
 has a typed fail-closed interim rule and later owner in
 `IMPLEMENTATION_PLAN.md`. These questions do not block implementing the pure
-item-2 contracts after approval except where the current structural identity
-cannot be separated safely from capability rules; they do block affected
-mutation admission or production support.
+item-2 contracts after another independent review and explicit acceptance. A
+name outside the current canonical identity model can be inspected but can
+never return `SUPPORTED`; support requires a separately planned, reviewed, and
+accepted identity-model migration. Deferred live facts continue to block
+affected later mutation admission or production support.
 
 The planned implementation is divided into small future units for capability
 enums/evidence, pure mechanism policy, supported-name contracts, pure name
@@ -339,15 +381,18 @@ This planning-only update changes exactly:
 It changes no source, tests, configuration, workflow, dependency, packaging,
 license, generated file, application behavior, RTSS/profile state, or other
 external system. `REVIEW_FINDINGS.md` remains unchanged because the review
-found no new concrete planning finding requiring a supplemental ledger entry.
+findings are planning-review records summarized here and must remain separate
+from the unchanged production ledger.
 `RELEASE_NOTES.md` remains unchanged because the repository convention records
 implemented contract behavior there, while this change is planning only.
 
-Sequence item 2 planning is complete locally but is not independently approved.
-The next action is an independent read-only review of the local planning
-commit. Sequence item 2 implementation remains unauthorized. Sequence item 3
-remains unauthorized. Every mutation, production integration, push, and
-pull-request creation remain unauthorized.
+The corrected sequence-item-2 planning is complete locally but has not been
+independently approved. No source or test file changed. No push or pull request
+exists. The next action is another independent read-only review of the focused
+planning-correction commit followed by explicit acceptance in a later
+documentation step. Sequence item 2 implementation remains unauthorized.
+Sequence item 3 remains unauthorized. Every mutation, production integration,
+push, and pull-request creation remains separately unauthorized.
 No RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or
 frame-generation compatibility claim is established.
 

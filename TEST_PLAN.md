@@ -264,14 +264,152 @@ has now defined the matrix below. The planning commit must pass independent
 read-only review and be explicitly accepted before sequence-item-2
 implementation; implementation remains unauthorized.
 
+Every corrected item-2 test below must use a public or realistically reachable
+policy path, a test-only factory/admission fixture, an independently specified
+expected status/reason tuple, and a positive control. Tests must not construct
+the decision under test as their oracle. Sequence item 2 implementation remains
+prohibited until this corrected planning commit passes another independent
+read-only review and is explicitly accepted in a later documentation step.
+
+### Corrected sequence item 2 context and decision-algebra matrix
+
+- **Matching context:** current admitted observation plus a structurally equal
+  `RtssCapabilityEvaluationContext` copy returns the positive-control
+  `SUPPORTED`; object identity is never asserted.
+- **Context mismatch:** independently test foreign observation identity,
+  backend-generation mismatch, capability-generation mismatch, profile-kind
+  mismatch, and source/policy-scope mismatch. Each uses otherwise fully
+  supporting admitted evidence and expects exact `UNKNOWN` status and the
+  designated leading reason.
+- **Replacement attacks:** nested `dataclasses.replace()` of context,
+  observation identity, primitive source, backend generation, or capability
+  generation cannot retain trust; unchanged nested structural copies remain
+  accepted.
+- **Caller-authored context:** a perfectly matching public context with absent,
+  raw, caller-created, directly constructed, or untrusted observation evidence
+  returns `UNKNOWN`, never `SUPPORTED`. The positive control differs only by
+  test-factory admission.
+- **Primitive truth table:** exact tests cover current supported ->
+  `SUPPORTED`; current unsupported -> `UNSUPPORTED`; current unknown ->
+  `UNKNOWN`; stale supported -> `UNKNOWN`; stale unsupported -> `UNKNOWN` with
+  stale then reported-unsupported reasons; invalid supported -> `UNKNOWN`;
+  invalid unsupported -> `UNKNOWN` with invalid then reported-unsupported
+  reasons; temporarily unavailable -> `UNKNOWN`; missing -> `UNKNOWN`;
+  foreign/backend/capability mismatch -> `UNKNOWN`.
+- **One contradiction policy:** the test admission factory converts
+  contradictory direct or derived sources into the typed contradictory
+  observation with no selectable records. It evaluates exactly `UNKNOWN /
+  CONTRADICTORY_EVIDENCE`; tests do not also expect constructor rejection for
+  that semantic state. Duplicate identical primitive keys remain separate
+  structural construction errors.
+- **Mixed dependencies:** current unsupported plus current unknown ->
+  `UNSUPPORTED`; current unsupported plus stale dependency -> `UNSUPPORTED`
+  while retaining the stale reason; all current supported -> `SUPPORTED`.
+  Reverse input order produces the identical status and reason tuple.
+- **Stable reasons:** construct inputs containing every reason category and
+  assert request structure; identity; missing/foreign/generation/kind/scope;
+  provenance; availability; invalid then stale; contradiction/derivation;
+  canonical primitive order with unsupported before unknown; range; encoding/
+  length/character; namespace; case; normalization; encoding collision;
+  canonical collision; success. Duplicates collapse without changing order.
+- **Derived sources:** all direct current supported sources -> supported
+  derived record; a current unsupported source -> `UNSUPPORTED`; missing,
+  foreign, mismatched, unavailable, stale, invalid, or unknown source ->
+  `UNKNOWN`; contradictory or cyclic sources -> typed contradictory
+  observation and `UNKNOWN`. Source tuple order does not affect results.
+
+### Corrected sequence item 2 taxonomy and range matrix
+
+- Assert unique, disjoint membership for `RtssPrimitiveOperation`,
+  `RtssCompoundRequirement`, and `RtssRequiredPostcondition`. No compound or
+  postcondition member may appear in the primitive enum.
+- For every primitive operation, factory-admit supported, unsupported, unknown,
+  stale, and wrong-kind records through the public evaluator.
+- For existing read, existing integer mutation, existing fractional mutation,
+  exact readback, exact restoration, coordinated fractional update, profile
+  creation, deletion restoration, and verified absence, test the complete
+  ordered dependency bundle and remove each dependency one at a time.
+- Assert coordinated fractional update is an ordered reversible compound over
+  numerator/denominator reads and writes, save, and activation; no atomic
+  primitive record can self-confirm it.
+- For exact-value-observed, save-confirmed, activation-confirmed,
+  profile-exists, profile-absent, and restored-equals-captured postconditions,
+  verify that item 2 returns capability requirements only and never fabricates
+  a later runtime success.
+- Exercise integer-limit, fractional-numerator, fractional-denominator,
+  optional exact-rational, and signed/unsigned stored-bit-width domains
+  separately. A range from one domain cannot satisfy another.
+- Per domain, cover inclusive lower/upper boundaries, exclusive boundaries,
+  equal inclusive bounds, direct equal-exclusive and reversed contract
+  construction rejection, missing lower/open upper, open lower/missing upper,
+  an intersection that becomes equal-exclusive and therefore empty, other
+  empty intersections, and arbitrarily large exact integers.
+- Cover bit-width exact maximum/minimum, one-value overflow, Boolean rejection,
+  non-positive width, and missing signedness. Parser bit limits must not appear
+  as backend capability evidence.
+- Denominator zero is construction-invalid; denominator one is a positive
+  control. Numerator zero and denominator evidence are independently
+  applicable, and one never fills the other's missing range.
+- Missing required range record -> `UNKNOWN / RANGE_EVIDENCE_MISSING`;
+  explicit unsupported range -> `UNSUPPORTED / RANGE_UNSUPPORTED`; typed
+  invalid observed range -> `UNKNOWN / INVALID_RANGE_EVIDENCE`; empty valid
+  intersection -> `UNSUPPORTED / EMPTY_RANGE_INTERSECTION`.
+- If effective rational range is present, compare large exact
+  `RationalCap` values without float conversion and prove rational range never
+  substitutes for exact stored numerator/denominator bounds. Controller target
+  bounds restrict intent but do not create backend support.
+
+### Corrected sequence item 2 raw-name and namespace matrix
+
+- Table-drive every raw classification in `IMPLEMENTATION_PLAN.md`: empty;
+  whitespace-only; leading/trailing whitespace; NUL; other controls/DEL; both
+  separators; rooted; UNC; drive-qualified; ADS; device path; current/parent
+  segments; missing `.exe`; non-ASCII; trailing dot; trailing space; every
+  reserved-stem family; each invalid Windows filename character; colon; Global
+  shape; application shape/empty stem; basename versus full path; case-only;
+  and normalization forms. Each row asserts its exact terminal status/reason
+  and has a simple representable application-name control.
+- Feed a raw name rejected by `CanonicalProfileIdentity` together with admitted
+  backend evidence that otherwise fully supports it. Expect exactly
+  `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, never `SUPPORTED`; also test the
+  representable application name, exact Global name, and construction of
+  compatible `RtssGeneration` and `RtssOwnershipToken` context.
+- Prove a case-sensitive external namespace cannot create two distinct owners
+  that collapse under current case-folded identity. A complete single-name
+  exact lookup may proceed; a proved case-distinct pair is exactly
+  `UNSUPPORTED / CASE_COLLISION`.
+- Construct namespace evidence only through the test admission factory and
+  cover snapshot identity, parent observation identity, backend/capability
+  generations, kind, scope, comparison, normalization, encoding, provenance,
+  freshness, diagnostic state, and both completeness modes.
+- Missing, stale, invalid, incomplete, foreign, or generation-mismatched
+  namespace evidence is exact `UNKNOWN`; complete authoritative no-collision
+  evidence proceeds. A public request omitting a collider cannot affect the
+  factory's complete enumeration, and an incomplete enumeration never supports
+  the request.
+- Test authoritative exact lookup, existing mutation, and new creation
+  separately. Creation without absence proof for exact, canonical,
+  normalization, and encoding collision keys is
+  `UNKNOWN / NAMESPACE_COMPLETENESS_MISSING`.
+- Case-insensitive collision -> `UNSUPPORTED / CASE_COLLISION`; unknown
+  normalization -> `UNKNOWN / NORMALIZATION_UNKNOWN`; normalization mode
+  incompatible with current ownership ->
+  `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; proved normalization collision
+  -> `UNSUPPORTED / NORMALIZATION_COLLISION`; encoding collision or lossy
+  round trip -> `UNSUPPORTED / ENCODING_COLLISION`.
+- Prove exact original text remains unchanged through success and every failure
+  path. No `.exe`/`.cfg` insertion, basename extraction, truncation,
+  replacement, case-folding, normalization, or encoded substitution occurs.
+
 ### Planned sequence item 2 capability/name contract tests
 
 These tests are future deterministic work. They require no RTSS, Windows, GPU,
 game, profile file, Dear PyGui, PDH, LHM, or live adapter.
 
 - Assert unique complete membership with no aliases for every proposed policy
-  status, support-state, validity, origin, mechanism, operation, name-context,
-  comparison/normalization, and reason enum.
+  status, support-state, validity, origin, mechanism, primitive-operation,
+  compound-requirement, postcondition, name-context,
+  comparison/normalization, completeness, diagnostic-state, and reason enum.
 - Construct every immutable raw request/report with valid minimum data; reject
   wrong enums, Boolean integers, negative generations, duplicate mechanism
   records, duplicate source identities, mutable collections, empty diagnostic
@@ -287,12 +425,13 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   logical evidence where the factory contract permits copying; reject any
   changed observation identity, content, validity, provenance, source,
   backend generation, or capability generation.
-- Bind every derived capability record to complete immutable source records;
-  reject missing, foreign, cyclic, contradictory, or generation-mismatched
-  derivation graphs.
+- Bind every derived capability record to complete immutable source records.
+  Missing, foreign, or generation-mismatched sources evaluate unknown; cyclic
+  or contradictory sources create the sole typed contradictory observation.
 - Keep `RtssCapabilitySupportState`, `RtssEvidenceValidity`, and
   `RtssEvidenceOrigin` orthogonal: direct/derived never implies supported,
-  stale/invalid never becomes current, and unsupported never becomes unknown.
+  stale/invalid never becomes current, and a stale/invalid unsupported report
+  remains diagnostically visible while its own terminal result is `UNKNOWN`.
 - Preserve `ProfileKind`, `RtssStoredFieldKind`,
   `RtssDenominatorStrategy`, `RtssGeneration`, and item-1 capability/ownership
   invariants without changing item-1 accepted outcome matrices.
@@ -310,8 +449,9 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   temporarily unavailable evidence, foreign observation, backend-generation
   mismatch, and capability-generation mismatch each return deterministic
   `UNKNOWN` with its own typed reason.
-- Contradictory duplicate or derived evidence returns `UNKNOWN /
-  CONTRADICTORY_EVIDENCE`, regardless of any supporting record.
+- The factory-admitted contradictory observation returns `UNKNOWN /
+  CONTRADICTORY_EVIDENCE`, regardless of any supporting raw source; duplicate
+  identical primitive keys remain construction errors.
 - Direct and derived evidence with the same complete trusted sources produce
   the same decision; incomplete or foreign derivation does not.
 - Supported read plus unsupported write allows only the exact read request.
@@ -324,9 +464,9 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   the complete fractional requirement; the inverse does likewise.
 - A mechanism requiring a combined exact numerator/denominator operation
   rejects numerator-only or denominator-only applicability.
-- Exact configured and admitted numeric ranges accept interior and inclusive
-  boundaries, reject empty intersections, and report unknown when a required
-  safety bound lacks evidence. Parser bounds are not treated as backend bounds.
+- Exact domain-specific configured and admitted numeric ranges follow the full
+  corrected range matrix above. Parser bounds are not treated as backend
+  bounds.
 - Global-only evidence rejects application requests and application-only
   evidence rejects Global requests with `PROFILE_KIND_UNSUPPORTED`.
 - Existing-profile read can be supported while existing mutation, creation,
@@ -360,24 +500,27 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
 - A character explicitly invalid under admitted mechanism/kind/operation rules
   returns `UNSUPPORTED`; a character with no applicable rule returns
   `UNKNOWN`.
-- Non-ASCII exact names are accepted only with admitted lossless encoded
-  representation, exact round trip, applicable limits, case/normalization
-  rules, and collision evidence.
+- Non-ASCII exact names never return `SUPPORTED` under the current canonical
+  identity model. With otherwise complete lossless backend evidence they return
+  exactly `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; absent evidence remains
+  `UNKNOWN`.
 - Non-ASCII with unknown encoding, lossy round trip, mismatched encoded bytes,
   unknown normalization, or missing collision evidence is never supported.
 - Case-sensitive admitted evidence retains case-distinct exact names in the
-  decision/audit record. Because current ownership is case-insensitive, a pair
-  that would become distinct owners fails closed with a canonicalization-
-  incompatible reason rather than being collapsed.
+  decision/audit record. A complete single-name exact lookup may proceed; a
+  pair that collapses under current ownership returns exactly
+  `UNSUPPORTED / CASE_COLLISION`.
 - Case-insensitive evidence accepts one unambiguous spelling and rejects a
   proven case-only collision; exact original spelling remains unchanged.
-- Normalization-equivalent exact names with a proven collision are rejected.
-  Unknown normalization returns `UNKNOWN`; no normalization is performed by
-  policy.
+- Normalization-equivalent exact names with a proven collision return exactly
+  `UNSUPPORTED / NORMALIZATION_COLLISION`. Unknown normalization returns
+  `UNKNOWN / NORMALIZATION_UNKNOWN`; an incompatible normalization mode returns
+  `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; no normalization is performed.
 - Exact profile-kind mismatch, Global/application rule reuse, or
   executable-name/full-path rule reuse is rejected.
-- An otherwise valid name is unsupported/unknown when the requested mechanism
-  or operation is unsupported/unknown.
+- An otherwise valid name is `UNSUPPORTED` for a current explicit unsupported
+  dependency and `UNKNOWN` for a missing, unavailable, stale, invalid, or
+  unknown dependency under the closed algebra.
 - Stale name-rule evidence, foreign encoded evidence, backend/capability
   generation mismatch, or collision data from another namespace fails closed.
 - No silent `.exe`, `.cfg`, separator, basename, path, case, or normalization
