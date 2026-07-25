@@ -256,7 +256,7 @@ correction recorded below.
 These supplemental Stage 1 review findings preserve the existing 50-item active
 ledger and its identifiers; they are not duplicate ledger entries.
 
-### `S1-DOC-001` - Medium / Confirmed / corrected locally
+### `S1-DOC-001` - Medium / Confirmed / corrected and published
 
 - **Location:** `CURRENT_STATUS.md` and `IMPLEMENTATION_PLAN.md`.
 - **Problem:** Tracked documentation continued to describe the pre-publication
@@ -264,9 +264,21 @@ ledger and its identifiers; they are not duplicate ledger entries.
   created.
 - **Effect:** A future session could repeat publication work, use the wrong
   branch head, or apply the wrong phase gate.
-- **Disposition:** Fix before merge through a documentation-only correction.
-- **Current state:** Corrected by the current local documentation commit. The
-  correction is not published until a later explicitly approved push.
+- **Original disposition:** Fix before merge through a documentation-only
+  correction.
+- **Correction:** Commit
+  `e002045a0285a03706b5560969b8a9f1c9ac8b31`
+  (`docs: record RTSS Stage 1 publication review`) corrected the original
+  pre-publication inconsistency.
+- **Verification and publication:** `e002045` passed independent read-only
+  review and was pushed successfully to the existing Stage 1 branch and draft
+  PR #3.
+- **Final merge-gate maintenance:** Publication exposed self-referential
+  transition wording in the correction. The present follow-up replaces it with
+  a dated pre-merge snapshot and explicit post-creation and post-publication
+  verification requirements. This is documentation maintenance, not a
+  production defect. The commit containing this follow-up must be verified
+  through Git after creation and through GitHub after any approved publication.
 
 ### `S1-READBACK-001` - Low / Confirmed / deferred
 

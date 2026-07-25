@@ -13,9 +13,6 @@ RTSS Stage 1 contracts and deterministic tests were published in commit
 documentation commit `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`
 (`docs: record RTSS Stage 1 completion`). The branch was pushed only to
 `Drakenliger/DynamicFPSLimiter`, and draft PR #3 was created against `main`.
-Before the current local documentation correction, the published PR contained
-two commits and 12 changed files at head
-`afd43e0373001a9f471573bbfb3535ae0b3c1ac3`.
 
 Publication, PR verification, and an independent read-only review are complete.
 All 95 deterministic unit tests passed during publication and review. GitHub
@@ -23,22 +20,39 @@ reported no automated checks. The review found no code or RTSS-safety merge
 blocker and required only the `S1-DOC-001` documentation correction before
 merge.
 
+Commit `e002045a0285a03706b5560969b8a9f1c9ac8b31`
+(`docs: record RTSS Stage 1 publication review`) corrected `S1-DOC-001`, passed
+independent read-only review, and was pushed successfully to the existing
+branch. This task removes the transition-sensitive wording exposed by that
+publication event.
+
+At the pre-merge status snapshot verified on 25 July 2026, local and remote
+branch heads were synchronized at `e002045`, and draft PR #3 was open, draft,
+mergeable, and unmerged with three commits and 12 changed files. GitHub
+reported no automated checks. These values describe that dated snapshot; the
+commit containing this document must be verified through Git after creation
+and through GitHub after any approved publication.
+
 Current gated status:
 
 1. Stage 1 contracts, tests, and initial documentation: complete.
-2. Stage 1 branch push to `Drakenliger/DynamicFPSLimiter`: complete.
-3. Draft PR #3 creation and verification: complete.
-4. Independent read-only PR review: complete.
-5. `S1-DOC-001` documentation correction: committed locally by the current
-   documentation-only commit; not yet pushed.
-6. Review and explicitly approved push of this correction: not complete.
-7. Reverification of PR #3 after that push: not complete.
-8. Merge of PR #3: not complete.
-9. Synchronization of local `main` after merge: not complete.
-10. Stage 2: not started.
+2. Initial branch push to `Drakenliger/DynamicFPSLimiter`: complete.
+3. Draft PR #3 creation: complete.
+4. Independent full PR review: complete.
+5. `S1-DOC-001` correction in `e002045`: complete.
+6. Independent review of `e002045`: complete.
+7. Push of `e002045`: complete.
+8. Remote PR reverification at `e002045`: complete.
+9. Final transition-stable documentation correction: current task.
+10. Final correction review and publication: not complete.
+11. Mark ready and merge: not complete.
+12. Synchronize local `main`: not complete.
+13. Stage 2: not started.
 
-Stage 2 remains blocked until steps 6-9 complete. It must begin on a new,
-focused branch based on the synchronized, merged `main`.
+Stage 2 remains blocked until steps 10-12 complete. It must begin on a new,
+focused branch based on the synchronized, merged `main`. The first Stage 2
+branch commit must refresh `CURRENT_STATUS.md` to record the merge and
+synchronized `main`.
 
 ## 1. `test/controller-and-adapter-harness`
 
@@ -73,12 +87,13 @@ changing production policy.
 **Objective:** Replace overlapping writers with one validated, serialized,
 generation-aware, reversible RTSS boundary.
 
-- **Stage 1 status:** Published in draft PR #3 through
-  `42a4485c6d6b078d442e57061e745a2ea43e3d89` with 95 passing deterministic
-  unit tests and completed independent review. The current documentation-only
-  correction is local and is not yet part of the remote PR. Stage 1 provides
-  identity, request, capture, readback, apply, restore, ownership, evidence, and
-  result contracts plus deterministic fakes and regressions.
+- **Stage 1 status:** The contract/test commit and documentation through
+  `e002045a0285a03706b5560969b8a9f1c9ac8b31` were published in draft PR #3
+  with 95 passing deterministic unit tests and completed independent review.
+  The final merge-gate documentation task removes transition-sensitive wording.
+  Stage 1 provides identity, request, capture, readback, apply, restore,
+  ownership, evidence, and result contracts plus deterministic fakes and
+  regressions.
 - **Stage 2 status:** Not started. No production callers use the Stage 1
   contracts, and no transaction coordinator or production integration exists.
 - **Additional Stage 2 prerequisites from the independent PR review:**
