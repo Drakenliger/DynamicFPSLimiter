@@ -81,6 +81,49 @@ independent review of corrected Stage 2 planning commit
 `677b6b5750ac52953fd1581efbc658adbc171b22`. They define Stage 2 architecture
 and sequencing, not completed implementation or production behavior.
 
+## Proposed sequence-item-2 decisions pending independent review
+
+The following durable design decisions were produced by the local RTSS Stage 2
+sequence-item-2 planning session. They are not accepted implementation
+authority until the planning commit is independently reviewed and explicitly
+accepted.
+
+34. Capability and supported-name policy is pure, deterministic, immutable,
+    mechanism-specific, and fail-closed. Its terminal decision is one of
+    `SUPPORTED`, `UNSUPPORTED`, or `UNKNOWN`, with a typed diagnostic reason.
+35. Support state, evidence validity, and evidence origin are separate axes.
+    Direct or derived provenance does not imply support; missing, stale,
+    temporarily unavailable, contradictory, or foreign evidence cannot produce
+    `SUPPORTED`, while explicit `UNSUPPORTED` remains distinct from `UNKNOWN`.
+36. Read, write, save, activation, readback verification, exact restoration,
+    profile creation, deletion, verified absence, and coordinated multi-field
+    update are separate capability operations. One supported operation never
+    implies another, and no mechanism fallback is automatic.
+37. Supported-name policy is evaluated for the exact profile kind, operation,
+    mechanism, existing-profile or creation context, and admitted capability
+    observation. Encoding, encoded representation, length, character, case,
+    normalization, and collision rules require explicit evidence; no universal
+    RTSS rule is inferred from Windows filesystem behavior or current adapter
+    behavior.
+38. The exact original name is immutable audit evidence. Policy never silently
+    truncates, replaces, case-folds, normalizes, or rewrites it. A derived
+    canonical or encoded representation is usable only when admitted evidence
+    proves the derivation and collision behavior for the requested mechanism.
+    Evidence incompatible with the accepted case-insensitive ownership model
+    fails closed rather than collapsing potentially distinct names.
+39. `RtssCapabilityInfo` and caller-created `RtssCapabilityEvidence` remain
+    non-authoritative by themselves. A new factory-controlled admitted
+    capability observation will bind content, observation identity, backend
+    generation, capability generation, validity, and provenance. Sequence item
+    2 defines that contract and pure evaluation only; trusted observation and
+    admission of current or advanced generations belongs to sequence item 3
+    and production adapters.
+40. Sequence item 2 creates no coordinator registry, consumes no ownership
+    token, performs no capture or live query, and implements no operation,
+    conflict, rollback, restoration, or mutation. Unsupported real-world
+    evidence remains an explicit open decision and blocks only the affected
+    later admission or support claim, not the pure fail-closed contract.
+
 ## Unresolved decisions
 
 | Decision | Evidence needed | Must be resolved by |

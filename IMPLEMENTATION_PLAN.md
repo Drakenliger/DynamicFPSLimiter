@@ -44,8 +44,11 @@ accepted generations to the owner's captured evidence and passes 181
 deterministic tests. Independent read-only review of approved source commit
 `4011d7e1e29fc2a4bbe901d184c53774b33e7baa` ended **Approved with
 non-blocking review findings**, so sequence item 1 is complete. Capability and
-supported-name policy is sequence item 2: its planning and design review are
-the next authorized activity, but its implementation remains unauthorized.
+supported-name policy is sequence item 2: its planning and design were
+completed locally from starting HEAD
+`fed6a33c79d7575c33ac5b4f1585fa536880896f`, but the resulting planning commit
+still requires independent read-only review and explicit acceptance.
+Implementation remains unauthorized.
 The coordinator, mutation, and production integration are not implemented or
 authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
@@ -256,41 +259,204 @@ attribution.
 
 ### Capability and supported-name policy
 
-The policy receives both configured safety bounds and observed backend
-capabilities. It computes their intersection for:
+This section is the concrete sequence-item-2 design. It is planning only and
+does not authorize the types or policy to be implemented.
 
-- numerator and denominator integer ranges;
-- numerator and denominator bit widths;
-- effective-cap minimum/maximum and inclusivity;
-- supported denominator strategies;
-- exact readback, flag read/write, document, revision, create, and delete
-  support;
-- exact stored-field read/write support;
-- supported name encodings and lossless conversion;
-- DLL-name and profile-filename encoded-byte and character component limits.
+#### Existing architecture assessment
 
-An empty intersection is `UNSUPPORTED_CAPABILITY`; an unresolved mechanism is
-`POLICY_REQUIRED`. The policy must not silently fall back from an API strategy
-to profile-file editing.
+| Existing fact | Location | Consequence for sequence item 2 |
+| --- | --- | --- |
+| `ProfileKind` contains only `GLOBAL` and `APPLICATION`. | `src/core/rtss_contracts.py:15` | Preserve the enum and require exact kind matching. Additional kinds require a separately reviewed enum change. |
+| `CanonicalProfileIdentity` stores exact display spelling but equality and hashing use a case-folded canonical key; its current constructor also hard-codes ASCII, executable suffix, Windows character, reserved-stem, and filename-derived rules. | `src/core/rtss_contracts.py:329`, `:365`, `:413`, `:421`, `:429` | Preserve accepted ownership equality unless a later accepted decision changes it, but separate current lexical construction from capability-dependent support. Current validation is existing behavior, not evidence of universal RTSS encoding, case, normalization, or filename rules. |
+| `RtssDenominatorStrategy` distinguishes unresolved policy, profile-file, and RTSS API strategies. | `src/core/rtss_contracts.py:23` | Preserve it as a request/strategy enum; do not treat either strategy as supported without mechanism evidence or fall back between them. |
+| `RtssCapabilityInfo` is a public immutable range/Boolean description with backend generation, denominator strategies, flag read/write, exact readback, cap ranges, bit widths, and an optional version label. | `src/core/rtss_contracts.py:733` | Preserve compatibility, but do not extend its default-false Booleans into authoritative policy: it cannot distinguish unknown from unsupported, has no observation identity or freshness, and is caller-constructible. |
+| `RtssGeneration` publicly carries application, session, profile, source, and canonical profile identity. | `src/core/rtss_contracts.py:712` | Reuse it; do not create duplicate application/session/profile/source counters. |
+| `RtssCapabilityEvidence` publicly carries transaction, `RtssGeneration`, backend generation, and capability generation but no capability content, validity, or provenance. | `src/core/rtss_contracts.py:2146` | Preserve it as the item-1 ownership marker. A structurally consistent caller-created marker is not proof that a backend supports an operation. |
+| `RtssOwnershipToken` binds exact captured state and capability marker; structural immutable copies are one logical token. | `src/core/rtss_contracts.py:2175` | Item 2 may consume matching identity/generation context but must not create, consume, release, or register tokens. |
+| `RtssReadbackEvidence.bind`, `RtssOperationEvidence`, and `RtssConflictEvidence.from_readback` are factory-controlled and owner-bound. `RtssDegradedState` derives accounting and classification from those objects. | `src/core/rtss_contracts.py:2239`, `:2491`, `:2760`, `:2957` | Preserve these factory boundaries and captured-generation anchoring. Capability/name policy must not introduce a caller-authored Boolean or generation bypass. |
+| `CapturedProfileState`, `RtssApplyRequest`, `RtssReadback`, `RtssCapabilityEvidence`, and `RtssOwnershipToken` have public constructors. | `src/core/rtss_contracts.py:1079`, `:1242`, `:1287`, `:2146`, `:2175` | Treat requests and raw reports as untrusted inputs. Item 1's public constructors enforce structural invariants, not live-backend authenticity. |
 
-Name admission separates four concerns:
+The missing sequence-item-2 concepts are: observation identity and provenance;
+freshness/validity; explicit unknown, unavailable, contradictory, and
+unsupported states; per-mechanism and per-operation support; separate
+read/write/readback/restoration support; exact-field applicability;
+profile-kind scope; name encoding and exact encoded evidence; length,
+character, case, normalization, and collision evidence; and typed policy
+decisions/reasons.
 
-1. canonical case-insensitive profile identity;
-2. always-invalid lexical and path forms;
-3. backend supported-name and exact-encoding capabilities; and
-4. capability-driven encoded-byte and character length limits.
+These contracts belong beside the pure contracts in `src/core`, with no import
+from Dear PyGui, RTSS DLL bindings, filesystem adapters, lifecycle workers,
+PDH, LHM, or controller state. Adapter observation and coordinator admission
+remain later boundaries.
 
-Raw and derived names are always rejected for `/`, `\`, rooted or
-drive-relative forms, UNC/device prefixes, ADS colons, dot components, reserved
-Windows stems, controls, trailing dot/space, or a resolved target outside the
-admitted root. Non-ASCII names are rejected by default, but are not permanently
-invalid identity: future admission requires explicit supported-name evidence,
-lossless exact encoding, defined case canonicalization, and applicable DLL and
-derived-filename limits including suffix expansion. Lossy conversion is always
-rejected. Capability or encoding changes across backend generations require
-fresh admission. Reparse-point enforcement belongs to the later filesystem
-adapter, but the deterministic policy and fake model must express containment
-failure. No Unicode support is claimed.
+#### Planned typed capability model
+
+The future focused implementation should introduce these immutable concepts,
+using the names below unless implementation review identifies a clearer
+non-overlapping name:
+
+| Planned type | Required content and invariant |
+| --- | --- |
+| `RtssPolicyDecisionStatus` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`. Only `SUPPORTED` admits the exact requested policy operation. |
+| `RtssCapabilitySupportState` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE`, `CONTRADICTORY`. It is the observed support state, not provenance. |
+| `RtssEvidenceValidity` | Unique enum separating `CURRENT`, `STALE`, and `INVALID`. Missing evidence is represented by absence, not a fabricated current object. |
+| `RtssEvidenceOrigin` | Unique enum separating `DIRECT` and `DERIVED`. Derived evidence names its complete immutable source observations. Origin never implies support. |
+| `RtssAccessMechanism` | Closed unique identifiers for mechanisms actually modeled. Initial values may correspond to the existing RTSS API and profile-file strategies, but no value implies a supported RTSS version. Enum additions fail closed. |
+| `RtssCapabilityOperation` | Closed unique operations: profile-existence read; exact integer-limit read/write; exact fractional numerator read/write; exact fractional denominator read/write; limiter-flag read/write; save; activation; readback verification; coordinated multi-field update; exact restoration; create; delete; and verified absence. |
+| `RtssMechanismCapability` | One mechanism/operation/profile-kind record containing support state, exact stored-field applicability using existing `RtssStoredFieldKind`, origin, source references, and any exact numeric bounds. It must reject duplicates and contradictory overlapping records at construction or classify the snapshot contradictory. |
+| `RtssCapabilityObservationIdentity` | Opaque immutable observation identifier, distinct from transaction identity. Equality is structural and auditable. |
+| `RtssRawCapabilityReport` | Public untrusted adapter/request-shaped data. It can never directly produce `SUPPORTED`. |
+| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable capability records, backend generation, capability generation, observed validity/freshness state, provenance, and source label/version metadata used only diagnostically. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
+| `RtssCapabilityRequirement` | Pure request for one exact mechanism, operation, profile kind, and exact-field set plus configured numeric bounds. It contains intent, not proof. |
+| `RtssCapabilityDecision` | Immutable status, exact request, admitted observation identity/generations when present, selected mechanism only on support, effective configured/evidence range intersection, and a non-empty tuple of typed reasons. |
+| `RtssPolicyReason` | Unique diagnostic enum including missing, stale, invalid, foreign, backend-generation mismatch, capability-generation mismatch, contradictory evidence, mechanism unsupported/unknown, profile-kind unsupported, read/write/readback/restoration unavailable, partial exact-field support, encoding/length/character/canonicalization/collision failures, creation/deletion/verified-absence unavailable, and empty range intersection. Free text may supplement but never determine truth. |
+
+The authoritative observation is the factory-controlled snapshot, not
+`RtssCapabilityInfo`, `RtssCapabilityEvidence`, a Boolean, a version label, a
+caller-authored generation, or an internally consistent caller-created graph.
+Sequence item 2 defines the immutable shape and pure evaluator but intentionally
+does not create a production path for trusting a current or advanced snapshot.
+Sequence item 3 later owns admission against the active transaction/capture
+context; sequence item 12 owns production adapter observation. Deterministic
+item-2 tests use a test-only admitted-observation fixture that is not exported
+as a production trust source.
+
+Configured limits and observed limits are intersected exactly. An empty
+intersection is `UNSUPPORTED`; a missing bound required to prove safety is
+`UNKNOWN`. Parser resource bounds remain parser bounds, not RTSS capability
+evidence.
+
+#### Planned supported-name policy model
+
+`RtssSupportedNameRequest` is a public untrusted immutable request containing:
+
+- the exact original name and explicit `ProfileKind`;
+- the current canonical identity when one can be constructed, without allowing
+  that identity to replace or rewrite the exact original;
+- exact requested access mechanism and capability operation;
+- context `EXISTING_PROFILE` or `CREATE_PROFILE` (intent only; sequence item 3
+  later verifies existence);
+- expected backend and capability generations;
+- optional exact encoded-name, normalization, and collision evidence references
+  bound to the admitted observation; and
+- the complete set of exact peer names/canonical forms relevant to ambiguity
+  checking when such evidence is admitted.
+
+The admitted observation may contain mechanism- and kind-specific immutable
+name-rule evidence:
+
+- encoding identifier and exact encoded representation/round-trip evidence;
+- character and encoded-byte component limits;
+- character and encoded-byte total-target limits, including known suffix
+  expansion when applicable;
+- explicit admitted/disallowed character evidence;
+- explicit case-comparison behavior;
+- explicit normalization behavior or an explicit no-normalization rule;
+- collision observations for the exact rule and target namespace; and
+- separate applicability to existing lookup, read, mutation, and creation.
+
+Absent evidence is not replaced by ASCII, ANSI, UTF-8, UTF-16, a locale code
+page, Windows path limits, filename limits, reserved-name lists, case folding,
+or Unicode normalization guesses.
+
+`RtssSupportedNameDecision` returns:
+
+- `SUPPORTED`, `UNSUPPORTED`, or `UNKNOWN`;
+- the unchanged exact original name and profile kind;
+- the exact requested mechanism, operation, and existing/creation context;
+- the canonical identity and encoded representation only when their evidence
+  is admitted and unambiguous;
+- observation identity, backend generation, and capability generation when
+  evidence is present;
+- all typed reasons in deterministic order; and
+- an auditable collision/derivation summary that cannot mutate the name.
+
+No decision silently truncates, replaces, strips, normalizes, changes case, or
+selects a different identity. Existing case-insensitive ownership equality
+remains an accepted constraint. If admitted evidence says names are
+case-sensitive, the policy preserves both exact spellings in diagnostics but
+does not admit them as distinct owners under the current model; it returns
+`UNKNOWN` or `UNSUPPORTED` with a canonicalization-incompatible/collision
+reason. Supporting such a namespace would require a separately accepted
+identity-model decision.
+
+#### Exact fail-closed evaluation rules
+
+Policy evaluation follows this deterministic order:
+
+1. Validate the untrusted request structurally without live access or name
+   rewriting. A profile-kind or exact-name/identity mismatch is
+   `UNSUPPORTED`.
+2. If no admitted observation exists, return `UNKNOWN /
+   CAPABILITY_EVIDENCE_MISSING`. A raw report or current public capability
+   object does not substitute for it.
+3. Reject foreign observation identity, stale/invalid evidence, backend
+   generation mismatch, or capability generation mismatch as `UNKNOWN` with
+   the exact typed reason. Contradictory evidence is `UNKNOWN`, never support.
+4. Select only the exact requested mechanism, operation, profile kind, and
+   exact-field applicability record. Missing/unknown/unavailable support is
+   `UNKNOWN`; explicit unsupported is `UNSUPPORTED`. No other mechanism is
+   tried.
+5. Require every dependency for the requested operation. Read never implies
+   write; write never implies readback; readback never implies restoration;
+   profile-file access never implies API support.
+6. A mutation-capability decision requires explicit write, save, activation,
+   reliable exact readback, and exact-restoration support for every applicable
+   field. Write support without reliable readback is `UNSUPPORTED`; no mutation
+   is admitted.
+7. A fractional operation requiring both exact numerator and denominator is
+   supported only when both field reads, writes, readback, and restoration are
+   supported through the admitted mechanism. Numerator-only support,
+   denominator-only support, or an unavailable denominator fails closed with a
+   partial-field or denominator reason.
+8. Existing-profile read may be supported independently of write or creation.
+   Existing-profile mutation requires its complete mutation dependency set.
+   Creation additionally requires explicit creation, deletion, verified
+   absence, and created-profile restoration capability; otherwise creation is
+   `UNSUPPORTED` or `UNKNOWN` according to the evidence state.
+9. Deletion requests require explicit deletion plus verified-absence
+   capability. Deletion without reliable absence verification is not
+   supported.
+10. Name evaluation requires rules applicable to the exact mechanism,
+    operation, profile kind, and existing/creation context. A name supported
+    for existing lookup is not thereby supported for creation or mutation.
+11. Unknown encoding, required unknown character/byte limit, unknown
+    case/normalization rule, or missing collision evidence is `UNKNOWN`.
+    Explicitly unsupported encoding, a value above a known maximum, a
+    character rejected by admitted rules, or a proven collision is
+    `UNSUPPORTED`.
+12. Exact boundary values are accepted only when every other requirement is
+    supported. Non-ASCII is supported only under admitted exact lossless
+    encoding, comparison, normalization, length, and collision evidence;
+    otherwise it remains unknown/unsupported. No Unicode support is claimed.
+13. Structurally equal immutable admitted evidence produces the same decision.
+    Foreign snapshots, direct construction, replacement, enum aliases, or
+    changed nested generations cannot acquire trust.
+
+These decisions occur before capture or mutation. They do not return
+`RtssApplyResult`, create ownership, or classify operation, conflict, rollback,
+or degraded state.
+
+#### Interaction with sequence item 1
+
+The pure policy reuses `ProfileKind`, `RtssStoredFieldKind`,
+`RtssDenominatorStrategy`, `CanonicalProfileIdentity`, `RtssGeneration`,
+`RtssCapabilityEvidence`, and typed diagnostics where semantics already match.
+It does not broaden `RtssOutcome` or `RtssFailureStep` merely to represent
+policy internals; a later coordinator maps a terminal policy decision to the
+existing structured transaction outcome.
+
+The admitted observation must match the item-1 ownership/capture context before
+a later coordinator may bind it. The existing captured backend generation and
+capability marker remain anchors. Item 2 introduces no way to assert that a
+higher generation is trusted and no path for a caller-created graph to become
+authoritative. Exact requested, canonical, captured, operation, conflict, and
+restoration identity remain unchanged.
+
+Item 2 creates no single-use registry, transaction admission registry,
+serialization lease, ownership holder, handoff recipient, capture, readback
+binding, operation evidence, conflict evidence, mutation journal, rollback, or
+release. Those existing or later responsibilities remain outside policy.
 
 ### Transaction phase ordering
 
@@ -504,6 +670,17 @@ Production-caller modification is prohibited in the first Stage 2
 implementation commit unless a later independently reviewed plan explicitly
 authorizes it.
 
+For the sequence items material to this policy, the allocation is exact:
+
+| Sequence item | Included | Excluded |
+| --- | --- | --- |
+| 2 - capability/name policy | Immutable enums, raw request/report contracts, factory-controlled admitted-observation shape, mechanism-operation requirements, name-rule evidence, pure decisions/reasons, deterministic policy, and its tests. | Trusted live admission, capture, registry, mutation, adapters, files, and ownership transitions. |
+| 3 - coordinator admission/capture | Trust/admit a current observation for one transaction, recheck backend/capability generations, serialize, verify requested existence context, capture exact state, and support verified no-change only. | Mutation and rollback execution. |
+| 4 - rollback foundations | Mutation journal/operation record, rollback interfaces, degraded-state construction, and failure classification while mutation remains disabled. | First apply and production adapters. |
+| 5 - first mutation | One existing-profile exact-cap operation through one item-2-admitted exact reversible mechanism with complete save/activation/readback/rollback coverage. | Creation, deletion, flags, switching, additional mechanisms, and production wiring. |
+| 6 - creation/restoration | Creation admission, created-profile ownership, deletion on restore, verified absence, repeated restore, degradation, and handoff. | Limiter flags, switching, and production mechanism discovery. |
+| 12 - production adapters | Versioned observation/discovery, trusted adapter provenance, live mechanism selection, DLL/profile-file behavior, filesystem containment, caller wiring, disposable-profile/manual validation, and support claims only for passed rows. | Changing deterministic policy to guess around missing evidence. |
+
 ### Deferred Stage 1 items
 
 `S1-READBACK-001`, `S1-TEST-001`, and `S1-DESIGN-001` are mandatory Stage 2
@@ -520,22 +697,27 @@ coverage, and pass focused review before disposition.
 
 ### Unresolved decisions
 
-Independent review or later physical evidence must still decide:
+The item-2 planning review leaves the following decisions explicit:
 
-- supported RTSS versions and capability discovery;
-- API denominator support versus a profile-file mechanism;
-- concrete DLL-name and profile-filename component limits for each supported
-  capability set;
-- which immutable document digest schemes, if any beyond complete bytes and
-  SHA-256, are approved;
-- whether and how stop handles external edits, including merge, refuse, or
-  explicitly authorized overwrite;
-- whether RTSS exposes a usable cross-process serialization or revision token;
-- whether deletion and exact absence can be verified by every supported
-  backend;
-- backend restart recovery and whether ownership can be safely reacquired; and
-- how degraded ownership persists across a complete application-process
-  restart.
+| ID | Question | Current evidence | Fail-closed interim rule | Owner / phase | Blocks item-2 implementation? | Blocks later mutation or production support? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `S2-CAP-OPEN-001` | Which RTSS versions are supported? | No versioned capability/restoration matrix is accepted. | Version labels are diagnostic only; no real observation is supported. | Item 12 adapter/manual matrix | No | Yes, for every support claim |
+| `S2-CAP-OPEN-002` | Which exact operations and fields does each API mechanism support? | Current code exposes partial DLL methods and guessed Booleans, not admitted evidence. | Unknown per operation/field; never infer from general API availability. | Item 12 adapters | No | Yes, for affected operations |
+| `S2-CAP-OPEN-003` | Is fractional denominator access API-backed or profile-file-backed? | Existing production paths split mechanisms; `RTSS-008` remains Likely/Open. | No fallback; denominator-dependent operations remain unknown. | Items 8 and 12 | No | Yes, for fractional mutation |
+| `S2-CAP-OPEN-004` | Can write, save, activation, and exact readback be relied on independently? | Item 1 models results but provides no live capability proof. | Require explicit support for each; missing readback rejects mutation. | Items 5 and 12 | No | Yes |
+| `S2-CAP-OPEN-005` | Are create, delete, and verified absence supported and reversible? | No accepted versioned disposable-profile evidence. | Existing read may remain eligible; creation/deletion remain unknown. | Items 6 and 12 | No | Yes, for creation/deletion |
+| `S2-NAME-OPEN-001` | Which encoding(s) are lossless for each mechanism? | Current identity uses ASCII; that is not universal RTSS evidence. | Encoding-dependent names are unknown without exact admitted evidence. | Item 12 adapters/manual matrix | No | Yes, for affected names |
+| `S2-NAME-OPEN-002` | What character and encoded-byte component/total limits apply? | No accepted RTSS limit evidence; current parser has no capability limits. | A required unknown limit yields `UNKNOWN`; do not truncate. | Item 12 adapters/manual matrix | No | Yes, for support beyond proven bounds |
+| `S2-NAME-OPEN-003` | Which characters or reserved forms are invalid for DLL lookup and profile files? | Current validation uses Windows filename rules; RTSS equivalence is unproven. | Keep current safety behavior during planning; item-2 policy admits only evidence-backed rules and never assumes DLL/file equivalence. | Item 2 contract refinement; item 12 evidence | Yes, only if implementation cannot separate baseline safety from capability rules | Yes, for names outside proven rules |
+| `S2-NAME-OPEN-004` | Are comparison and canonicalization case-sensitive or insensitive? | Accepted ownership identity is case-insensitive; live RTSS behavior is unverified. | Preserve exact spelling; evidence incompatible with current ownership identity fails closed. | Architectural review plus item 12 matrix | No | Yes, for incompatible namespaces |
+| `S2-NAME-OPEN-005` | What Unicode normalization, if any, occurs? | No accepted evidence. | Do not normalize; reject/unknown on required normalization or collision ambiguity. | Item 12 adapters/manual matrix | No | Yes, for Unicode support |
+| `S2-NAME-OPEN-006` | Is identity executable basename, full path, or another RTSS namespace? | Current contract accepts executable names only; production sources disagree. | Support only the admitted profile kind/name form; no path-to-basename rewriting. | Profile identity design and item 12 validation | No | Yes, for other forms |
+| `S2-CAP-OPEN-006` | How is a current or advanced backend/capability observation trusted? | Item 1 intentionally anchors to captured evidence and provides no advancement seam. | Item 2 has no production trust source; raw/caller-created observations cannot support. | Item 3 admission and item 12 adapters | No | Yes, before coordinator use |
+| `S2-CAP-OPEN-007` | How are stale, temporarily unavailable, and contradictory reports reconciled? | No accepted live observation policy exists. | Typed non-supporting states; no “last known good” promotion. | Items 3, 10, and 12 | No | Yes, during those states |
+| `S2-CAP-OPEN-008` | How are restart/re-enumeration generation changes handled? | Item 1 rejects generation advancement; no reacquisition design exists. | Prior admission becomes stale; reacquisition cannot be inferred. | Items 10 and 12 | No | Yes, after restart |
+| `S2-CAP-OPEN-009` | Can external revisions/cross-process writers be detected or serialized? | Deterministic conflict model exists; live token/lock behavior is unknown. | Detect and fail closed where evidence exists; never overwrite silently. | Items 4, 10, and 12 | No | Yes, for safe restoration |
+| `S2-CAP-OPEN-010` | Which document digest schemes beyond complete bytes/SHA-256 are approved? | Item 1 accepts complete bytes or SHA-256 only. | Preserve the accepted set; no other digest proves restoration. | Later contract review | No | Only if another scheme is required |
+| `S2-CAP-OPEN-011` | How does degraded ownership persist across process restart? | No durable recipient/storage design exists. | Do not claim release or restart recovery. | Production lifecycle integration | No | Yes, for restart-safe support |
 
 The deterministic Stage 2 model must account for every unresolved owned field
 and retain or explicitly hand off ownership. It does not claim that
@@ -560,10 +742,26 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - planning/design review authorized;
-   implementation unauthorized**
-   - add configured/backend range intersections, exact-field capabilities,
-     component lengths, lexical/path rejection, and exact encoding policy.
+2. **Capability and supported-name policy - planning completed locally;
+   independent review and explicit acceptance required; implementation
+   unauthorized**
+   - future unit 2a: add unique status, validity, origin, mechanism, operation,
+     and typed-reason enums plus immutable raw and admitted capability evidence
+     contracts;
+   - future unit 2b: add exact configured/evidence range intersection and pure
+     mechanism/operation/exact-field capability evaluation;
+   - future unit 2c: add supported-name request, admitted name-rule evidence,
+     exact-name-preserving decision contracts, and collision evidence;
+   - future unit 2d: add the pure supported-name policy with encoding, length,
+     character, case, normalization, existing/creation, and mechanism-specific
+     fail-closed rules;
+   - future unit 2e: add deterministic typed diagnostics, enum/direct-
+     construction/replacement hardening, and complete contract/policy
+     regressions;
+   - future unit 2f: reconcile tracked documentation after tests pass;
+   - each unit remains contract/policy-only and must be independently
+     reviewable; none creates trusted live evidence, a coordinator registry,
+     capture, mutation, or adapter integration.
 3. **Coordinator admission and capture**
    - add process-local serialization, generation and transaction admission,
      exact state capture, and verified no-change flow;
@@ -690,10 +888,11 @@ Stage 2 coordinator implementation is complete only when:
 
 The planning-review and explicit-acceptance gates are satisfied. Sequence item
 1 is independently approved and complete with no admitted mutation after three
-failed implementation reviews and three focused corrections. The next
-authorized activity is a separate focused sequence-item-2 planning and design
-review. Sequence item 2 implementation and each later mutation-bearing slice
-remain unauthorized and gated by their applicable review, rollback,
+failed implementation reviews and three focused corrections. The separate
+focused sequence-item-2 planning and design work is complete locally, but its
+commit requires independent read-only review and explicit acceptance.
+Sequence item 2 implementation and each later mutation-bearing slice remain
+unauthorized and gated by their applicable review, rollback,
 degraded-state, ownership, and failure-matrix requirements. No mutation is
 admitted before item 5 and its prerequisites, and production integration
 remains item 12. The accepted 12-item focused sequence above is unchanged.
@@ -761,7 +960,8 @@ generation-aware, reversible RTSS boundary.
   prerequisite contract/test sequence item was corrected locally a third time
   after three implementation reviews failed, passes all 181 deterministic
   tests, and is independently approved and complete. Sequence item 2 planning
-  and design review are authorized; its implementation remains unauthorized.
+  and design are complete locally but require independent read-only review and
+  explicit acceptance; implementation remains unauthorized.
   No coordinator or mutation exists, no production caller uses the contracts,
   and production integration remains item 12.
 - **Additional Stage 2 prerequisites from the independent PR review:**

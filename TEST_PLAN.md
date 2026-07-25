@@ -260,8 +260,181 @@ non-blocking observations:
 Neither observation requires a source or test change now, and neither reopens
 sequence item 1. Test restructuring is deferred until a legitimate trusted
 advanced-generation observation seam exists. Future sequence-item-2 planning
-must define and independently review its own deterministic test matrix before
-implementation; sequence-item-2 implementation remains unauthorized.
+has now defined the matrix below. The planning commit must pass independent
+read-only review and be explicitly accepted before sequence-item-2
+implementation; implementation remains unauthorized.
+
+### Planned sequence item 2 capability/name contract tests
+
+These tests are future deterministic work. They require no RTSS, Windows, GPU,
+game, profile file, Dear PyGui, PDH, LHM, or live adapter.
+
+- Assert unique complete membership with no aliases for every proposed policy
+  status, support-state, validity, origin, mechanism, operation, name-context,
+  comparison/normalization, and reason enum.
+- Construct every immutable raw request/report with valid minimum data; reject
+  wrong enums, Boolean integers, negative generations, duplicate mechanism
+  records, duplicate source identities, mutable collections, empty diagnostic
+  codes, and inconsistent profile kinds.
+- Prove raw reports, `RtssCapabilityInfo`, caller-created
+  `RtssCapabilityEvidence`, version labels, and Boolean flags cannot directly
+  create a supported admitted observation or `SUPPORTED` decision.
+- Prove admitted observations are factory-controlled: direct construction,
+  `object.__new__` followed by ordinary initialization, public factory search,
+  `dataclasses.replace()`, nested replacement, and copied future-generation
+  attempts cannot acquire trust.
+- Accept structurally equal immutable admitted-observation copies as the same
+  logical evidence where the factory contract permits copying; reject any
+  changed observation identity, content, validity, provenance, source,
+  backend generation, or capability generation.
+- Bind every derived capability record to complete immutable source records;
+  reject missing, foreign, cyclic, contradictory, or generation-mismatched
+  derivation graphs.
+- Keep `RtssCapabilitySupportState`, `RtssEvidenceValidity`, and
+  `RtssEvidenceOrigin` orthogonal: direct/derived never implies supported,
+  stale/invalid never becomes current, and unsupported never becomes unknown.
+- Preserve `ProfileKind`, `RtssStoredFieldKind`,
+  `RtssDenominatorStrategy`, `RtssGeneration`, and item-1 capability/ownership
+  invariants without changing item-1 accepted outcome matrices.
+- Preserve exact original name bytes/text in requests and decisions; reject
+  silent truncation, replacement, stripping, case change, normalization, or
+  encoded-name substitution.
+
+### Planned sequence item 2 capability policy tests
+
+- Exact requested mechanism/operation/profile kind with current admitted direct
+  support returns `SUPPORTED` and the exact selected mechanism.
+- Explicitly unsupported mechanism returns `UNSUPPORTED`; missing mechanism
+  evidence returns `UNKNOWN`; neither tries another mechanism.
+- Missing observation, raw-only report, stale evidence, invalid evidence,
+  temporarily unavailable evidence, foreign observation, backend-generation
+  mismatch, and capability-generation mismatch each return deterministic
+  `UNKNOWN` with its own typed reason.
+- Contradictory duplicate or derived evidence returns `UNKNOWN /
+  CONTRADICTORY_EVIDENCE`, regardless of any supporting record.
+- Direct and derived evidence with the same complete trusted sources produce
+  the same decision; incomplete or foreign derivation does not.
+- Supported read plus unsupported write allows only the exact read request.
+- Supported write plus unsupported or unknown exact readback rejects mutation.
+- Supported write/readback without save, activation, or exact restoration
+  rejects mutation with the first deterministic missing dependency reason and
+  retains all applicable reasons in stable order.
+- Exact integer read/write capability does not imply fractional capability.
+- Fractional numerator support with denominator unsupported or unknown rejects
+  the complete fractional requirement; the inverse does likewise.
+- A mechanism requiring a combined exact numerator/denominator operation
+  rejects numerator-only or denominator-only applicability.
+- Exact configured and admitted numeric ranges accept interior and inclusive
+  boundaries, reject empty intersections, and report unknown when a required
+  safety bound lacks evidence. Parser bounds are not treated as backend bounds.
+- Global-only evidence rejects application requests and application-only
+  evidence rejects Global requests with `PROFILE_KIND_UNSUPPORTED`.
+- Existing-profile read can be supported while existing mutation, creation,
+  deletion, or verified absence remains unsupported.
+- Profile creation is supported only with exact creation, deletion, verified
+  absence, readback, and restoration support for the same mechanism/kind.
+- Explicitly unsupported create, delete, or verified absence yields
+  `UNSUPPORTED`; unknown/unavailable evidence yields `UNKNOWN`.
+- Deletion without verified-absence support never produces `SUPPORTED`.
+- A capability that names a general RTSS version or profile-file access but
+  lacks the exact operation record is unknown, not implicitly supported.
+- Reordering immutable records does not change the decision or diagnostic
+  ordering; repeated evaluation is deterministic.
+
+### Planned sequence item 2 supported-name policy tests
+
+- Existing supported simple application name and supported Global identity
+  return `SUPPORTED` only under exact mechanism/kind/existing-lookup evidence.
+- Creation of a supported simple name requires separate creation name evidence
+  plus complete creation capability dependencies.
+- Existing lookup/read may be supported while creation or mutation of the same
+  exact name is denied.
+- Unknown encoding returns `UNKNOWN`; explicitly unsupported encoding returns
+  `UNSUPPORTED`; neither guesses ASCII, ANSI, UTF-8, UTF-16, or a locale code
+  page.
+- Known exact character and encoded-byte maxima accept zero/one-below/exact
+  boundary as structurally applicable and reject one-above. Test component and
+  total limits separately, including evidence-backed suffix expansion.
+- A required unknown component or total limit returns `UNKNOWN` rather than
+  silently accepting or truncating.
+- A character explicitly invalid under admitted mechanism/kind/operation rules
+  returns `UNSUPPORTED`; a character with no applicable rule returns
+  `UNKNOWN`.
+- Non-ASCII exact names are accepted only with admitted lossless encoded
+  representation, exact round trip, applicable limits, case/normalization
+  rules, and collision evidence.
+- Non-ASCII with unknown encoding, lossy round trip, mismatched encoded bytes,
+  unknown normalization, or missing collision evidence is never supported.
+- Case-sensitive admitted evidence retains case-distinct exact names in the
+  decision/audit record. Because current ownership is case-insensitive, a pair
+  that would become distinct owners fails closed with a canonicalization-
+  incompatible reason rather than being collapsed.
+- Case-insensitive evidence accepts one unambiguous spelling and rejects a
+  proven case-only collision; exact original spelling remains unchanged.
+- Normalization-equivalent exact names with a proven collision are rejected.
+  Unknown normalization returns `UNKNOWN`; no normalization is performed by
+  policy.
+- Exact profile-kind mismatch, Global/application rule reuse, or
+  executable-name/full-path rule reuse is rejected.
+- An otherwise valid name is unsupported/unknown when the requested mechanism
+  or operation is unsupported/unknown.
+- Stale name-rule evidence, foreign encoded evidence, backend/capability
+  generation mismatch, or collision data from another namespace fails closed.
+- No silent `.exe`, `.cfg`, separator, basename, path, case, or normalization
+  rewrite occurs. Derived target evidence must preserve the exact audited
+  source name.
+- Identical input and admitted evidence always produce identical status,
+  reason tuple, canonical/encoded output, and audit summary.
+
+### Planned sequence item 2 regression and integrity tests
+
+- Item-1 ownership generation anchoring remains enforced for direct and nested
+  forged future backend/capability generations.
+- Item-1 failed/unsupported complete-pair rejection, partial exact-field
+  behavior, factory-only readback/operation/conflict evidence, structural token
+  copy semantics, and enum uniqueness remain passing.
+- Policy imports no production RTSS module, filesystem adapter, Dear PyGui,
+  Win32/registry, LHM, PDH, GPU, game, or Lossless Scaling dependency.
+- Policy creates no transaction registry, single-use token store,
+  serialization lock, coordinator, ownership release, mutation journal,
+  operation evidence, conflict evidence, rollback, or live adapter.
+- Supported-name evaluation performs no filesystem access and opens no profile
+  file.
+- Tests assert no mutation or external operation appears in the deterministic
+  operation log.
+- Documentation/integrity checks prove only the approved planning/implementation
+  files changed, no absolute local path was added, no compatibility claim was
+  added, and no generated/cache/bytecode artifact remains.
+- The complete suite runs with `PYTHONDONTWRITEBYTECODE=1`; item-2
+  implementation acceptance requires all existing and new tests to pass.
+
+### Later adapter, manual, and physical capability/name validation
+
+This evidence is required later and is not performed or claimed by the
+deterministic item-2 implementation:
+
+- record exact RTSS version/build and installed API/DLL surface;
+- enumerate profile existence, exact field read/write, flags, save,
+  activation, readback, restoration, creation, deletion, and verified-absence
+  behavior independently;
+- compare API and complete profile-file mechanisms and record exact file
+  format, revision, atomicity, and unrelated-field preservation;
+- test exact encoding, encoded bytes, round trip, component and total
+  character/byte limits, suffix expansion, invalid/reserved characters, and
+  non-ASCII behavior for DLL lookup and profile files separately;
+- test Global versus application naming, executable basename versus full path,
+  existing lookup, creation, case sensitivity, case-only collisions,
+  normalization forms, and normalization collisions;
+- test RTSS exit/restart, adapter re-enumeration, capability-generation
+  transition, stale observations, and reacquisition;
+- test deletion plus exact verified absence and restoration after every
+  partially completed creation path;
+- test conflicting external edits, revision/document changes, and any
+  available cross-process serialization;
+- use only disposable profiles for destructive/failure cases and record all
+  environment/version details; and
+- make no RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or
+  frame-generation support claim until the complete applicable matrix passes.
 
 ### Planned request, identity, path, and capability admission
 
@@ -285,13 +458,16 @@ implementation; sequence-item-2 implementation remains unauthorized.
   exactly restored by `60/1`.
 - Capability-driven DLL and filename component lengths with separate encoded-
   byte and character boundaries, suffix expansion, and backend-policy changes.
-- Always-invalid rejection matrix for empty input, whitespace, controls,
-  missing `.exe`, dot components, trailing dot/space, reserved Windows stems,
-  forward/back separators, mixed separators, drive-rooted, drive-relative,
-  rooted, UNC, extended/device, `\??\`, ADS/colon, and containment-escape forms.
-- Default rejection of unsupported Unicode; acceptance only with an explicit
-  supported-name capability, exact lossless encoding, defined case
-  canonicalization, and satisfied character and encoded-byte limits.
+- Characterize the existing Stage 1 structural rejection matrix for empty
+  input, whitespace, controls, missing `.exe`, dot components, trailing
+  dot/space, reserved Windows stems, separators, rooted/path/device/stream
+  forms, and containment escapes. Item-2 policy tests separately prove that
+  these current safeguards are not treated as universal evidence of RTSS DLL
+  or profile-file rules.
+- Reject unsupported Unicode under the current identity contract; any future
+  policy support requires explicit admitted lossless encoding, defined
+  comparison/normalization behavior, collision evidence, and satisfied
+  character and encoded-byte limits.
 - Lossy encoding rejection, suffix-expanded filename boundaries, and
   capability/encoding changes across backend generations.
 - Abstract-root containment failure and a simulated reparse escape reported by

@@ -7,8 +7,9 @@
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
 - Current phase: RTSS Stage 2 sequence item 1 complete and independently
-  approved; sequence item 2 planning and design review authorized, with
-  implementation still unauthorized
+  approved; sequence item 2 planning/design completed locally and awaiting
+  independent read-only review and explicit acceptance; implementation remains
+  unauthorized
 - Current approved source commit:
   `4011d7e1e29fc2a4bbe901d184c53774b33e7baa`
   (`fix: anchor RTSS evidence generations`)
@@ -270,6 +271,86 @@ Neither finding requires a source or test correction now, and neither reopens
 sequence item 1. RTSS Stage 2 sequence item 1 is complete and independently
 approved as deterministic contract work only.
 
+## RTSS Stage 2 sequence item 2 planning and design
+
+The documentation-only sequence-item-2 planning session began from clean local
+HEAD `fed6a33c79d7575c33ac5b4f1585fa536880896f`
+(`docs: accept RTSS Stage 2 sequence item 1`) on
+`feature/rtss-transaction-coordinator`. That starting commit had parent
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa`, tree
+`0cdb6411a5aa3ade33e7fed20f92ffc780ed251f`, and stable patch ID
+`d1c2ee3590d606adfaf58b7383a360b15a388516`. Local `main` and the locally
+recorded `origin/main` were both
+`f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`; the branch was nine commits ahead,
+zero behind, clean, unpublished, and had no configured upstream or
+remote-tracking branch containing HEAD. No remote was contacted.
+No push or Stage 2 pull request exists.
+
+The planning review inspected the accepted item-1 contracts and tests and
+records these central conclusions:
+
+- existing `RtssCapabilityInfo` is a public range/Boolean description and
+  existing `RtssCapabilityEvidence` is a public ownership provenance marker;
+  neither is authoritative live mechanism support by itself;
+- item-1 ownership, readback, operation, conflict, degraded-state, exact
+  restoration, captured-generation, and structural-token boundaries remain
+  unchanged;
+- sequence item 2 will use a pure typed `SUPPORTED` / `UNSUPPORTED` /
+  `UNKNOWN` policy over a factory-controlled admitted immutable capability
+  observation;
+- support is exact-mechanism, exact-operation, exact-field, profile-kind, and
+  generation specific, with read, write, save, activation, readback,
+  restoration, creation, deletion, and verified absence kept separate;
+- supported-name policy preserves the exact original name and admits no silent
+  encoding, truncation, replacement, case change, normalization, collision, or
+  mechanism fallback;
+- no universal RTSS encoding, length, character, case, normalization, filename,
+  or version rule is assumed from current Windows-oriented validation; and
+- trusted live/current or advanced-generation observation remains a later
+  coordinator/adaptor admission responsibility, not a caller-authored Boolean
+  or generation.
+
+The unresolved evidence includes supported RTSS versions and exact APIs;
+denominator mechanism; exact read/write/readback/restoration operation support;
+creation, deletion, and verified absence; encoding and encoded representation;
+component/total character and byte limits; invalid/reserved characters; case
+and normalization behavior; executable-name versus full-path identity;
+backend restart/re-enumeration; external edits/cross-process conflict evidence;
+and durable degraded ownership after application restart. Each unresolved item
+has a typed fail-closed interim rule and later owner in
+`IMPLEMENTATION_PLAN.md`. These questions do not block implementing the pure
+item-2 contracts after approval except where the current structural identity
+cannot be separated safely from capability rules; they do block affected
+mutation admission or production support.
+
+The planned implementation is divided into small future units for capability
+enums/evidence, pure mechanism policy, supported-name contracts, pure name
+policy, diagnostics/hardening/tests, and documentation reconciliation. A
+complete deterministic matrix is recorded in `TEST_PLAN.md`. No implementation
+unit is authorized now.
+
+This planning-only update changes exactly:
+
+- `CURRENT_STATUS.md`;
+- `DECISIONS.md`;
+- `IMPLEMENTATION_PLAN.md`; and
+- `TEST_PLAN.md`.
+
+It changes no source, tests, configuration, workflow, dependency, packaging,
+license, generated file, application behavior, RTSS/profile state, or other
+external system. `REVIEW_FINDINGS.md` remains unchanged because the review
+found no new concrete planning finding requiring a supplemental ledger entry.
+`RELEASE_NOTES.md` remains unchanged because the repository convention records
+implemented contract behavior there, while this change is planning only.
+
+Sequence item 2 planning is complete locally but is not independently approved.
+The next action is an independent read-only review of the local planning
+commit. Sequence item 2 implementation remains unauthorized. Sequence item 3
+remains unauthorized. Every mutation, production integration, push, and
+pull-request creation remain unauthorized.
+No RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or
+frame-generation compatibility claim is established.
+
 ## Current work
 
 RTSS Stage 1 is complete and merged. It provides deterministic identity,
@@ -349,12 +430,13 @@ coordinator:
 
 The readback, exact stored-field, degraded-state, handoff, and retained-
 ownership prerequisites in sequence item 1 are corrected, independently
-approved, and complete. Capability-driven name policy is sequence item 2:
-planning and design review for that item are authorized, but implementation is
-not. Coordinator logic, mutation, production integration, and their later
-tests remain planned, unimplemented, and non-production-reachable. Trusted
-observation of an advanced backend or capability generation remains a later
-design concern and was not implemented in sequence item 1.
+approved, and complete. Capability-driven name policy is sequence item 2: its
+planning and design are complete locally but await independent read-only review
+and explicit acceptance, and implementation is not authorized. Coordinator
+logic, mutation, production integration, and their later tests remain planned,
+unimplemented, and non-production-reachable. Trusted observation of an
+advanced backend or capability generation remains a later admission/adapter
+concern and was not implemented in sequence item 1 or this planning update.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -401,12 +483,13 @@ beyond the statically reviewed baseline.
 
 The planning-review and explicit-acceptance gates are satisfied. After three
 failed implementation reviews and three focused corrections, Stage 2 sequence
-item 1 is independently approved and complete. The next authorized action is a
-separate focused sequence-item-2 planning and design-review session.
+item 1 is independently approved and complete. The separate focused
+sequence-item-2 planning and design work is complete locally. The next action
+is independent read-only review of its focused documentation commit.
 
-Sequence item 2 implementation remains unauthorized until its planning is
-independently reviewed and explicitly accepted. No sequence-item-2 branch or
-source implementation exists. Coordinator admission, capture, rollback
+Sequence item 2 implementation remains unauthorized until this planning is
+independently reviewed and explicitly accepted. No sequence-item-2 source
+implementation exists. Coordinator admission, capture, rollback
 foundations, every mutation-bearing slice, production integration, push, and
 pull-request creation remain later separately gated work. No mutation is
 admitted before sequence item 5 and its prerequisites, and production
