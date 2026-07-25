@@ -8,11 +8,24 @@ from decimal import Decimal
 
 from src.core.controller_contracts import (
     FpsProcessSample,
-    RationalCap,
-    RtssApplyResult,
-    RtssReadbackResult,
+    RationalCap as ControllerRationalCap,
+    RtssApplyResult as ControllerRtssApplyResult,
+    RtssGeneration as ControllerRtssGeneration,
+    RtssReadback as ControllerRtssReadback,
     SensorReading,
     SensorSnapshot,
+)
+from src.core.rtss_contracts import (
+    CapturedProfileState,
+    RationalCap,
+    RtssApplyRequest,
+    RtssApplyResult,
+    RtssDenominatorStrategy,
+    RtssFailureStep,
+    RtssGeneration,
+    RtssOutcome,
+    RtssReadback,
+    RtssRestoreResult,
 )
 from tests.fakes import (
     FakeClock,
@@ -73,41 +86,121 @@ class FakeRtssContractTests(unittest.TestCase):
     def test_TEST_002_queues_results_and_records_requests_in_order(self):
         cap_60 = RationalCap(60, 1)
         cap_90 = RationalCap(90, 1)
-        success_readback = RtssReadbackResult(True, cap_60, limiter_flags=4)
-        success = RtssApplyResult(True, cap_60, success_readback)
-        failure = RtssApplyResult(False, cap_90, None, error="save failed")
         generation = FakeGenerationFactory().create("game.exe")
+        request_60 = RtssApplyRequest(
+            generation,
+            cap_60,
+            RtssDenominatorStrategy.PROFILE_FILE,
+            reason="test request 60",
+        )
+        request_90 = RtssApplyRequest(
+            generation,
+            cap_90,
+            RtssDenominatorStrategy.PROFILE_FILE,
+            reason="test request 90",
+        )
+        success_readback = RtssReadback(
+            RtssOutcome.VERIFIED,
+            generation,
+            True,
+            cap_60,
+            limiter_flags=4,
+            backend_generation=7,
+        )
+        captured = CapturedProfileState(
+            generation,
+            7,
+            True,
+            cap_90,
+        )
+        success = RtssApplyResult(
+            RtssOutcome.VERIFIED,
+            request_60,
+            success_readback,
+            captured,
+        )
+        failure = RtssApplyResult(
+            RtssOutcome.FAILED,
+            request_90,
+            failure_step=RtssFailureStep.CAPTURE,
+            error="capture failed before mutation",
+        )
         adapter = FakeRtssAdapter(
             apply_results=[success, failure],
             readback_results=[success_readback],
         )
 
-        self.assertIs(adapter.apply_cap(generation, cap_60), success)
-        self.assertIs(adapter.read_cap(generation), success_readback)
-        self.assertIs(adapter.apply_cap(generation, cap_90), failure)
+        self.assertIs(adapter.apply(request_60), success)
+        self.assertIs(adapter.read(generation), success_readback)
+        self.assertIs(adapter.apply(request_90), failure)
         self.assertEqual(
             adapter.requests,
             [
-                ("apply_cap", generation, cap_60),
-                ("read_cap", generation, None),
-                ("apply_cap", generation, cap_90),
+                ("apply", request_60),
+                ("read", generation),
+                ("apply", request_90),
             ],
         )
         with self.assertRaisesRegex(RuntimeError, "RTSS apply results exhausted"):
-            adapter.apply_cap(generation, cap_60)
+            adapter.apply(request_60)
 
     def test_TEST_002_represents_missing_readback_and_mismatch(self):
         requested = RationalCap(11750, 100)
         mismatched = RationalCap(117, 1)
-        missing = RtssApplyResult(True, requested, None)
-        mismatch = RtssApplyResult(
-            True,
+        generation = FakeGenerationFactory().create("game.exe")
+        request = RtssApplyRequest(
+            generation,
             requested,
-            RtssReadbackResult(True, mismatched),
+            RtssDenominatorStrategy.PROFILE_FILE,
+            reason="test fractional request",
+        )
+        captured = CapturedProfileState(
+            generation,
+            7,
+            True,
+            mismatched,
+        )
+        failed_rollback = RtssRestoreResult(
+            RtssOutcome.DEGRADED,
+            generation,
+            captured_state=captured,
+            failure_step=RtssFailureStep.ROLLBACK,
+            error="rollback readback missing",
+        )
+        missing = RtssApplyResult(
+            RtssOutcome.DEGRADED,
+            request,
+            captured_state=captured,
+            rollback=failed_rollback,
+            failure_step=RtssFailureStep.READBACK,
+            error="readback missing and rollback unverified",
+        )
+        mismatch_readback = RtssReadback(
+            RtssOutcome.VERIFIED,
+            generation,
+            True,
+            mismatched,
+            backend_generation=7,
+        )
+        mismatch = RtssApplyResult(
+            RtssOutcome.FAILED,
+            request,
+            mismatch_readback,
+            captured,
+            failure_step=RtssFailureStep.READBACK,
+            error="request mismatch with exact no-change proof",
         )
 
         self.assertIsNone(missing.readback)
-        self.assertNotEqual(mismatch.requested_cap, mismatch.readback.cap)
+        self.assertFalse(missing.succeeded)
+        self.assertNotEqual(mismatch.request.cap, mismatch.readback.cap)
+        self.assertFalse(mismatch.succeeded)
+
+    def test_TEST_002_controller_contracts_reexport_canonical_rtss_models(self):
+        self.assertIs(ControllerRationalCap, RationalCap)
+        self.assertIs(ControllerRtssApplyResult, RtssApplyResult)
+        self.assertIs(ControllerRtssGeneration, RtssGeneration)
+        self.assertIs(ControllerRtssReadback, RtssReadback)
 
 
 class GenerationContractTests(unittest.TestCase):
@@ -133,11 +226,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertEqual(profile_changed.session_generation, 11)
         self.assertEqual(profile_changed.profile_generation, 21)
         self.assertEqual(profile_changed.source_generation, 30)
+        self.assertEqual(profile_changed.profile_identity.name, "game-b.exe")
         self.assertEqual(source_changed.profile_generation, 21)
         self.assertEqual(source_changed.source_generation, 31)
 
         self.assertEqual(original.session_generation, 10)
         self.assertEqual(original.profile_generation, 20)
         self.assertEqual(original.source_generation, 30)
+        self.assertEqual(original.profile_identity.name, "game-a.exe")
         with self.assertRaises(FrozenInstanceError):
             original.session_generation = 99

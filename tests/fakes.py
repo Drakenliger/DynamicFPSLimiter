@@ -5,13 +5,13 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Iterable
 
-from src.core.controller_contracts import (
-    ControlGeneration,
-    FpsProcessSample,
-    RationalCap,
+from src.core.controller_contracts import FpsProcessSample, SensorSnapshot
+from src.core.rtss_contracts import (
+    CanonicalProfileIdentity,
+    RtssApplyRequest,
     RtssApplyResult,
-    RtssReadbackResult,
-    SensorSnapshot,
+    RtssGeneration,
+    RtssReadback,
 )
 
 
@@ -78,30 +78,24 @@ class FakeRtssAdapter:
         self,
         *,
         apply_results: Iterable[RtssApplyResult] = (),
-        readback_results: Iterable[RtssReadbackResult] = (),
+        readback_results: Iterable[RtssReadback] = (),
     ) -> None:
         self._apply_results = tuple(apply_results)
         self._readback_results = tuple(readback_results)
         self._apply_index = 0
         self._readback_index = 0
-        self.requests: list[
-            tuple[str, ControlGeneration, RationalCap | None]
-        ] = []
+        self.requests: list[tuple[str, RtssApplyRequest | RtssGeneration]] = []
 
-    def apply_cap(
-        self,
-        generation: ControlGeneration,
-        cap: RationalCap,
-    ) -> RtssApplyResult:
-        self.requests.append(("apply_cap", generation, cap))
+    def apply(self, request: RtssApplyRequest) -> RtssApplyResult:
+        self.requests.append(("apply", request))
         if self._apply_index >= len(self._apply_results):
             raise RuntimeError("scripted RTSS apply results exhausted")
         result = self._apply_results[self._apply_index]
         self._apply_index += 1
         return result
 
-    def read_cap(self, generation: ControlGeneration) -> RtssReadbackResult:
-        self.requests.append(("read_cap", generation, None))
+    def read(self, generation: RtssGeneration) -> RtssReadback:
+        self.requests.append(("read", generation))
         if self._readback_index >= len(self._readback_results):
             raise RuntimeError("scripted RTSS readback results exhausted")
         result = self._readback_results[self._readback_index]
@@ -125,13 +119,15 @@ class FakeGenerationFactory:
         self.profile_generation = profile_generation
         self.source_generation = source_generation
 
-    def create(self, profile_identity: str) -> ControlGeneration:
-        return ControlGeneration(
+    def create(self, profile_identity: str) -> RtssGeneration:
+        return RtssGeneration(
             application_generation=self.application_generation,
             session_generation=self.session_generation,
             profile_generation=self.profile_generation,
+            profile_identity=CanonicalProfileIdentity.from_legacy_name(
+                profile_identity
+            ),
             source_generation=self.source_generation,
-            profile_identity=profile_identity,
         )
 
     def advance_session(self) -> int:

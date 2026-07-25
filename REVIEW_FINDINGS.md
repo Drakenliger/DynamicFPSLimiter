@@ -118,6 +118,202 @@ environment-dependent runtime qualification.
 - `GUI-005`: missing argument prototypes are included; not every affected return
   type is pointer-sized.
 
+## RTSS Stage 1 independent-review findings
+
+RTSS Stage 1 is limited to deterministic contracts and tests. The corrections
+below were published in draft pull request #3 at
+`42a4485c6d6b078d442e57061e745a2ea43e3d89`
+(`test: add deterministic RTSS transaction contracts`). Two independent
+read-only reviews were completed, and the final independent review found no
+remaining Stage 1 blockers or regressions. This verification does not close the
+production RTSS findings in the active ledger.
+
+### `S1-FINAL-001` - corrected and independently verified
+
+- **Original severity:** Blocking.
+- **Original root cause:** Application-profile equality and hashing retained
+  display spelling, so case-only variants of the same canonical
+  case-insensitive RTSS identity could compare or hash differently across
+  generations, requests, captures, readbacks, sets, and dictionaries.
+- **Implemented correction:** Equality and hashing now use the canonical
+  case-insensitive profile key. Display spelling remains diagnostic metadata
+  and is not ownership identity.
+- **Regression tests:** Case-only equality and hash equality; set and
+  dictionary collision behavior; generation equality; and request, capture,
+  and readback matching across case variants.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+### `S1-FINAL-002` - corrected and independently verified
+
+- **Original severity:** Blocking.
+- **Original root cause:** A request could mutate limiter-flag bits without
+  proving exact captured prior ownership, and a non-verified rollback could
+  omit owned bits whose restoration remained unresolved.
+- **Implemented correction:** Flag mutation requires complete captured prior
+  ownership. Non-verified rollback outcomes must account for every unresolved
+  owned bit through an exact `unrestored_flag_mask`, while unowned and
+  unrequested bits remain outside ownership reporting.
+- **Regression tests:** Complete captured flag ownership; owned and unowned
+  readback bits; requested subsets; partial and unresolved rollback masks;
+  missing backend epoch; cap-only operations; and the exhaustive apply/rollback
+  outcome matrix.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+### `S1-FINAL-003` - corrected and independently verified
+
+- **Original severity:** Blocking.
+- **Original root cause:** Ordinary `FAILED` could ambiguously describe a
+  post-mutation or changed-state result, and restore results did not form a
+  closed, non-recursive state machine that separated exact restoration from
+  unresolved post-mutation state.
+- **Implemented correction:** Ordinary apply `FAILED` is restricted to
+  pre-mutation failure or exact verified no-change. Exact restoration uses
+  `VERIFIED`; unresolved post-mutation restoration uses an explicit unresolved
+  disposition; and apply and restore outcomes and failure steps are closed and
+  exhaustively validated.
+- **Regression tests:** Pre-capture state-free failure; exact no-change proof;
+  mismatched readback rejection; degraded rollback graphs; non-recursive
+  restore phases; exact restoration classification; and exhaustive apply,
+  restore, outcome, and failure-step matrices.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+### `S1-FINAL-004` - corrected and independently verified
+
+- **Original severity:** Blocking.
+- **Original root cause:** Document and revision evidence could be absent or
+  ambiguous while a result still attempted to claim exact restoration.
+- **Implemented correction:** Document and revision evidence now carry explicit
+  availability states. Document verification requires immutable complete bytes
+  or an approved immutable SHA-256 digest, and revision evidence must exactly
+  match when it is part of captured ownership.
+- **Regression tests:** Matching and mismatching document bytes and SHA-256
+  digests; matching and mismatching revision evidence; cap-only restoration;
+  unsupported and read-failed evidence; and verified absence.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+### `S1-FINAL-002-R1` - corrected and independently verified
+
+- **Original severity:** Blocking follow-up.
+- **Original root cause:** Cross-object apply invariants could admit mismatched
+  capture identity or generations, success mixed with rollback or failure
+  details, or `FAILED_ROLLED_BACK` without a verified exact matching restore.
+- **Implemented correction:** Apply results now enforce request, capture,
+  readback, generation, rollback, failure-detail, and outcome consistency.
+  Verified apply excludes rollback and failure state, while
+  `FAILED_ROLLED_BACK` requires a verified matching restore.
+- **Regression tests:** Mismatched capture identity and generations; forbidden
+  rollback or failure details on verified apply; verified matching rollback;
+  required failure details; and state-free pre-capture failure.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+### `S1-FINAL-003-R1` - corrected and independently verified
+
+- **Original severity:** Blocking follow-up.
+- **Original root cause:** Capture/readback presence combinations could be
+  internally impossible, verified absence could be conflated with failed
+  evidence acquisition, and conflict, created-profile deletion, or ambiguous
+  mutation intent was not fully constrained.
+- **Implemented correction:** Capture and readback models reject impossible
+  presence combinations, distinguish verified absence from unavailable or
+  failed evidence, enforce conflict and created-profile restoration rules, and
+  reject unresolved or ambiguous mutation intent.
+- **Regression tests:** Impossible captured presence states; absence versus
+  failure; external-edit conflicts; created-profile deletion; and unresolved or
+  ambiguous mutation requests.
+- **Independent-review result:** Corrected and independently verified; the
+  final review found no blocker or regression.
+- **Commit:** `42a4485c6d6b078d442e57061e745a2ea43e3d89`.
+
+The following final-review items remain explicitly deferred and non-blocking:
+
+- `S1-FINAL-005` - deferred; no Stage 1 contract or regression blocker.
+- `S1-FINAL-006` - deferred; no Stage 1 contract or regression blocker.
+- `S1-FINAL-007` - deferred; no Stage 1 contract or regression blocker.
+
+No physical RTSS, profile-file, Windows runtime, RX 7900 XTX, Lossless Scaling,
+LibreHardwareMonitor, PDH, GUI, or lifecycle integration testing was performed
+for Stage 1.
+
+## Draft PR #3 independent review
+
+Draft pull request #3 was independently reviewed in full at published head
+`afd43e0373001a9f471573bbfb3535ae0b3c1ac3`. The review reran all 95
+deterministic tests, confirmed that production RTSS callers remained unchanged,
+and found no code or RTSS-safety merge blocker. GitHub reported no automated
+checks. The review recommendation was to approve after the documentation-only
+correction recorded below.
+
+These supplemental Stage 1 review findings preserve the existing 50-item active
+ledger and its identifiers; they are not duplicate ledger entries.
+
+### `S1-DOC-001` - Medium / Confirmed / corrected and published
+
+- **Location:** `CURRENT_STATUS.md` and `IMPLEMENTATION_PLAN.md`.
+- **Problem:** Tracked documentation continued to describe the pre-publication
+  state after the Stage 1 branch had been pushed and draft PR #3 had been
+  created.
+- **Effect:** A future session could repeat publication work, use the wrong
+  branch head, or apply the wrong phase gate.
+- **Original disposition:** Fix before merge through a documentation-only
+  correction.
+- **Correction:** Commit
+  `e002045a0285a03706b5560969b8a9f1c9ac8b31`
+  (`docs: record RTSS Stage 1 publication review`) corrected the original
+  pre-publication inconsistency.
+- **Verification and publication:** `e002045` passed independent read-only
+  review and was pushed successfully to the existing Stage 1 branch and draft
+  PR #3.
+- **Final merge-gate maintenance:** Publication exposed self-referential
+  transition wording in the correction. The present follow-up replaces it with
+  a dated pre-merge snapshot and explicit post-creation and post-publication
+  verification requirements. This is documentation maintenance, not a
+  production defect. The commit containing this follow-up must be verified
+  through Git after creation and through GitHub after any approved publication.
+
+### `S1-READBACK-001` - Low / Confirmed / deferred
+
+- **Location:** `RtssReadback.__post_init__`.
+- **Problem:** The readback contract accepts mutation-only outcomes and failure
+  steps, including rollback states, without a read-only outcome/step allowlist.
+- **Effect:** A future adapter could construct a semantically impossible
+  read-only result.
+- **Current reachability:** No production caller uses the Stage 1 contracts.
+- **Required correction:** Restrict `RtssReadback` to an explicit set of valid
+  read-only outcomes and failure steps.
+- **Disposition:** Deferred Stage 2 prerequisite before production adapters rely
+  on the contract.
+
+### `S1-TEST-001` - Low / Confirmed / deferred
+
+- **Location:** Readback contract tests.
+- **Problem:** The deterministic suite has no exhaustive readback
+  outcome/failure-step matrix.
+- **Required correction:** Add an exhaustive readback outcome/failure-step
+  matrix and retain fail-closed coverage when outcomes or steps change.
+- **Disposition:** Deferred with `S1-READBACK-001` before production
+  integration.
+
+### `S1-DESIGN-001` - Low / Improvement / deferred
+
+- **Location:** Application-profile-name validation and derived profile
+  filename construction.
+- **Problem:** The Stage 1 identity contract has no explicit component-length
+  boundary for the DLL name or derived profile filename.
+- **Required correction:** Define capability-driven application and profile
+  component-length limits before filesystem integration.
+- **Disposition:** Deferred to the Stage 2 capability and supported-name
+  policy.
+
 ## Active finding ledger
 
 `Owner` names the responsible workstream, not an assigned individual.

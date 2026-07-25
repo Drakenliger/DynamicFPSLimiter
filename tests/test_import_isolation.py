@@ -55,10 +55,12 @@ for loaded_name in tuple(sys.modules):
 startup_modules = set(sys.modules)
 import src.core.cap_selection
 import src.core.controller_contracts
+import src.core.rtss_contracts
 imported_modules = set(sys.modules) - startup_modules
 allowed_application_modules = {{
     "src.core.cap_selection",
     "src.core.controller_contracts",
+    "src.core.rtss_contracts",
 }}
 unexpected_application_modules = sorted(
     name for name in imported_modules
@@ -81,7 +83,7 @@ print(json.dumps({{
 }}))
 """
         result = subprocess.run(
-            [sys.executable, "-I", "-c", script],
+            [sys.executable, "-I", "-B", "-c", script],
             check=True,
             capture_output=True,
             text=True,

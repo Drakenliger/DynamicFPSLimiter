@@ -25,8 +25,43 @@ The harness currently covers pure legacy decrease characterization
 (`CTRL-001`), an unwired structural cap-ladder validator (`CTRL-005`),
 standard-library discovery and import isolation (`TEST-001`), and initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
-It performs no live RTSS, GUI, sensor, process, registry, profile, or hardware
-interaction. CI and later production adapters remain outstanding.
+It also covers the RTSS Stage 1 contract and deterministic-fake validation
+recorded below. It performs no live RTSS, GUI, sensor, process, registry,
+profile, or hardware interaction. CI and later production adapters remain
+outstanding.
+
+## RTSS Stage 1 validation record
+
+RTSS Stage 1 completed 95 deterministic unit tests. The validation covered:
+
+- canonical case-insensitive profile equality and hashing;
+- case-only set and dictionary collision behavior;
+- request, capture, and readback matching across case variants;
+- captured limiter-flag ownership and exact prior values;
+- partial and unresolved rollback masks;
+- conflict, unsupported, failed, and degraded rollback outcomes;
+- closed apply and restore state machines;
+- pre-mutation versus post-mutation failure classification;
+- exact no-change proof;
+- immutable document bytes and SHA-256 evidence;
+- revision evidence and verified absence;
+- exhaustive outcome and failure-step matrices;
+- import isolation;
+- cache and bytecode checks; and
+- tracked and untracked whitespace checks.
+
+These are contract and deterministic-fake tests only. Stage 1 did not test:
+
+- physical RTSS or profile writes;
+- Windows runtime behavior;
+- RX 7900 XTX hardware;
+- Lossless Scaling;
+- LibreHardwareMonitor;
+- PDH; or
+- GUI and lifecycle integration.
+
+No supported-version, hardware, profile-file, or runtime compatibility claim is
+established by this validation.
 
 ## Pure controller unit tests
 
