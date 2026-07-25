@@ -14,6 +14,9 @@
 - Stage 2 planning baseline:
   `7adfb5406b091ccd8c55872fc1b75036029fee8a`
   (`docs: begin RTSS Stage 2 planning`)
+- First Stage 2 planning correction:
+  `15a3774eb0ff10741e6684bf3414b4fdde61ae72`
+  (`docs: address RTSS Stage 2 planning review`)
 
 ## Verified Stage 1 merge state
 
@@ -73,8 +76,38 @@ The smaller required corrections are:
 - `S2-INVENTORY-001`; and
 - `S2-DECISION-001`.
 
-The correction containing this status update addresses those findings but has
-not itself passed independent review. Stage 2 implementation remains blocked.
+Correction commit `15a3774eb0ff10741e6684bf3414b4fdde61ae72` addressed those
+findings; its second independent-review disposition is recorded below.
+
+## Second independent Stage 2 correction review
+
+The first documentation correction,
+`15a3774eb0ff10741e6684bf3414b4fdde61ae72`, received a second independent,
+read-only review on 25 July 2026. The review recommendation was **Not approved;
+further correction required**. All 95 deterministic tests passed during that
+review.
+
+The second review found these findings fully corrected:
+
+- `S2-NAME-001`;
+- `S1-PROVENANCE-001`;
+- `S2-STATUS-001`; and
+- `S2-DECISION-001`.
+
+It found these findings only partially corrected:
+
+- `S2-DEGRADED-001`, because degraded results and handoffs did not yet bind all
+  identity and generation evidence explicitly;
+- `S2-SEQUENCE-001`, because the first mutation-bearing Stage 5 slice was not
+  concretely bounded; and
+- `S2-INVENTORY-001`, because the non-default `update=True` path and its two
+  update activations were not recorded.
+
+The subsequent documentation correction addresses those three remaining
+planning items. It must still receive another independent, read-only review and
+must not be treated as independently verified or accepted. Stage 2
+implementation remains blocked. No Stage 2 source implementation, production
+integration, remote branch, configured branch upstream, or pull request exists.
 
 ## Current work
 
@@ -82,24 +115,33 @@ RTSS Stage 1 is complete and merged. It provides deterministic identity,
 rational-cap, generation, capability, capture, readback, apply, restoration,
 ownership, evidence, and result contracts with deterministic tests.
 
-RTSS Stage 2 planning and its independent review are recorded on
-`feature/rtss-transaction-coordinator`. Stage 2 source implementation has not
-started. No transaction coordinator exists, and no production caller uses the
-Stage 1 contracts.
+RTSS Stage 2 planning, the first planning correction, and both independent
+reviews are recorded on `feature/rtss-transaction-coordinator`. Stage 2 source
+implementation has not started. No transaction coordinator exists, and no
+production caller uses the Stage 1 contracts.
 
-The local Stage 2 planning commit changed exactly:
+The initial local Stage 2 planning commit changed exactly:
 
 - `CURRENT_STATUS.md`;
 - `IMPLEMENTATION_PLAN.md`; and
 - `TEST_PLAN.md`.
 
-It did not change production source, tests, configuration, workflows, ignored
-review inputs, or external state. This correction is also documentation-only
-and is limited to the four durable documents authorized by its task. The branch
-remains local only: no Stage 2 push, remote branch, configured upstream for this
-branch, or pull request exists.
+The follow-up corrections are documentation-only and limited to:
+
+- `CURRENT_STATUS.md`;
+- `REVIEW_FINDINGS.md`;
+- `IMPLEMENTATION_PLAN.md`; and
+- `TEST_PLAN.md`.
+
+They do not change production source, tests, configuration, workflows, ignored
+review inputs, or external state. The branch remains local only: no Stage 2
+push, remote branch, configured upstream for this branch, or pull request
+exists.
 
 ## Design-review status
+
+**Proposed Stage 2 design pending independent verification and explicit
+acceptance.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -170,8 +212,9 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The next action is an independent, read-only review of the local documentation
-correction that addresses the Stage 2 planning-review findings.
+The next action is an independent, read-only review of the additional local
+documentation correction that addresses the three remaining partial Stage 2
+planning-review findings.
 
 Stage 2 implementation remains blocked pending that correction review and
 explicit user acceptance of the corrected plan. Any push and pull-request

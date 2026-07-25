@@ -152,7 +152,35 @@ Scaling.
   document, revision, or backend generation is pre-mutation and state-free.
 - False-return and exception variants for every capture operation.
 
-### Planned apply, save, update, and readback
+### Planned Stage 5 admission gates
+
+- Admit exact-cap requests for an already existing application or Global
+  profile only when one already-admitted capability mechanism supports every
+  exact field and operation required for capture, mutation, save,
+  update/activation, readback, rollback, and exact restoration verification.
+- Reject a missing-profile request before mutation in Stage 5.
+- Reject a profile-creation request before mutation in Stage 5.
+- Reject a profile-deletion request before mutation in Stage 5.
+- Reject a limiter-flag request before mutation in Stage 5.
+- Reject a profile-switch request before mutation in Stage 5.
+- Reject unsupported fractional mechanisms before mutation.
+- Reject numerator-only mutation when exact denominator ownership is required,
+  and reject denominator-only mutation when the selected capability requires
+  one combined exact-cap operation.
+- Perform no mutation when exact readback or rollback support is unavailable.
+- Every excluded Stage 5 request returns a structured unsupported or rejected
+  pre-mutation result.
+- The ordered fake-adapter trace contains only the documented existing-profile
+  exact-cap operation for an admitted Stage 5 mutation.
+- Every admitted Stage 5 mutation false return, exception, or readback mismatch
+  enters rollback or complete degraded handling.
+- Incomplete future mutation implementations remain fail closed and cannot
+  become admitted through a partially implemented capability path.
+
+### Planned complete-coordinator apply, save, update, and readback
+
+These tests span Stage 5 and separately planned later mutation slices. They do
+not expand the Stage 5 admission boundary.
 
 - Successful apply logs the exact order:
   admission -> capability -> lock -> generation recheck -> load/read/capture ->
@@ -219,6 +247,43 @@ Scaling.
 - Reject degraded results that omit partial save or update/activation
   uncertainty, including backend-epoch change with unresolved ownership.
 
+### Planned degraded-handoff identity and generation rejection
+
+Each identity or generation omission/mismatch is first rejected by degraded-
+result construction and then by degraded-handoff acceptance.
+
+- Reject a handoff that omits or mismatches canonical profile identity.
+- Reject a handoff that omits or mismatches profile kind.
+- Reject a handoff that omits or mismatches application generation.
+- Reject a handoff that omits or mismatches session generation.
+- Reject a handoff that omits or mismatches profile generation.
+- Reject a handoff that omits or mismatches immutable transaction identity or
+  transaction generation.
+- Reject a handoff that omits or mismatches the Stage 1
+  `RtssGeneration.source_generation` for source-state evidence.
+- Reject a handoff that omits or mismatches the complete captured-evidence
+  `RtssGeneration`, including its `source_generation`.
+- Reject a handoff that omits or mismatches the complete readback/restoration-
+  evidence `RtssGeneration`, including its `source_generation`.
+- Reject a handoff that omits or mismatches backend generation/epoch.
+- Reject a handoff that omits or mismatches the capability-generation or
+  capability-snapshot identity where applicable.
+- Accept case-only spelling equivalence only when canonical profile identity
+  and every applicable generation match; diagnostic display spelling never
+  changes ownership identity.
+- Reject handoff to the wrong profile, a stale session, or a profile generation
+  invalidated by profile switching.
+- Reject handoff after backend restart or capability-generation change when the
+  handoff does not preserve and consistently attribute both the captured and
+  latest known epochs.
+- Reject a stale worker attempting to transfer ownership.
+- Reject a handoff with a defined recipient but incomplete identity or
+  generation evidence.
+- Reject a handoff whose fields are complete but whose requested, captured,
+  readback/restoration, backend, or capability generations are inconsistent.
+- When any handoff is rejected, assert that ownership is not released and the
+  result remains degraded or unresolved.
+
 ### Planned external edits and revision conflicts
 
 - External document/revision edit before the first mutation rejects or
@@ -272,6 +337,15 @@ Scaling.
 
 ### Planned operation-order and isolation assertions
 
+- **Planned legacy `S2-INVENTORY-001` characterization:** use an ordered fake to
+  prove that `set_fractional_framerate(..., update=False)` attempts the
+  denominator rewrite without activation, writes the numerator without
+  activation, and performs exactly one final `UpdateProfiles`.
+- **Planned legacy `S2-INVENTORY-001` characterization:** use an ordered fake to
+  prove that `set_fractional_framerate(..., update=True)` performs one
+  `UpdateProfiles` in the denominator helper and another in the numerator
+  property helper, for exactly two activations and no final method-level
+  activation.
 - Every scenario asserts the complete ordered operation log, not only its
   terminal result.
 - Unexpected operations after a terminal result fail the test.

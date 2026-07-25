@@ -321,7 +321,16 @@ planning commit `7adfb5406b091ccd8c55872fc1b75036029fee8a`. They do not alter,
 renumber, close, or replace any entry in the original 50-item active technical
 review ledger.
 
-### `S2-DEGRADED-001` - High / Confirmed / correction required before implementation
+A second independent, read-only review assessed correction commit
+`15a3774eb0ff10741e6684bf3414b4fdde61ae72`. Its overall recommendation was
+**Not approved; further correction required**. It independently verified
+`S2-NAME-001`, `S1-PROVENANCE-001`, `S2-STATUS-001`, and `S2-DECISION-001` as
+corrected, while finding `S2-DEGRADED-001`, `S2-SEQUENCE-001`, and
+`S2-INVENTORY-001` only partially corrected. The latter three dispositions
+below record the further correction and remain pending another independent
+verification.
+
+### `S2-DEGRADED-001` - High / Confirmed / corrected pending another independent verification
 
 - **Location:** Stage 1 restoration-result contracts and the Stage 2
   degraded-state, rollback, restoration, and ownership plan.
@@ -345,8 +354,29 @@ review ledger.
   complete application-process restart may remain a later production-
   integration decision, but deterministic Stage 2 ownership and degraded
   classification are mandatory.
+- **Second independent-review result:** Partially corrected. The first
+  correction covered unresolved owned fields but did not bind every degraded
+  result and handoff explicitly to complete immutable profile identity,
+  request/transaction identity, requested/captured/readback generation
+  evidence, backend epoch, and capability snapshot.
+- **Further correction:** The plan now requires canonical identity, profile
+  kind, diagnostic spelling where retained, exact requested, captured, and
+  readback/restoration identities, the Stage 1 application, session, profile,
+  and `source_generation` dimensions for each applicable evidence snapshot,
+  immutable transaction identity, backend epoch, and capability-generation or
+  snapshot identity. A handoff must also preserve every unresolved field and
+  failed/unavailable evidence state, current holder, defined recipient,
+  explicit responsibility-transfer status, and the reason normal release is
+  impossible. Omitted, inconsistent, stale, ambiguous, or unavailable
+  attribution evidence is rejected fail closed.
+- **Ownership release correction:** Ownership remains retained unless exact
+  restoration is verified against the same canonical identity and generations,
+  or the defined recipient accepts a complete explicit handoff preserving all
+  identity, generation, unresolved-state, and responsibility evidence.
+- **Status:** Corrected pending another independent verification; not closed or
+  independently verified.
 
-### `S2-NAME-001` - Medium / Confirmed / correction required before implementation
+### `S2-NAME-001` - Medium / Confirmed / corrected and independently verified
 
 - **Location:** Canonical identity, capability, supported-name, encoding, and
   component-length planning.
@@ -360,8 +390,9 @@ review ledger.
   acceptance requires explicit capability and policy evidence, exact lossless
   encoding, defined canonicalization behavior, and applicable encoded-byte and
   character limits. No Unicode support is claimed.
+- **Second independent-review result:** Corrected and independently verified.
 
-### `S2-SEQUENCE-001` - High / Confirmed / correction required before implementation
+### `S2-SEQUENCE-001` - High / Confirmed / corrected pending another independent verification
 
 - **Location:** Proposed Stage 2 implementation commits.
 - **Problem:** A mutation-bearing intermediate commit was planned before
@@ -377,8 +408,30 @@ review ledger.
 - **Gate:** No intermediate implementation commit may admit a mutation without
   complete rollback or degraded-state handling for every mutation it can
   perform. Production adapters remain separate.
+- **Second independent-review result:** Partially corrected. Rollback and
+  degraded prerequisites were moved before mutation, but the first
+  mutation-bearing Stage 5 operation and its exclusions remained too broad to
+  review independently.
+- **Further correction:** Stage 5 now admits only an exact-cap change to an
+  already existing application or Global profile through one already-admitted
+  mechanism that supports complete exact capture, mutation, save,
+  update/activation, readback, rollback, and restoration verification. It
+  excludes missing-profile creation, deletion, Global-derived creation, flags,
+  startup flag changes, production document replacement, conflict resolution
+  beyond fail-closed detection, switching, ownership transfer, cross-process
+  serialization, production callers, live adapters, unsupported fractional
+  fallback, and mechanisms without exact readback and rollback evidence.
+- **Reviewability correction:** Each mutation-bearing commit must include
+  ordered recording, all applicable false/exception paths, rollback,
+  degradation, ownership retention, and deterministic tests. Numerator and
+  denominator handling, activation, or rollback must be split further when
+  they cannot remain independently reviewable. Creation/deletion restoration,
+  flags, additional mechanisms, switching, cancellation/generation
+  transitions, and production adapters remain separate later slices.
+- **Status:** Corrected pending another independent verification; not closed or
+  independently verified.
 
-### `S1-PROVENANCE-001` - Medium / Confirmed / correction required before implementation
+### `S1-PROVENANCE-001` - Medium / Confirmed / corrected and independently verified
 
 - **Location:** Treatment of `S1-FINAL-005`, `S1-FINAL-006`, and
   `S1-FINAL-007`.
@@ -392,38 +445,54 @@ review ledger.
 - **Evidence rule:** Any recovered requirement must be added durably and receive
   appropriate regression coverage before technical allocation or closure. No
   content is inferred for these identifiers.
+- **Second independent-review result:** Corrected and independently verified.
 
-### `S2-STATUS-001` - Low / Confirmed
+### `S2-STATUS-001` - Low / Confirmed / corrected and independently verified
 
 - **Location:** `CURRENT_STATUS.md`.
 - **Problem:** Self-referential wording described committed planning work as
   “the current planning task.”
 - **Correction:** Use stable historical wording identifying the local Stage 2
   planning commit and its exact scope.
+- **Second independent-review result:** Corrected and independently verified.
 
-### `S2-INVENTORY-001` - Low / Confirmed
+### `S2-INVENTORY-001` - Low / Confirmed / corrected pending another independent verification
 
 - **Location:** Production inventory for
   `RTSSController.set_fractional_framerate`.
 - **Problem:** The inventory described the denominator profile-file rewrite as
   optional.
-- **Correction:** The method calculates a positive denominator, always attempts
-  the direct denominator rewrite through `set_limit_denominator`, then writes
-  the numerator through the RTSS property path and performs one eventual update
-  according to the current call flow. Only update timing is conditional.
+- **First correction:** The method calculates a positive denominator, always
+  attempts the direct denominator rewrite through `set_limit_denominator`, then
+  writes the numerator through the RTSS property path.
+- **Second independent-review result:** Partially corrected. The first
+  correction correctly made the denominator file rewrite unconditional but
+  described the method too broadly as having one eventual update, overlooking
+  the non-default branch.
+- **Further correction:** All identified active production callers use the
+  default `update=False` path. It calls the denominator and numerator helpers
+  with updates disabled and then performs one final `UpdateProfiles`. In the
+  non-default `update=True` path, the denominator helper performs one update and
+  the numerator property helper performs another, for two update activations.
+  The denominator file rewrite remains unconditional in both paths; update
+  count and timing differ. A later ordered-fake characterization test is
+  planned for each branch.
+- **Status:** Corrected pending another independent verification; not closed or
+  independently verified.
 
-### `S2-DECISION-001` - Medium / Improvement
+### `S2-DECISION-001` - Medium / Improvement / corrected and independently verified
 
 - **Location:** Stage 2 planning status and decision provenance.
 - **Problem:** Accepted repository decisions, proposed Stage 2 design, and
   unresolved evidence-dependent decisions were not distinguished clearly
   enough.
-- **Correction:** Stage 2-specific architecture and sequencing remain proposed
-  pending correction review and explicit user acceptance. They become accepted
-  only after the correction is independently reviewed, the user explicitly
-  accepts the corrected plan, and accepted decisions are durably recorded
-  before implementation where needed. Existing accepted decisions in
-  `DECISIONS.md` remain unchanged.
+- **Correction:** Stage 2-specific architecture and sequencing remain
+  **Proposed Stage 2 design pending independent verification and explicit
+  acceptance.** They become accepted only after the complete corrected plan is
+  independently verified, the user explicitly accepts it, and accepted
+  decisions are durably recorded before implementation where needed. Existing
+  accepted decisions in `DECISIONS.md` remain unchanged.
+- **Second independent-review result:** Corrected and independently verified.
 
 ## Active finding ledger
 
