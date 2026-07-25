@@ -29,13 +29,16 @@ approved for explicit user acceptance on 25 July 2026, and the user explicitly
 accepted it that day. Accepted Stage 2 decisions are recorded in
 `DECISIONS.md`.
 
-**Accepted Stage 2 design; prerequisite sequence item 1 corrected locally after
-its first implementation review failed.** Implementation commit
+**Accepted Stage 2 design; prerequisite sequence item 1 corrected locally a
+second time after two implementation reviews failed.** Implementation commit
 `c83aa281d961222eeeb70dbb994c4f33aef46381` was not approved because its
 ownership proof, exact-field applicability, degraded evidence, failure
-diagnostics, and enum-alias coverage were insufficient. A focused corrective
-slice addresses only those confirmed contract defects and passes 146
-deterministic tests. Sequence item 1 remains at the independent-review gate.
+diagnostics, and enum-alias coverage were insufficient. First correction
+`c323ddeb5cd62636a608d312af873a1552142f67` also was not approved because
+non-verified exact-pair evidence and degraded provenance remained
+constructible without sufficient transaction binding. A second focused
+corrective slice addresses only those remaining contract defects and passes
+171 deterministic tests. Sequence item 1 remains at the independent-review gate.
 The coordinator, capability and supported-name policy, sequence item 2,
 mutation, and production integration are not implemented or authorized. The
 branch has not been pushed and no Stage 2 pull request exists.
@@ -151,11 +154,14 @@ slice:
   release is invalid.
 
 The first implementation supplied focused coverage in the 122-test
-deterministic suite but did not pass independent review. The corrective slice
-adds foreign-proof, exact applicability, derived degraded-evidence,
-field-specific diagnostic, and enum-alias regressions; all 146 deterministic
-tests pass. Independent read-only review of the corrective commit remains
-required before later Stage 2 logic may rely on these contracts.
+deterministic suite but did not pass independent review. The first corrective
+slice added foreign-proof, exact applicability, derived degraded-evidence,
+field-specific diagnostic, and enum-alias regressions, but its 146-test result
+also did not pass independent review. The second corrective slice rejects
+non-verified complete exact pairs and binds readback, operation, conflict,
+capability, and backend-epoch evidence to one exact transaction owner; all 171
+deterministic tests pass. Independent read-only review of the new corrective
+commit remains required before later Stage 2 logic may rely on these contracts.
 
 ### Mandatory degraded-state identity and handoff schema
 
@@ -535,11 +541,12 @@ The independently verified and explicitly accepted implementation sequence is:
      matrix;
    - add exact stored-field evidence types; and
    - add the immutable degraded-state and retained-ownership schema.
-   - the first implementation did not pass independent review; the focused
-     corrective slice changes only its confirmed contract defects;
+   - the first implementation and first correction did not pass independent
+     review; the second focused corrective slice changes only the two remaining
+     provenance defects and the related documentation overstatement;
    - completed without transaction coordination, mutation, or production
-     integration; independent read-only review of the corrective commit is the
-     next gate.
+     integration; independent read-only review of the new corrective commit is
+     the next gate.
 2. **Capability and supported-name policy**
    - add configured/backend range intersections, exact-field capabilities,
      component lengths, lexical/path rejection, and exact encoding policy.
@@ -668,8 +675,8 @@ Stage 2 coordinator implementation is complete only when:
   ordering, test matrices, and production-integration boundary.
 
 The planning-review and explicit-acceptance gates are satisfied. Sequence item
-1 is corrected locally with no admitted mutation after its first implementation
-review failed. The next gate is an independent read-only review of the
+1 is corrected locally with no admitted mutation after two implementation
+reviews failed. The next gate is an independent read-only review of the new
 corrective commit. Sequence item 2 and each later mutation-bearing slice remain
 unauthorized and gated by their applicable review, rollback, degraded-state,
 ownership, and failure-matrix requirements. The accepted 12-item focused
@@ -735,8 +742,8 @@ generation-aware, reversible RTSS boundary.
   recommendation was **Approved for explicit user acceptance**, and the user
   explicitly accepted the corrected plan on 25 July 2026. Acceptance commit
   `d10feead8a3707ee52a54f80e4e53c14945309d0` records that gate. The focused
-  prerequisite contract/test sequence item was corrected locally after its
-  first implementation review failed and now passes all 146 deterministic
+  prerequisite contract/test sequence item was corrected locally a second time
+  after two implementation reviews failed and now passes all 171 deterministic
   tests. No coordinator or mutation exists, no production caller uses the
   contracts, and production integration remains later work.
 - **Additional Stage 2 prerequisites from the independent PR review:**

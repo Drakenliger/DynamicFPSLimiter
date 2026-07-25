@@ -39,6 +39,7 @@ from src.core.rtss_contracts import (
     RtssOwnershipReleaseReason,
     RtssOwnershipToken,
     RtssReadback,
+    RtssReadbackEvidence,
     RtssRestoreResult,
     RtssReadFailureDiagnostic,
     RtssStoredCapEvidence,
@@ -63,21 +64,27 @@ READBACK_STEPS_BY_OUTCOME = {
 
 def _operation_evidence(
     operation: RtssOwnedField,
-    generation: RtssGeneration,
+    ownership: RtssOwnershipToken,
     *,
-    backend_generation: int,
     result: bool | None,
+    readback_evidence: RtssReadbackEvidence | None = None,
 ) -> RtssOperationEvidence:
-    return RtssOperationEvidence(
+    if result is True:
+        if readback_evidence is None:
+            raise ValueError("verified helper evidence requires readback")
+        return RtssOperationEvidence.verified(
+            operation,
+            ownership,
+            readback_evidence,
+        )
+    return RtssOperationEvidence.uncertain(
         operation,
-        generation,
-        backend_generation,
-        True,
-        result,
-        None if result is True else RtssDiagnostic(
+        ownership,
+        RtssDiagnostic(
             f"{operation.value}_uncertain",
             f"{operation.value} result was not verified",
         ),
+        readback_evidence=readback_evidence,
     )
 
 
@@ -776,15 +783,13 @@ class ExactApplicabilityRegressionTests(unittest.TestCase):
             capability,
             "session-owner",
         )
-        return RtssDegradedState(
-            self.transaction,
+        state = RtssDegradedState(
             self.request,
-            capture,
-            self.generation,
             owner,
-            classification,
             "exact applicability regression",
         )
+        self.assertIs(state.classification, classification)
+        return state
 
     def test_S2_DEGRADED_IMPL_001_failed_requested_pair_remains_applicable(self):
         state = self._state(
@@ -925,29 +930,50 @@ class DegradedOwnershipContractTests(unittest.TestCase):
         self.resolved = {RtssOwnedField.RETAINED_OWNERSHIP}
 
     def state(self, **changes) -> RtssDegradedState:
+        owner = changes.get("current_owner", self.owner)
         values = {
-            "transaction_identity": self.transaction,
             "request": self.request,
-            "captured_state": self.captured,
-            "evidence_generation": self.generation,
-            "current_owner": self.owner,
-            "classification": RtssDegradedClassification.READ_FAILURE,
+            "current_owner": owner,
             "reason": "readback failed after possible mutation",
             "save_evidence": _operation_evidence(
                 RtssOwnedField.SAVE,
-                self.generation,
-                backend_generation=8,
+                owner,
                 result=None,
             ),
             "activation_evidence": _operation_evidence(
                 RtssOwnedField.ACTIVATION,
-                self.generation,
-                backend_generation=8,
+                owner,
                 result=None,
             ),
         }
         values.update(changes)
         return RtssDegradedState(**values)
+
+    def matching_readback_evidence(
+        self,
+        ownership: RtssOwnershipToken | None = None,
+    ) -> RtssReadbackEvidence:
+        ownership = ownership or self.owner
+        captured = ownership.captured_state
+        readback = RtssReadback(
+            RtssOutcome.VERIFIED,
+            captured.generation,
+            captured.profile_existed,
+            captured.cap,
+            limiter_flags=captured.limiter_flags,
+            profile_revision=captured.profile_revision,
+            backend_generation=captured.backend_generation,
+            profile_revision_availability=(
+                captured.profile_revision_availability
+            ),
+            profile_document_availability=(
+                captured.profile_document_availability
+            ),
+            profile_document=captured.profile_document,
+            profile_document_sha256=captured.profile_document_sha256,
+            stored_cap=captured.stored_cap,
+        )
+        return RtssReadbackEvidence.bind(ownership, readback)
 
     def test_stage2_degraded_state_accounts_for_every_supported_field(self):
         existing = self.state()
@@ -977,9 +1003,7 @@ class DegradedOwnershipContractTests(unittest.TestCase):
             "session-owner",
         )
         absent = self.state(
-            captured_state=absent_capture,
             current_owner=absent_owner,
-            classification=RtssDegradedClassification.UNRESOLVED_MUTATION,
             save_evidence=None,
             activation_evidence=None,
         )
@@ -1027,9 +1051,7 @@ class DegradedOwnershipContractTests(unittest.TestCase):
             "session-owner",
         )
         state = self.state(
-            captured_state=capture,
             current_owner=owner,
-            classification=RtssDegradedClassification.UNRESOLVED_MUTATION,
             save_evidence=None,
             activation_evidence=None,
         )
@@ -1064,27 +1086,37 @@ class DegradedOwnershipContractTests(unittest.TestCase):
                 save_state=save_state,
                 activation_state=activation_state,
             ):
+                readback_evidence = self.matching_readback_evidence()
                 save_evidence = _operation_evidence(
                     RtssOwnedField.SAVE,
-                    self.generation,
-                    backend_generation=7,
+                    self.owner,
                     result=(
                         True
+                        if save_state is RtssOperationState.VERIFIED
+                        else None
+                    ),
+                    readback_evidence=(
+                        readback_evidence
                         if save_state is RtssOperationState.VERIFIED
                         else None
                     ),
                 )
                 activation_evidence = _operation_evidence(
                     RtssOwnedField.ACTIVATION,
-                    self.generation,
-                    backend_generation=7,
+                    self.owner,
                     result=(
                         True
                         if activation_state is RtssOperationState.VERIFIED
                         else None
                     ),
+                    readback_evidence=(
+                        readback_evidence
+                        if activation_state is RtssOperationState.VERIFIED
+                        else None
+                    ),
                 )
                 state = self.state(
+                    readback_evidence=readback_evidence,
                     save_evidence=save_evidence,
                     activation_evidence=activation_evidence,
                 )
@@ -1096,28 +1128,37 @@ class DegradedOwnershipContractTests(unittest.TestCase):
     def test_stage2_degraded_state_requires_retained_immutable_ownership(self):
         state = self.state()
         self.assertTrue(state.ownership_retained)
-        with self.assertRaises(FrozenInstanceError):
+        with self.assertRaises((FrozenInstanceError, TypeError)):
             state.ownership_retained = False
-        with self.assertRaisesRegex(ValueError, "retain ownership"):
+        with self.assertRaises(TypeError):
             self.state(ownership_retained=False)
 
     def test_stage2_degraded_state_rejects_incomplete_attribution(self):
-        with self.assertRaisesRegex(ValueError, "captured generation"):
+        changed_generation = replace(
+            self.generation,
+            profile_generation=99,
+        )
+        changed_capture = replace(
+            self.captured,
+            generation=changed_generation,
+        )
+        changed_capability = RtssCapabilityEvidence(
+            self.transaction,
+            changed_generation,
+            7,
+            11,
+        )
+        changed_owner = RtssOwnershipToken(
+            self.transaction,
+            changed_capture,
+            changed_capability,
+            "session-owner",
+        )
+        with self.assertRaisesRegex(ValueError, "match the request"):
             self.state(
-                captured_state=replace(
-                    self.captured,
-                    generation=replace(
-                        self.generation,
-                        profile_generation=99,
-                    ),
-                )
-            )
-        with self.assertRaisesRegex(ValueError, "evidence generation"):
-            self.state(
-                evidence_generation=replace(
-                    self.generation,
-                    source_generation=99,
-                )
+                current_owner=changed_owner,
+                save_evidence=None,
+                activation_evidence=None,
             )
         different_capture = replace(
             self.captured,
@@ -1130,8 +1171,14 @@ class DegradedOwnershipContractTests(unittest.TestCase):
             self.capability,
             "session-owner",
         )
-        with self.assertRaisesRegex(ValueError, "exact captured state"):
-            self.state(current_owner=different_owner)
+        readback_evidence = self.matching_readback_evidence()
+        with self.assertRaisesRegex(ValueError, "exact transaction owner"):
+            self.state(
+                current_owner=different_owner,
+                readback_evidence=readback_evidence,
+                save_evidence=None,
+                activation_evidence=None,
+            )
         with self.assertRaisesRegex(ValueError, "capability evidence"):
             replace(
                 self.owner,
@@ -1299,40 +1346,80 @@ class DegradedOwnershipContractTests(unittest.TestCase):
                     )
 
     def test_S2_DEGRADED_IMPL_002_external_conflict_requires_evidence(self):
-        with self.assertRaisesRegex(ValueError, "not justified"):
+        with self.assertRaises(TypeError):
             self.state(
                 classification=RtssDegradedClassification.EXTERNAL_CONFLICT
             )
-        conflict = RtssConflictEvidence(
-            RtssOwnedField.PROFILE_REVISION,
-            self.generation,
-            8,
-            "revision-1",
-            "revision-2",
+        matching = self.matching_readback_evidence()
+        conflict_readback = replace(
+            matching.readback,
+            profile_revision="revision-2",
         )
-        with self.assertRaisesRegex(ValueError, "not justified"):
+        conflict_observation = RtssReadbackEvidence.bind(
+            self.owner,
+            conflict_readback,
+        )
+        conflict = RtssConflictEvidence.from_readback(
+            RtssOwnedField.PROFILE_REVISION,
+            self.owner,
+            conflict_observation,
+        )
+        with self.assertRaisesRegex(ValueError, "must be identical"):
             self.state(
                 conflict_evidence=conflict,
-                classification=RtssDegradedClassification.READ_FAILURE,
             )
         state = self.state(
+            readback_evidence=conflict_observation,
             conflict_evidence=conflict,
-            classification=RtssDegradedClassification.EXTERNAL_CONFLICT,
         )
         self.assertIs(state.conflict_evidence, conflict)
+        self.assertIs(
+            state.classification,
+            RtssDegradedClassification.EXTERNAL_CONFLICT,
+        )
+        with self.assertRaises(TypeError):
+            replace(conflict, captured_value="invented")
+        with self.assertRaises(TypeError):
+            replace(conflict, backend_generation=999)
 
     def test_S2_DEGRADED_IMPL_002_latest_backend_is_derived_from_observations(self):
         with self.assertRaises(TypeError):
             self.state(latest_backend_generation=99)
-        stale_save = _operation_evidence(
-            RtssOwnedField.SAVE,
+        stale_readback = RtssReadback(
+            RtssOutcome.FAILED,
             self.generation,
+            False,
+            None,
             backend_generation=6,
-            result=None,
+            failure_step=RtssFailureStep.READBACK,
+            error="stale observation",
+            stored_cap=RtssStoredCapEvidence.read_failed(
+                numerator_code="num-failed",
+                denominator_code="den-failed",
+            ),
         )
         with self.assertRaisesRegex(ValueError, "cannot predate"):
-            self.state(save_evidence=stale_save)
-        self.assertEqual(self.state().latest_backend_generation, 8)
+            RtssReadbackEvidence.bind(self.owner, stale_readback)
+
+        future_readback = replace(stale_readback, backend_generation=8)
+        future_capability = RtssCapabilityEvidence(
+            self.transaction,
+            self.generation,
+            8,
+            12,
+        )
+        future_observation = RtssReadbackEvidence.bind(
+            self.owner,
+            future_readback,
+            capability_evidence=future_capability,
+        )
+        state = self.state(
+            readback_evidence=future_observation,
+            save_evidence=None,
+            activation_evidence=None,
+        )
+        self.assertEqual(state.latest_backend_generation, 8)
+        self.assertEqual(state.latest_capability_evidence, future_capability)
 
     def test_S2_DEGRADED_IMPL_002_operation_success_requires_operation_evidence(self):
         for operation in (
@@ -1340,7 +1427,7 @@ class DegradedOwnershipContractTests(unittest.TestCase):
             RtssOwnedField.ACTIVATION,
         ):
             with self.subTest(operation=operation):
-                with self.assertRaisesRegex(ValueError, "cannot claim"):
+                with self.assertRaises(TypeError):
                     RtssOperationEvidence(
                         operation,
                         self.generation,
@@ -1348,6 +1435,14 @@ class DegradedOwnershipContractTests(unittest.TestCase):
                         False,
                         True,
                     )
+                readback_evidence = self.matching_readback_evidence()
+                evidence = RtssOperationEvidence.verified(
+                    operation,
+                    self.owner,
+                    readback_evidence,
+                )
+                self.assertIs(evidence.state, RtssOperationState.VERIFIED)
+                self.assertEqual(evidence.ownership, self.owner)
         with self.assertRaises(TypeError):
             self.state(save_state=RtssOperationState.VERIFIED)
         with self.assertRaises(TypeError):
@@ -1397,10 +1492,12 @@ class DegradedOwnershipContractTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "at least one unresolved"):
             self.state(
-                readback=readback,
+                readback_evidence=RtssReadbackEvidence.bind(
+                    self.owner,
+                    readback,
+                ),
                 save_evidence=None,
                 activation_evidence=None,
-                classification=RtssDegradedClassification.UNRESOLVED_MUTATION,
             )
 
     def test_stage2_exact_matching_restoration_can_release_ownership(self):
@@ -1452,6 +1549,669 @@ class DegradedOwnershipContractTests(unittest.TestCase):
                 RtssOwnershipReleaseReason.EXACT_RESTORATION,
                 restoration_proof=proof,
             )
+
+
+class DegradedEvidenceProvenanceRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.transaction = RtssTransactionIdentity("tx-provenance-a")
+        self.other_transaction = RtssTransactionIdentity("tx-provenance-b")
+        self.generation = RtssGeneration(
+            1,
+            2,
+            3,
+            CanonicalProfileIdentity.application("game.exe"),
+            4,
+        )
+        self.request = RtssApplyRequest(
+            self.generation,
+            RationalCap(59, 1),
+            RtssDenominatorStrategy.PROFILE_FILE,
+            reason="provenance regression",
+        )
+        self.capture = CapturedProfileState(
+            self.generation,
+            7,
+            True,
+            RationalCap(60, 1),
+            limiter_flags=4,
+            profile_revision="revision-1",
+            profile_document=b"Limit=120\nLimitDenominator=2\n",
+            owned_flag_mask=4,
+            profile_revision_availability=RtssFieldAvailability.AVAILABLE,
+            profile_document_availability=RtssFieldAvailability.AVAILABLE,
+            stored_cap=RtssStoredCapEvidence.available(120, 2),
+        )
+        self.capability = RtssCapabilityEvidence(
+            self.transaction,
+            self.generation,
+            7,
+            11,
+        )
+        self.owner = RtssOwnershipToken(
+            self.transaction,
+            self.capture,
+            self.capability,
+            "session-owner",
+        )
+
+    def owner_for(
+        self,
+        transaction: RtssTransactionIdentity,
+        *,
+        generation: RtssGeneration | None = None,
+        capture: CapturedProfileState | None = None,
+        capability_generation: int = 11,
+        holder: str = "session-owner",
+    ) -> RtssOwnershipToken:
+        generation = generation or self.generation
+        capture = capture or replace(self.capture, generation=generation)
+        capability = RtssCapabilityEvidence(
+            transaction,
+            generation,
+            capture.backend_generation,
+            capability_generation,
+        )
+        return RtssOwnershipToken(
+            transaction,
+            capture,
+            capability,
+            holder,
+        )
+
+    def matching_readback(
+        self,
+        *,
+        generation: RtssGeneration | None = None,
+        backend_generation: int = 7,
+        revision: str = "revision-1",
+    ) -> RtssReadback:
+        generation = generation or self.generation
+        return RtssReadback(
+            RtssOutcome.VERIFIED,
+            generation,
+            True,
+            RationalCap(60, 1),
+            limiter_flags=4,
+            profile_revision=revision,
+            backend_generation=backend_generation,
+            profile_revision_availability=RtssFieldAvailability.AVAILABLE,
+            profile_document_availability=RtssFieldAvailability.AVAILABLE,
+            profile_document=b"Limit=120\nLimitDenominator=2\n",
+            stored_cap=RtssStoredCapEvidence.available(120, 2),
+        )
+
+    def failed_readback(
+        self,
+        stored_cap: RtssStoredCapEvidence,
+        *,
+        backend_generation: int = 7,
+    ) -> RtssReadback:
+        return RtssReadback(
+            RtssOutcome.FAILED,
+            self.generation,
+            False,
+            None,
+            backend_generation=backend_generation,
+            failure_step=RtssFailureStep.READBACK,
+            error="read failed",
+            profile_revision_availability=RtssFieldAvailability.READ_FAILED,
+            profile_document_availability=RtssFieldAvailability.READ_FAILED,
+            stored_cap=stored_cap,
+        )
+
+    def state(
+        self,
+        *,
+        owner: RtssOwnershipToken | None = None,
+        readback_evidence: RtssReadbackEvidence | None = None,
+        save_evidence: RtssOperationEvidence | None = None,
+        activation_evidence: RtssOperationEvidence | None = None,
+        conflict_evidence: RtssConflictEvidence | None = None,
+    ) -> RtssDegradedState:
+        return RtssDegradedState(
+            self.request,
+            owner or self.owner,
+            "provenance regression",
+            readback_evidence=readback_evidence,
+            save_evidence=save_evidence,
+            activation_evidence=activation_evidence,
+            conflict_evidence=conflict_evidence,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_A_failed_complete_pair_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "complete available"):
+            self.failed_readback(
+                RtssStoredCapEvidence.available(120, 2)
+            )
+
+    def test_S2_DEGRADED_IMPL_002_A_unsupported_complete_pair_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "complete available"):
+            RtssReadback(
+                RtssOutcome.UNSUPPORTED_CAPABILITY,
+                self.generation,
+                False,
+                None,
+                backend_generation=7,
+                failure_step=RtssFailureStep.CAPABILITY,
+                error="unsupported",
+                stored_cap=RtssStoredCapEvidence.available(120, 2),
+            )
+
+    def test_S2_DEGRADED_IMPL_002_A_verified_complete_pair_is_accepted(self):
+        readback = self.matching_readback()
+
+        self.assertTrue(readback.verified)
+        self.assertIs(
+            readback.stored_cap.status,
+            RtssStoredCapStatus.CAPTURED,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_A_partial_numerator_remains_partial(self):
+        partial = RtssStoredCapEvidence(
+            RtssStoredFieldEvidence(RtssFieldAvailability.AVAILABLE, 120),
+            RtssStoredFieldEvidence(
+                RtssFieldAvailability.READ_FAILED,
+                diagnostic=RtssReadFailureDiagnostic(
+                    RtssStoredFieldKind.DENOMINATOR,
+                    "denominator-failed",
+                ),
+            ),
+        )
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.failed_readback(partial),
+        )
+        state = self.state(readback_evidence=observation)
+        unresolved = {
+            item.field: item.availability
+            for item in state.accounting.unresolved_evidence
+        }
+
+        self.assertIs(
+            unresolved[RtssOwnedField.EXACT_STORED_NUMERATOR],
+            RtssFieldAvailability.AVAILABLE,
+        )
+        self.assertIs(
+            unresolved[RtssOwnedField.EXACT_STORED_DENOMINATOR],
+            RtssFieldAvailability.READ_FAILED,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_A_partial_denominator_remains_partial(self):
+        partial = RtssStoredCapEvidence(
+            RtssStoredFieldEvidence(
+                RtssFieldAvailability.READ_FAILED,
+                diagnostic=RtssReadFailureDiagnostic(
+                    RtssStoredFieldKind.NUMERATOR,
+                    "numerator-failed",
+                ),
+            ),
+            RtssStoredFieldEvidence(RtssFieldAvailability.AVAILABLE, 2),
+        )
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.failed_readback(partial),
+        )
+        state = self.state(readback_evidence=observation)
+        unresolved = {
+            item.field: item.availability
+            for item in state.accounting.unresolved_evidence
+        }
+
+        self.assertIs(
+            unresolved[RtssOwnedField.EXACT_STORED_NUMERATOR],
+            RtssFieldAvailability.READ_FAILED,
+        )
+        self.assertIs(
+            unresolved[RtssOwnedField.EXACT_STORED_DENOMINATOR],
+            RtssFieldAvailability.AVAILABLE,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_A_aggregate_failure_controls_other_fields(self):
+        failed = self.failed_readback(
+            RtssStoredCapEvidence.read_failed(
+                numerator_code="numerator-failed",
+                denominator_code="denominator-failed",
+            )
+        )
+        state = self.state(
+            readback_evidence=RtssReadbackEvidence.bind(self.owner, failed)
+        )
+        unresolved = {
+            item.field: item.availability
+            for item in state.accounting.unresolved_evidence
+        }
+
+        self.assertIs(
+            unresolved[RtssOwnedField.EFFECTIVE_CAP],
+            RtssFieldAvailability.READ_FAILED,
+        )
+        self.assertIs(
+            state.classification,
+            RtssDegradedClassification.READ_FAILURE,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_B_cross_transaction_readback_is_rejected(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.failed_readback(
+                RtssStoredCapEvidence.read_failed(
+                    numerator_code="numerator-failed",
+                    denominator_code="denominator-failed",
+                )
+            ),
+        )
+        other_owner = self.owner_for(self.other_transaction)
+
+        with self.assertRaisesRegex(ValueError, "exact transaction owner"):
+            self.state(
+                owner=other_owner,
+                readback_evidence=observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_replace_cannot_change_readback_transaction(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(),
+        )
+        other_owner = self.owner_for(self.other_transaction)
+
+        with self.assertRaises(TypeError):
+            replace(observation, ownership=other_owner)
+
+    def test_S2_DEGRADED_IMPL_002_B_readback_binding_mismatches_are_rejected(self):
+        wrong_generation = replace(
+            self.generation,
+            source_generation=99,
+        )
+        with self.assertRaisesRegex(ValueError, "generation and profile"):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                self.matching_readback(generation=wrong_generation),
+            )
+        with self.assertRaisesRegex(ValueError, "requires a backend epoch"):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                replace(self.matching_readback(), backend_generation=None),
+            )
+        with self.assertRaisesRegex(ValueError, "exact owner capability"):
+            RtssReadbackEvidence.bind(
+                self.owner,
+                self.matching_readback(),
+                capability_evidence=replace(
+                    self.capability,
+                    capability_generation=12,
+                ),
+            )
+        advanced_readback = self.failed_readback(
+            RtssStoredCapEvidence.read_failed(
+                numerator_code="numerator-failed",
+                denominator_code="denominator-failed",
+            ),
+            backend_generation=8,
+        )
+        capability_mismatches = (
+            replace(
+                self.capability,
+                transaction_identity=self.other_transaction,
+                backend_generation=8,
+            ),
+            replace(
+                self.capability,
+                generation=wrong_generation,
+                backend_generation=8,
+            ),
+            replace(self.capability, backend_generation=9),
+        )
+        for capability in capability_mismatches:
+            with self.subTest(capability=capability):
+                with self.assertRaises(ValueError):
+                    RtssReadbackEvidence.bind(
+                        self.owner,
+                        advanced_readback,
+                        capability_evidence=capability,
+                    )
+
+    def test_S2_DEGRADED_IMPL_002_B_direct_boolean_operation_is_impossible(self):
+        with self.assertRaises(TypeError):
+            RtssOperationEvidence(
+                RtssOwnedField.SAVE,
+                self.generation,
+                7,
+                True,
+                True,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_trusted_operation_result_is_accepted(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(),
+        )
+        operation = RtssOperationEvidence.verified(
+            RtssOwnedField.SAVE,
+            self.owner,
+            observation,
+        )
+        state = self.state(
+            readback_evidence=observation,
+            save_evidence=operation,
+            activation_evidence=RtssOperationEvidence.uncertain(
+                RtssOwnedField.ACTIVATION,
+                self.owner,
+                RtssDiagnostic("activation-uncertain"),
+            ),
+        )
+
+        self.assertIs(operation.state, RtssOperationState.VERIFIED)
+        self.assertIs(state.save_state, RtssOperationState.VERIFIED)
+
+    def test_S2_DEGRADED_IMPL_002_B_operation_provenance_mismatches_rejected(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(),
+        )
+        owners = (
+            self.owner_for(self.other_transaction),
+            self.owner_for(
+                self.transaction,
+                generation=replace(
+                    self.generation,
+                    profile_identity=CanonicalProfileIdentity.application(
+                        "other.exe"
+                    ),
+                ),
+            ),
+            self.owner_for(
+                self.transaction,
+                generation=replace(
+                    self.generation,
+                    profile_identity=CanonicalProfileIdentity.global_profile(),
+                ),
+            ),
+            self.owner_for(
+                self.transaction,
+                generation=replace(
+                    self.generation,
+                    session_generation=99,
+                ),
+            ),
+            self.owner_for(
+                self.transaction,
+                capability_generation=12,
+            ),
+        )
+        for owner in owners:
+            with self.subTest(owner=owner):
+                with self.assertRaisesRegex(ValueError, "exact owner"):
+                    RtssOperationEvidence.verified(
+                        RtssOwnedField.SAVE,
+                        owner,
+                        observation,
+                    )
+
+    def test_S2_DEGRADED_IMPL_002_B_operation_type_mismatch_is_rejected(self):
+        operation = RtssOperationEvidence.uncertain(
+            RtssOwnedField.ACTIVATION,
+            self.owner,
+            RtssDiagnostic("activation-uncertain"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "wrong field"):
+            self.state(save_evidence=operation)
+
+    def test_S2_DEGRADED_IMPL_002_B_operation_epoch_cannot_be_injected(self):
+        operation = RtssOperationEvidence.uncertain(
+            RtssOwnedField.SAVE,
+            self.owner,
+            RtssDiagnostic("save-uncertain"),
+        )
+
+        self.assertEqual(operation.backend_generation, 7)
+        with self.assertRaises(TypeError):
+            replace(operation, backend_generation=999)
+
+    def test_S2_DEGRADED_IMPL_002_B_unrequested_conflict_is_rejected(self):
+        unrequested_capture = replace(
+            self.capture,
+            stored_cap=RTSS_STORED_CAP_NOT_REQUESTED,
+        )
+        owner = self.owner_for(
+            self.transaction,
+            capture=unrequested_capture,
+        )
+        conflicting_readback = replace(
+            self.matching_readback(),
+            cap=RationalCap(61, 1),
+            stored_cap=RtssStoredCapEvidence.available(122, 2),
+        )
+        observation = RtssReadbackEvidence.bind(owner, conflicting_readback)
+
+        with self.assertRaisesRegex(ValueError, "requested, applicable, and owned"):
+            RtssConflictEvidence.from_readback(
+                RtssOwnedField.EXACT_STORED_NUMERATOR,
+                owner,
+                observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_unowned_conflict_is_rejected(self):
+        unowned_capture = replace(
+            self.capture,
+            profile_revision=None,
+            profile_revision_availability=(
+                RtssFieldAvailability.NOT_REQUESTED
+            ),
+        )
+        owner = self.owner_for(
+            self.transaction,
+            capture=unowned_capture,
+        )
+        observation = RtssReadbackEvidence.bind(
+            owner,
+            self.matching_readback(revision="revision-2"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "requested, applicable, and owned"):
+            RtssConflictEvidence.from_readback(
+                RtssOwnedField.PROFILE_REVISION,
+                owner,
+                observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_invented_conflict_value_is_impossible(self):
+        with self.assertRaises(TypeError):
+            RtssConflictEvidence(
+                RtssOwnedField.PROFILE_REVISION,
+                self.generation,
+                999,
+                "invented",
+                "revision-2",
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_correct_conflict_is_derived_and_accepted(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(revision="revision-2"),
+        )
+        conflict = RtssConflictEvidence.from_readback(
+            RtssOwnedField.PROFILE_REVISION,
+            self.owner,
+            observation,
+        )
+        state = self.state(
+            readback_evidence=observation,
+            conflict_evidence=conflict,
+        )
+
+        self.assertEqual(conflict.captured_value, "revision-1")
+        self.assertEqual(conflict.observed_value, "revision-2")
+        self.assertNotIn(
+            RtssOwnedField.PROFILE_REVISION,
+            state.accounting.resolved_fields,
+        )
+        self.assertIs(
+            state.classification,
+            RtssDegradedClassification.EXTERNAL_CONFLICT,
+        )
+
+    def test_S2_DEGRADED_IMPL_002_B_conflict_provenance_mismatch_is_rejected(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(revision="revision-2"),
+        )
+        owners = (
+            self.owner_for(self.other_transaction),
+            self.owner_for(
+                self.transaction,
+                generation=replace(
+                    self.generation,
+                    profile_identity=CanonicalProfileIdentity.global_profile(),
+                ),
+            ),
+            self.owner_for(
+                self.transaction,
+                generation=replace(
+                    self.generation,
+                    source_generation=99,
+                ),
+            ),
+            self.owner_for(
+                self.transaction,
+                capability_generation=12,
+            ),
+        )
+        for owner in owners:
+            with self.subTest(owner=owner):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "exact transaction owner",
+                ):
+                    RtssConflictEvidence.from_readback(
+                        RtssOwnedField.PROFILE_REVISION,
+                        owner,
+                        observation,
+                    )
+
+    def test_S2_DEGRADED_IMPL_002_B_conflict_and_readback_must_be_coherent(self):
+        conflict_observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(revision="revision-2"),
+        )
+        conflict = RtssConflictEvidence.from_readback(
+            RtssOwnedField.PROFILE_REVISION,
+            self.owner,
+            conflict_observation,
+        )
+        resolving_observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "must be identical"):
+            self.state(
+                readback_evidence=resolving_observation,
+                conflict_evidence=conflict,
+            )
+        with self.assertRaisesRegex(ValueError, "differing"):
+            RtssConflictEvidence.from_readback(
+                RtssOwnedField.PROFILE_REVISION,
+                self.owner,
+                resolving_observation,
+            )
+
+    def test_S2_DEGRADED_IMPL_002_B_latest_epoch_requires_bound_observation(self):
+        failed = self.failed_readback(
+            RtssStoredCapEvidence.read_failed(
+                numerator_code="numerator-failed",
+                denominator_code="denominator-failed",
+            ),
+            backend_generation=8,
+        )
+        capability = RtssCapabilityEvidence(
+            self.transaction,
+            self.generation,
+            8,
+            12,
+        )
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            failed,
+            capability_evidence=capability,
+        )
+        state = self.state(readback_evidence=observation)
+
+        self.assertEqual(state.latest_backend_generation, 8)
+        with self.assertRaises(TypeError):
+            replace(state, latest_backend_generation=999)
+
+    def test_S2_DEGRADED_IMPL_002_B_state_replace_revalidates_provenance(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.failed_readback(
+                RtssStoredCapEvidence.read_failed(
+                    numerator_code="numerator-failed",
+                    denominator_code="denominator-failed",
+                )
+            ),
+        )
+        state = self.state(readback_evidence=observation)
+        other_owner = self.owner_for(self.other_transaction)
+
+        with self.assertRaisesRegex(ValueError, "exact transaction owner"):
+            replace(state, current_owner=other_owner)
+        with self.assertRaises(ValueError):
+            replace(state, reason=" ")
+
+    def test_structural_ownership_copy_is_the_same_logical_token(self):
+        owner_copy = replace(self.owner)
+        observation = RtssReadbackEvidence.bind(
+            owner_copy,
+            self.matching_readback(),
+        )
+        operation = RtssOperationEvidence.verified(
+            RtssOwnedField.SAVE,
+            self.owner,
+            observation,
+        )
+
+        self.assertIsNot(owner_copy, self.owner)
+        self.assertEqual(owner_copy, self.owner)
+        self.assertEqual(operation.ownership, self.owner)
+
+    def test_modified_structural_ownership_copy_is_a_different_token(self):
+        observation = RtssReadbackEvidence.bind(
+            self.owner,
+            self.matching_readback(),
+        )
+        changed_owner = replace(self.owner, holder="other-holder")
+
+        with self.assertRaisesRegex(ValueError, "exact owner"):
+            RtssOperationEvidence.verified(
+                RtssOwnedField.SAVE,
+                changed_owner,
+                observation,
+            )
+
+    def test_duplicate_release_prevention_remains_a_future_registry_concern(self):
+        readback = self.matching_readback()
+        restore = RtssRestoreResult(
+            RtssOutcome.VERIFIED,
+            self.generation,
+            readback=readback,
+            captured_state=self.capture,
+            transaction_identity=self.transaction,
+        )
+        proof = RtssExactRestorationProof(self.owner, restore)
+
+        first = RtssOwnershipRelease(
+            self.owner,
+            RtssOwnershipReleaseReason.EXACT_RESTORATION,
+            restoration_proof=proof,
+        )
+        second = RtssOwnershipRelease(
+            replace(self.owner),
+            RtssOwnershipReleaseReason.EXACT_RESTORATION,
+            restoration_proof=proof,
+        )
+        self.assertEqual(first, second)
 
 
 class EnumAliasHardeningTests(unittest.TestCase):

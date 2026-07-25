@@ -13,26 +13,39 @@ equality. Its first implementation did not pass independent review because
 ownership release and degraded accounting were not yet sufficiently
 evidence-bound.
 
-The focused local correction binds ownership to exact captured state and
-immutable transaction/capability evidence, requires one owner-bound exact
-restoration proof, preserves requested exact-field applicability after failed,
-unsupported, or asymmetric observations, derives degraded accounting and
-classification from concrete field/operation/conflict/backend evidence, adds
-typed numerator/denominator read-failure diagnostics, and hardens relevant
-enums against aliases.
+The first focused local correction bound ownership to exact captured state,
+required one owner-bound exact-restoration proof, preserved requested
+exact-field applicability after inconclusive observations, added typed
+field-specific diagnostics, and hardened relevant enums against aliases. It
+also did not pass independent review: failed or unsupported readback could
+still expose a complete available exact pair, while readback, operation,
+conflict, capability, and backend-epoch evidence remained insufficiently bound
+to one transaction.
+
+The second focused local correction rejects complete available exact pairs on
+non-verified readback; requires transaction-bound readback evidence for
+degraded state; makes operation and conflict evidence factory-only and
+owner-bound; derives conflict values, backend/capability epochs,
+classification, accounting, and ownership retention; and rejects conflicting
+or cross-transaction evidence. Immutable ownership-token copies use structural
+logical identity; single-consumption enforcement remains deferred to the
+future coordinator registry.
 
 Regressions cover the readback and apply outcome/failure-step matrices, exact
 stored `120/2` versus normalized `60/1` restoration, foreign or stale ownership
-proofs, failed and unsupported exact-field applicability, derived degraded
-evidence, field-specific diagnostics, enum aliases, canonical identity and
-generation attribution, and accepted and rejected handoff behavior. The
-deterministic suite contains 146 passing tests.
+proofs, failed and unsupported exact-field applicability, non-verified
+complete-pair rejection, partial field observations, transaction/profile/kind/
+generation/capability provenance, trusted operation evidence, owned conflict
+derivation, backend-epoch observations, contradictory evidence,
+`dataclasses.replace()` bypasses, structural token copies, field-specific
+diagnostics, enum aliases, and accepted and rejected handoff behavior. The
+deterministic suite contains 171 passing tests.
 
 No transaction coordinator, mutation, production wiring, live RTSS behavior,
 profile write, capability/name policy, dependency, or external-system behavior
 changes in this prerequisite slice. Sequence item 1 remains unapproved pending
-independent read-only review of the corrective commit; sequence item 2 remains
-unauthorized.
+independent read-only review of the new corrective commit; sequence item 2
+remains unauthorized.
 
 ### RTSS Stage 1 - preparatory internal infrastructure
 

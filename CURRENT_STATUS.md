@@ -6,8 +6,8 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 sequence item 1 corrected locally after failed
-  implementation review; corrective-commit review pending
+- Current phase: RTSS Stage 2 sequence item 1 corrected locally a second time
+  after two failed implementation reviews; new corrective-commit review pending
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -187,12 +187,29 @@ accounting and classification from concrete observations, adds typed
 field-specific read-failure diagnostics, and enforces/tests enum uniqueness
 through `Enum.__members__`.
 
-The complete deterministic suite now passes all 146 tests with
-`PYTHONDONTWRITEBYTECODE=1`. The correction remains contract/test-only: no
-coordinator, mutation, production integration, capability/name policy, or live
-system behavior was added. It has not been pushed and has no pull request.
+Independent read-only review of corrective commit
+`c323ddeb5cd62636a608d312af873a1552142f67` did not approve the
+implementation. It found that a failed or unsupported readback could still
+carry a complete available exact pair (`S2-DEGRADED-IMPL-002-A`) and that
+readback, operation, conflict, capability, and backend-epoch evidence remained
+reusable or caller-authored without complete transaction provenance
+(`S2-DEGRADED-IMPL-002-B`). It also found that the documentation overstated
+the resulting protection (`DOC-S2-DEGRADED-COVERAGE-001`).
+
+A second focused local correction rejects complete available exact pairs on
+non-verified readback, requires transaction-bound readback evidence for
+degraded construction, makes operation and conflict evidence factory-only and
+owner-bound, derives conflict values and backend/capability epochs from bound
+observations, and derives degraded classification and accounting. Structural
+ownership-token equality is documented and tested without implementing
+single-consumption coordinator behavior.
+
+The complete deterministic suite now passes all 171 tests with
+`PYTHONDONTWRITEBYTECODE=1`. The second correction remains contract/test-only:
+no coordinator, mutation, production integration, capability/name policy, or
+live system behavior was added. It has not been pushed and has no pull request.
 Sequence item 1 is not approved or complete; its next gate is an independent
-read-only review of the local corrective commit. Stage 2 sequence item 2
+read-only review of the new local corrective commit. Stage 2 sequence item 2
 remains unauthorized.
 
 ## Current work
@@ -204,8 +221,8 @@ ownership, evidence, and result contracts with deterministic tests.
 RTSS Stage 2 planning, both planning corrections, all three independent
 reviews, and explicit user acceptance are recorded on
 `feature/rtss-transaction-coordinator`. The first accepted Stage 2
-contract/test-only sequence item and its focused review correction are
-implemented locally. The corrective commit still requires independent
+contract/test-only sequence item and its two focused review corrections are
+implemented locally. The new corrective commit still requires independent
 read-only review. No transaction coordinator exists, and no production caller
 uses these contracts.
 
@@ -232,8 +249,9 @@ request exists.
 
 ## Design-review status
 
-**Accepted Stage 2 design; sequence item 1 corrected locally after a failed
-implementation review and awaiting corrective-commit review.**
+**Accepted Stage 2 design; sequence item 1 corrected locally a second time
+after two failed implementation reviews and awaiting new corrective-commit
+review.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -260,7 +278,7 @@ coordinator:
 
 The readback, exact stored-field, degraded-state, handoff, and retained-
 ownership prerequisites in sequence item 1 are corrected and pass locally, but
-remain unapproved pending independent review of the corrective commit.
+remain unapproved pending independent review of the new corrective commit.
 Capability-driven name policy, coordinator logic, mutation, production
 integration, and their later tests remain planned, unimplemented, and
 non-production-reachable.
@@ -308,10 +326,10 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The planning-review and explicit-acceptance gates are satisfied. The first
-implementation review of Stage 2 sequence item 1 failed, and a focused
+The planning-review and explicit-acceptance gates are satisfied. Two
+implementation reviews of Stage 2 sequence item 1 failed, and a second focused
 contract/test correction is implemented locally without mutation. The next
-action is an independent read-only review of the single corrective commit.
+action is an independent read-only review of the new single corrective commit.
 
 Sequence item 2 remains unauthorized until that review. Coordinator admission,
 capture, rollback foundations, every mutation-bearing slice, production

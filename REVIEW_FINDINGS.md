@@ -547,9 +547,11 @@ outside the unchanged original 50-row active technical-review ledger and do
 not close any production RTSS finding.
 
 The review disposition was **Not approved - blocking findings require
-correction**. A focused local corrective change now passes 146 deterministic
-tests. Each finding remains at the corrective-commit independent-review gate;
-none is independently verified closed.
+correction**. The first focused local corrective change at
+`c323ddeb5cd62636a608d312af873a1552142f67` passed 146 deterministic
+tests but did not pass its independent review. The history below describes that
+first correction; the second-review findings and second local correction are
+recorded separately before the unchanged active ledger.
 
 ### `S2-OWNERSHIP-IMPL-001` - Blocking / corrected locally, review pending
 
@@ -613,6 +615,76 @@ none is independently verified closed.
 - **Local correction:** Relevant enums use `@unique`; tests compare
   `Enum.__members__`, normal iteration, and unique values and demonstrate the
   alias gap with a synthetic enum.
+
+## RTSS Stage 2 sequence-item-1 first-correction review findings
+
+These supplemental findings record the independent read-only review of first
+correction commit `c323ddeb5cd62636a608d312af873a1552142f67`. They remain
+outside the unchanged original 50-row active technical-review ledger and do
+not close any production RTSS finding.
+
+The review disposition was **Not approved - blocking findings require
+correction**. A second focused local correction now passes 171 deterministic
+tests. Each finding remains at the new corrective-commit independent-review
+gate; none is independently verified closed.
+
+### `S2-DEGRADED-IMPL-002-A` - Blocking / corrected locally, review pending
+
+- **Problem:** A failed or unsupported `RtssReadback` could contain a complete
+  exact stored pair whose two components were both `AVAILABLE`. Degraded
+  accounting then exposed both unresolved components as conclusive available
+  observations despite the aggregate non-verified outcome.
+- **Second local correction:** Non-verified readback rejects a complete
+  available exact pair. Transaction-bound partial numerator or denominator
+  observations remain representable, while the failed or unsupported aggregate
+  outcome controls unresolved availability for fields without conclusive bound
+  field evidence.
+- **Regressions:** Failed and unsupported complete-pair rejection; verified
+  complete-pair acceptance; numerator-only and denominator-only partial
+  evidence; asymmetric evidence; aggregate failure availability; requested
+  responsibility retention; and direct-constructor and `dataclasses.replace()`
+  rejection.
+
+### `S2-DEGRADED-IMPL-002-B` - Blocking / corrected locally, review pending
+
+- **Problem:** Readback lacked transaction attribution; operation success,
+  conflict values, capability markers, and backend epochs remained
+  caller-authored or reusable; conflicts could name unrequested or unowned
+  fields; and conflict and resolving readback evidence could contradict.
+- **Second local correction:** `RtssReadbackEvidence` binds readback,
+  transaction owner, exact captured state, canonical profile and kind,
+  generations, backend epoch, and capability evidence. Operation and conflict
+  evidence are factory-only. Verified operation evidence requires a matching
+  verified bound observation; uncertain operation evidence derives its epoch
+  and capability structurally. Conflict factories derive captured and observed
+  values from the exact owner and the same bound readback, reject inapplicable
+  fields, and cannot contradict the degraded state's readback. Degraded
+  classification, accounting, ownership retention, latest backend epoch, and
+  latest capability evidence are derived rather than caller inputs.
+- **Regressions:** Transaction, canonical profile, profile-kind, generation,
+  capability, operation-type, owner, and observation mismatches; direct Boolean
+  success; arbitrary epochs; unrequested and unowned conflicts; invented
+  captured values; contradictory readback/conflict evidence; cross-transaction
+  reuse; derived classification/accounting; and direct-constructor or
+  `dataclasses.replace()` bypasses.
+- **Ownership boundary:** Exact immutable token copies are the same logical
+  owner because the complete structural value defines ownership. Changed
+  transaction, capture, profile, generation, backend, capability, or holder
+  evidence defines a different token. Single consumption and duplicate-release
+  prevention remain future coordinator-registry responsibilities and are not
+  implemented here.
+
+### `DOC-S2-DEGRADED-COVERAGE-001` - Non-blocking / corrected locally, review pending
+
+- **Problem:** Tracked status, test, plan, and release documentation overstated
+  protection against fabricated availability, Boolean operation success,
+  unowned or invented conflicts, arbitrary backend epochs, and
+  cross-transaction evidence reuse.
+- **Second local correction:** The records now distinguish the first failed
+  correction review from the second local correction, identify the enforced
+  transaction-bound provenance rules, record 171 passing deterministic tests,
+  preserve the sequence-item-1 review gate, and make no coordinator,
+  production, mutation, or compatibility claim.
 
 ## Active finding ledger
 

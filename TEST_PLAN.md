@@ -27,7 +27,7 @@ standard-library discovery and import isolation (`TEST-001`), and initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
 It also covers the RTSS Stage 1 contract and deterministic-fake validation plus
 the RTSS Stage 2 sequence item 1 prerequisite contracts and focused review
-corrections recorded below. The complete suite contains 146 passing
+corrections recorded below. The complete suite contains 171 passing
 deterministic tests. It performs no live
 RTSS, GUI, sensor, process, registry, profile, or hardware interaction. CI and
 later production adapters remain outstanding.
@@ -69,11 +69,13 @@ established by this validation.
 
 The prerequisite contract matrices and exact stored/degraded ownership tests
 for sequence item 1 are implemented and passing locally. The first
-implementation at `c83aa281d961222eeeb70dbb994c4f33aef46381` did not pass
-independent review; the focused corrective regressions below now pass, but the
-corrective commit still requires independent read-only review. Coordinator,
-capability/name-policy, mutation, production-adapter, and physical tests in
-later subsections remain **planned** and must not be described as passing.
+implementation at `c83aa281d961222eeeb70dbb994c4f33aef46381` and first
+correction at `c323ddeb5cd62636a608d312af873a1552142f67` did not pass
+independent review. The second focused corrective regressions below now pass,
+but the new corrective commit still requires independent read-only review.
+Coordinator, capability/name-policy, mutation, production-adapter, and physical
+tests in later subsections remain **planned** and must not be described as
+passing.
 
 The corrected Stage 2 test plan at
 `677b6b5750ac52953fd1581efbc658adbc171b22` was independently verified and
@@ -167,6 +169,41 @@ Scaling.
   synthetic enum that iteration alone omits aliases.
 - The 24 corrective tests raise the complete deterministic result from 122 to
   146 passing tests with zero failures, errors, or unexpected skips.
+
+### Implemented sequence item 1 second corrective regressions
+
+- **Non-verified complete-pair rejection:** independently reject failed and
+  unsupported readbacks whose exact numerator and denominator are both
+  `AVAILABLE`; accept a verified complete pair; retain numerator-only and
+  denominator-only transaction-bound partial evidence; and prove aggregate
+  failure controls unresolved fields without conclusive field observation.
+- **Transaction-bound readback:** bind readback to the exact structural owner,
+  transaction, canonical profile and kind, all generation dimensions, backend
+  epoch, and capability evidence. Reject cross-transaction reuse, profile or
+  generation mismatch, stale backend evidence, missing backend evidence,
+  capability mismatch, and `dataclasses.replace()` transaction substitution.
+- **Trusted operation evidence:** make direct Boolean-result construction
+  impossible. Accept verified save or activation evidence only from a matching
+  verified bound observation; reject transaction, profile, kind, generation,
+  capability, operation-type, owner, and arbitrary-epoch mismatches.
+- **Conflict provenance:** derive the captured value from
+  `CapturedProfileState` and the observed value and backend epoch from the same
+  transaction-bound readback. Reject unrequested or unowned fields, invented
+  captured values, wrong transaction/profile/kind/generation/capability,
+  arbitrary epochs, another transaction's observation, and contradictory
+  resolving readback.
+- **Derived degraded truth:** derive classification, resolved/unresolved
+  accounting, ownership retention, latest backend epoch, and latest capability
+  evidence. Reject raw readback, fabricated operation success, cross-owner
+  evidence, direct derived-field construction, and `dataclasses.replace()`
+  bypass.
+- **Structural token-copy semantics:** prove an unchanged immutable token copy
+  is the same logical owner, while modified transaction, capture, profile,
+  generation, backend, capability, or holder evidence is a different token.
+  Duplicate-release prevention remains a future coordinator-registry
+  responsibility and is deliberately not implemented.
+- These 25 second-correction tests raise the complete deterministic result from
+  146 to 171 passing tests with zero failures, errors, or unexpected skips.
 
 These tests remain pure contract tests. They do not provide coordinator
 admission, capture execution, mutation, save, activation, rollback,

@@ -1545,6 +1545,11 @@ class RtssReadback:
                 raise ValueError(
                     "non-verified readback must not expose exact stored-cap state"
                 )
+            if self.stored_cap.status is RtssStoredCapStatus.CAPTURED:
+                raise ValueError(
+                    "non-verified readback must not expose a complete available "
+                    "stored-cap pair"
+                )
             stored_availabilities = {
                 self.stored_cap.numerator.availability,
                 self.stored_cap.denominator.availability,
@@ -2168,7 +2173,12 @@ class RtssCapabilityEvidence:
 
 @dataclass(frozen=True, slots=True)
 class RtssOwnershipToken:
-    """The exact captured state and capability evidence owned by one holder."""
+    """The exact captured state and capability evidence owned by one holder.
+
+    Structural equality defines the logical token: an unchanged immutable copy
+    represents the same owner. Single consumption and duplicate-release
+    prevention belong to the future coordinator registry, not object identity.
+    """
 
     transaction_identity: RtssTransactionIdentity
     captured_state: CapturedProfileState
@@ -2223,6 +2233,112 @@ class RtssOwnershipToken:
     @property
     def capability_generation(self) -> int:
         return self.capability_evidence.capability_generation
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class RtssReadbackEvidence:
+    """One readback bound to the exact transaction owner that observed it."""
+
+    ownership: RtssOwnershipToken
+    readback: RtssReadback
+    capability_evidence: RtssCapabilityEvidence
+
+    @classmethod
+    def bind(
+        cls,
+        ownership: RtssOwnershipToken,
+        readback: RtssReadback,
+        *,
+        capability_evidence: RtssCapabilityEvidence | None = None,
+    ) -> RtssReadbackEvidence:
+        """Validate complete provenance before admitting degraded read evidence."""
+
+        if not isinstance(ownership, RtssOwnershipToken):
+            raise TypeError("readback ownership must be an RtssOwnershipToken")
+        if not isinstance(readback, RtssReadback):
+            raise TypeError("readback must be an RtssReadback")
+        if readback.generation != ownership.generation:
+            raise ValueError(
+                "readback evidence generation and profile must match the owner"
+            )
+        if readback.backend_generation is None:
+            raise ValueError(
+                "transaction-bound readback evidence requires a backend epoch"
+            )
+        if readback.backend_generation < ownership.backend_generation:
+            raise ValueError(
+                "readback evidence cannot predate captured ownership"
+            )
+
+        if capability_evidence is None:
+            if readback.backend_generation != ownership.backend_generation:
+                raise ValueError(
+                    "advanced readback backend evidence requires a matching "
+                    "capability observation"
+                )
+            capability_evidence = ownership.capability_evidence
+        elif not isinstance(capability_evidence, RtssCapabilityEvidence):
+            raise TypeError(
+                "readback capability evidence must be an RtssCapabilityEvidence"
+            )
+
+        if capability_evidence.transaction_identity != ownership.transaction_identity:
+            raise ValueError(
+                "readback capability evidence must match the owner transaction"
+            )
+        if capability_evidence.generation != ownership.generation:
+            raise ValueError(
+                "readback capability evidence generation and profile must match"
+            )
+        if capability_evidence.backend_generation != readback.backend_generation:
+            raise ValueError(
+                "readback capability evidence must describe the observed backend"
+            )
+        if (
+            readback.backend_generation == ownership.backend_generation
+            and capability_evidence != ownership.capability_evidence
+        ):
+            raise ValueError(
+                "same-backend readback must preserve exact owner capability evidence"
+            )
+        if (
+            capability_evidence.capability_generation
+            < ownership.capability_generation
+        ):
+            raise ValueError(
+                "readback capability evidence cannot predate captured ownership"
+            )
+
+        evidence = object.__new__(cls)
+        object.__setattr__(evidence, "ownership", ownership)
+        object.__setattr__(evidence, "readback", readback)
+        object.__setattr__(
+            evidence,
+            "capability_evidence",
+            capability_evidence,
+        )
+        return evidence
+
+    @property
+    def transaction_identity(self) -> RtssTransactionIdentity:
+        return self.ownership.transaction_identity
+
+    @property
+    def generation(self) -> RtssGeneration:
+        return self.readback.generation
+
+    @property
+    def backend_generation(self) -> int:
+        # bind() requires concrete backend evidence.
+        return self.readback.backend_generation
+
+    @property
+    def profile_identity(self) -> CanonicalProfileIdentity:
+        return self.generation.profile_identity
+
+    @property
+    def profile_kind(self) -> ProfileKind:
+        return self.profile_identity.kind
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -2386,103 +2502,354 @@ class RtssDiagnostic:
             _require_nonempty_string(self.message, label="diagnostic message")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RtssOperationEvidence:
-    """Concrete save or activation observation with identity and backend epoch."""
+    """Factory-only save or activation result with complete provenance."""
 
     operation: RtssOwnedField
-    generation: RtssGeneration
-    backend_generation: int
-    attempted: bool
-    result: bool | None
-    diagnostic: RtssDiagnostic | None = None
+    ownership: RtssOwnershipToken
+    readback_evidence: RtssReadbackEvidence | None
+    diagnostic: RtssDiagnostic | None
+    _state: RtssOperationState
 
-    def __post_init__(self) -> None:
-        if self.operation not in {
+    @staticmethod
+    def _validate_operation(operation: RtssOwnedField) -> None:
+        if operation not in {
             RtssOwnedField.SAVE,
             RtssOwnedField.ACTIVATION,
         }:
-            raise ValueError("operation evidence must describe save or activation")
-        if not isinstance(self.generation, RtssGeneration):
-            raise TypeError("operation generation must be an RtssGeneration")
-        _require_nonnegative_int(
-            self.backend_generation,
-            label="operation backend_generation",
-        )
-        if not isinstance(self.attempted, bool):
-            raise TypeError("operation attempted must be a bool")
-        if self.result is not None and not isinstance(self.result, bool):
-            raise TypeError("operation result must be a bool or None")
-        if self.diagnostic is not None and not isinstance(
-            self.diagnostic,
+            raise ValueError(
+                "operation evidence must describe save or activation"
+            )
+
+    @classmethod
+    def _create(
+        cls,
+        operation: RtssOwnedField,
+        ownership: RtssOwnershipToken,
+        state: RtssOperationState,
+        diagnostic: RtssDiagnostic | None,
+        readback_evidence: RtssReadbackEvidence | None,
+    ) -> RtssOperationEvidence:
+        cls._validate_operation(operation)
+        if not isinstance(ownership, RtssOwnershipToken):
+            raise TypeError("operation ownership must be an RtssOwnershipToken")
+        if readback_evidence is not None:
+            if not isinstance(readback_evidence, RtssReadbackEvidence):
+                raise TypeError(
+                    "operation readback must be RtssReadbackEvidence"
+                )
+            if readback_evidence.ownership != ownership:
+                raise ValueError(
+                    "operation readback evidence must match the exact owner"
+                )
+        if diagnostic is not None and not isinstance(
+            diagnostic,
             RtssDiagnostic,
         ):
             raise TypeError("operation diagnostic must be an RtssDiagnostic")
-        if not self.attempted:
-            if self.result is not None or self.diagnostic is not None:
+        if state is RtssOperationState.VERIFIED:
+            if (
+                readback_evidence is None
+                or not readback_evidence.readback.verified
+            ):
                 raise ValueError(
-                    "unattempted operation cannot claim a result or diagnostic"
+                    "verified operation requires a verified "
+                    "transaction-bound readback"
                 )
-        elif self.result is True:
-            if self.diagnostic is not None:
+            if diagnostic is not None:
                 raise ValueError(
-                    "successful operation evidence must not contain a diagnostic"
+                    "verified operation must not contain a diagnostic"
                 )
-        elif self.diagnostic is None:
+        elif state is RtssOperationState.UNCERTAIN:
+            if diagnostic is None:
+                raise ValueError(
+                    "uncertain operation requires a diagnostic"
+                )
+            if (
+                readback_evidence is not None
+                and readback_evidence.readback.verified
+            ):
+                raise ValueError(
+                    "verified readback cannot be attached to uncertain "
+                    "operation evidence"
+                )
+        else:
             raise ValueError(
-                "failed or uncertain operation evidence requires a diagnostic"
+                "operation evidence must be verified or uncertain"
             )
+
+        evidence = object.__new__(cls)
+        object.__setattr__(evidence, "operation", operation)
+        object.__setattr__(evidence, "ownership", ownership)
+        object.__setattr__(
+            evidence,
+            "readback_evidence",
+            readback_evidence,
+        )
+        object.__setattr__(evidence, "diagnostic", diagnostic)
+        object.__setattr__(evidence, "_state", state)
+        return evidence
+
+    @classmethod
+    def verified(
+        cls,
+        operation: RtssOwnedField,
+        ownership: RtssOwnershipToken,
+        readback_evidence: RtssReadbackEvidence,
+    ) -> RtssOperationEvidence:
+        """Derive verified success only from a matching verified observation."""
+
+        if not isinstance(readback_evidence, RtssReadbackEvidence):
+            raise TypeError(
+                "verified operation requires RtssReadbackEvidence"
+            )
+        if not readback_evidence.readback.verified:
+            raise ValueError(
+                "verified operation requires a verified transaction-bound readback"
+            )
+        return cls._create(
+            operation,
+            ownership,
+            RtssOperationState.VERIFIED,
+            None,
+            readback_evidence,
+        )
+
+    @classmethod
+    def uncertain(
+        cls,
+        operation: RtssOwnedField,
+        ownership: RtssOwnershipToken,
+        diagnostic: RtssDiagnostic,
+        *,
+        readback_evidence: RtssReadbackEvidence | None = None,
+    ) -> RtssOperationEvidence:
+        """Record uncertainty without accepting Boolean success or raw epochs."""
+
+        if not isinstance(diagnostic, RtssDiagnostic):
+            raise TypeError(
+                "uncertain operation requires an RtssDiagnostic"
+            )
+        if (
+            readback_evidence is not None
+            and readback_evidence.readback.verified
+        ):
+            raise ValueError(
+                "verified readback cannot be attached to uncertain operation evidence"
+            )
+        return cls._create(
+            operation,
+            ownership,
+            RtssOperationState.UNCERTAIN,
+            diagnostic,
+            readback_evidence,
+        )
 
     @property
     def state(self) -> RtssOperationState:
-        if not self.attempted:
-            return RtssOperationState.NOT_APPLICABLE
-        if self.result is True:
-            return RtssOperationState.VERIFIED
-        return RtssOperationState.UNCERTAIN
+        return self._state
+
+    @property
+    def transaction_identity(self) -> RtssTransactionIdentity:
+        return self.ownership.transaction_identity
+
+    @property
+    def generation(self) -> RtssGeneration:
+        return self.ownership.generation
+
+    @property
+    def backend_generation(self) -> int:
+        if self.readback_evidence is not None:
+            return self.readback_evidence.backend_generation
+        return self.ownership.backend_generation
+
+    @property
+    def capability_evidence(self) -> RtssCapabilityEvidence:
+        if self.readback_evidence is not None:
+            return self.readback_evidence.capability_evidence
+        return self.ownership.capability_evidence
 
 
-@dataclass(frozen=True, slots=True)
+def _captured_conflict_value(
+    captured_state: CapturedProfileState,
+    owned_field: RtssOwnedField,
+) -> str | bytes | int | RationalCap:
+    if owned_field is RtssOwnedField.EXACT_STORED_NUMERATOR:
+        evidence = captured_state.stored_cap.numerator
+        if evidence.availability is not RtssFieldAvailability.AVAILABLE:
+            raise ValueError(
+                "numerator conflict requires exact captured numerator evidence"
+            )
+        return evidence.value
+    if owned_field is RtssOwnedField.EXACT_STORED_DENOMINATOR:
+        evidence = captured_state.stored_cap.denominator
+        if evidence.availability is not RtssFieldAvailability.AVAILABLE:
+            raise ValueError(
+                "denominator conflict requires exact captured denominator evidence"
+            )
+        return evidence.value
+    if owned_field is RtssOwnedField.EFFECTIVE_CAP:
+        if captured_state.cap is None:
+            raise ValueError("effective-cap conflict requires an exact captured cap")
+        return captured_state.cap
+    if owned_field is RtssOwnedField.PROFILE_DOCUMENT:
+        if captured_state.profile_document is not None:
+            return captured_state.profile_document
+        if captured_state.profile_document_sha256 is not None:
+            return captured_state.profile_document_sha256
+        raise ValueError(
+            "document conflict requires exact captured document evidence"
+        )
+    if owned_field is RtssOwnedField.PROFILE_REVISION:
+        if captured_state.profile_revision is None:
+            raise ValueError(
+                "revision conflict requires exact captured revision evidence"
+            )
+        return captured_state.profile_revision
+    if owned_field is RtssOwnedField.LIMITER_FLAGS:
+        if captured_state.limiter_flags is None:
+            raise ValueError(
+                "flag conflict requires exact captured flag evidence"
+            )
+        return captured_state.limiter_flags
+    raise ValueError("conflict evidence must identify a comparable owned field")
+
+
+def _observed_conflict_value(
+    captured_state: CapturedProfileState,
+    readback: RtssReadback,
+    owned_field: RtssOwnedField,
+) -> str | bytes | int | RationalCap:
+    if owned_field is RtssOwnedField.EXACT_STORED_NUMERATOR:
+        evidence = readback.stored_cap.numerator
+        if evidence.availability is not RtssFieldAvailability.AVAILABLE:
+            raise ValueError(
+                "numerator conflict requires an available field observation"
+            )
+        return evidence.value
+    if owned_field is RtssOwnedField.EXACT_STORED_DENOMINATOR:
+        evidence = readback.stored_cap.denominator
+        if evidence.availability is not RtssFieldAvailability.AVAILABLE:
+            raise ValueError(
+                "denominator conflict requires an available field observation"
+            )
+        return evidence.value
+    if owned_field is RtssOwnedField.EFFECTIVE_CAP:
+        if not readback.verified or readback.cap is None:
+            raise ValueError(
+                "effective-cap conflict requires verified exact readback"
+            )
+        return readback.cap
+    if owned_field is RtssOwnedField.PROFILE_DOCUMENT:
+        if captured_state.profile_document is not None:
+            if readback.profile_document is None:
+                raise ValueError(
+                    "document conflict requires the captured evidence form"
+                )
+            return readback.profile_document
+        if readback.profile_document_sha256 is None:
+            raise ValueError(
+                "document conflict requires the captured digest evidence form"
+            )
+        return readback.profile_document_sha256
+    if owned_field is RtssOwnedField.PROFILE_REVISION:
+        if (
+            not readback.verified
+            or readback.profile_revision_availability
+            is not RtssFieldAvailability.AVAILABLE
+            or readback.profile_revision is None
+        ):
+            raise ValueError(
+                "revision conflict requires verified exact revision readback"
+            )
+        return readback.profile_revision
+    if owned_field is RtssOwnedField.LIMITER_FLAGS:
+        if not readback.verified or readback.limiter_flags is None:
+            raise ValueError("flag conflict requires verified exact flag readback")
+        return readback.limiter_flags
+    raise ValueError("conflict evidence must identify a comparable owned field")
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class RtssConflictEvidence:
-    """One immutable field-specific external-change observation."""
+    """Factory-only conflict derived from the owner and one bound observation."""
 
     field: RtssOwnedField
-    generation: RtssGeneration
-    backend_generation: int
+    ownership: RtssOwnershipToken
+    readback_evidence: RtssReadbackEvidence
     captured_value: str | bytes | int | RationalCap
     observed_value: str | bytes | int | RationalCap
 
-    def __post_init__(self) -> None:
-        if self.field not in {
-            RtssOwnedField.EXACT_STORED_NUMERATOR,
-            RtssOwnedField.EXACT_STORED_DENOMINATOR,
-            RtssOwnedField.EFFECTIVE_CAP,
-            RtssOwnedField.PROFILE_DOCUMENT,
-            RtssOwnedField.PROFILE_REVISION,
-            RtssOwnedField.LIMITER_FLAGS,
-        }:
-            raise ValueError("conflict evidence must identify a comparable owned field")
-        if not isinstance(self.generation, RtssGeneration):
-            raise TypeError("conflict generation must be an RtssGeneration")
-        _require_nonnegative_int(
-            self.backend_generation,
-            label="conflict backend_generation",
+    @classmethod
+    def from_readback(
+        cls,
+        field: RtssOwnedField,
+        ownership: RtssOwnershipToken,
+        readback_evidence: RtssReadbackEvidence,
+    ) -> RtssConflictEvidence:
+        """Derive both conflict values and all provenance from exact evidence."""
+
+        if not isinstance(ownership, RtssOwnershipToken):
+            raise TypeError("conflict ownership must be an RtssOwnershipToken")
+        if not isinstance(readback_evidence, RtssReadbackEvidence):
+            raise TypeError(
+                "conflict observation must be RtssReadbackEvidence"
+            )
+        if readback_evidence.ownership != ownership:
+            raise ValueError(
+                "conflict observation must match the exact transaction owner"
+            )
+        if field not in _captured_owned_fields(ownership.captured_state):
+            raise ValueError(
+                "conflict field must be requested, applicable, and owned"
+            )
+
+        captured_value = _captured_conflict_value(
+            ownership.captured_state,
+            field,
         )
-        permitted = (str, bytes, int, RationalCap)
-        if isinstance(self.captured_value, bool) or not isinstance(
-            self.captured_value,
-            permitted,
-        ):
-            raise TypeError("captured conflict value must be immutable typed data")
-        if isinstance(self.observed_value, bool) or not isinstance(
-            self.observed_value,
-            permitted,
-        ):
-            raise TypeError("observed conflict value must be immutable typed data")
-        if type(self.captured_value) is not type(self.observed_value):
-            raise TypeError("conflict values must have the same concrete type")
-        if self.captured_value == self.observed_value:
-            raise ValueError("conflict evidence requires different observed data")
+        observed_value = _observed_conflict_value(
+            ownership.captured_state,
+            readback_evidence.readback,
+            field,
+        )
+        if type(captured_value) is not type(observed_value):
+            raise TypeError(
+                "conflict values must have the same concrete evidence type"
+            )
+        if captured_value == observed_value:
+            raise ValueError(
+                "conflict evidence requires a differing field observation"
+            )
+
+        evidence = object.__new__(cls)
+        object.__setattr__(evidence, "field", field)
+        object.__setattr__(evidence, "ownership", ownership)
+        object.__setattr__(
+            evidence,
+            "readback_evidence",
+            readback_evidence,
+        )
+        object.__setattr__(evidence, "captured_value", captured_value)
+        object.__setattr__(evidence, "observed_value", observed_value)
+        return evidence
+
+    @property
+    def transaction_identity(self) -> RtssTransactionIdentity:
+        return self.ownership.transaction_identity
+
+    @property
+    def generation(self) -> RtssGeneration:
+        return self.ownership.generation
+
+    @property
+    def backend_generation(self) -> int:
+        return self.readback_evidence.backend_generation
+
+    @property
+    def capability_evidence(self) -> RtssCapabilityEvidence:
+        return self.readback_evidence.capability_evidence
 
 
 def _make_unresolved_field_evidence(
@@ -2522,10 +2889,13 @@ def _availability_from_readback_outcome(
 def _unresolved_availability(
     owned_field: RtssOwnedField,
     captured_state: CapturedProfileState,
-    readback: RtssReadback | None,
+    readback_evidence: RtssReadbackEvidence | None,
     save_evidence: RtssOperationEvidence | None,
     activation_evidence: RtssOperationEvidence | None,
 ) -> RtssFieldAvailability:
+    readback = (
+        None if readback_evidence is None else readback_evidence.readback
+    )
     if owned_field is RtssOwnedField.EXACT_STORED_NUMERATOR:
         source = (
             readback.stored_cap.numerator
@@ -2575,7 +2945,7 @@ def _unresolved_availability(
 def _derived_degraded_classification(
     accounting: RtssDegradedFieldAccounting,
     *,
-    readback: RtssReadback | None,
+    readback_evidence: RtssReadbackEvidence | None,
     conflict_evidence: RtssConflictEvidence | None,
 ) -> RtssDegradedClassification:
     if conflict_evidence is not None:
@@ -2590,6 +2960,9 @@ def _derived_degraded_classification(
         RtssFieldAvailability.UNSUPPORTED,
     }:
         return RtssDegradedClassification.EVIDENCE_UNAVAILABLE
+    readback = (
+        None if readback_evidence is None else readback_evidence.readback
+    )
     if readback is not None and readback.verified and accounting.resolved_fields:
         return RtssDegradedClassification.PARTIAL_RESTORATION
     return RtssDegradedClassification.UNRESOLVED_MUTATION
@@ -2599,78 +2972,41 @@ def _derived_degraded_classification(
 class RtssDegradedState:
     """Complete immutable attribution and unresolved ownership evidence."""
 
-    transaction_identity: RtssTransactionIdentity
     request: RtssApplyRequest
-    captured_state: CapturedProfileState
-    evidence_generation: RtssGeneration
     current_owner: RtssOwnershipToken
-    classification: RtssDegradedClassification
     reason: str
-    readback: RtssReadback | None = None
+    readback_evidence: RtssReadbackEvidence | None = None
     save_evidence: RtssOperationEvidence | None = None
     activation_evidence: RtssOperationEvidence | None = None
     conflict_evidence: RtssConflictEvidence | None = None
-    ownership_retained: bool = True
     accounting: RtssDegradedFieldAccounting = field(init=False)
+    classification: RtssDegradedClassification = field(init=False)
 
     def __post_init__(self) -> None:
-        if not isinstance(
-            self.transaction_identity,
-            RtssTransactionIdentity,
-        ):
-            raise TypeError(
-                "transaction_identity must be an RtssTransactionIdentity"
-            )
         if not isinstance(self.request, RtssApplyRequest):
             raise TypeError("request must be an RtssApplyRequest")
-        if not isinstance(self.captured_state, CapturedProfileState):
-            raise TypeError("captured_state must be a CapturedProfileState")
-        if not isinstance(self.evidence_generation, RtssGeneration):
-            raise TypeError("evidence_generation must be an RtssGeneration")
-        if self.readback is not None and not isinstance(
-            self.readback,
-            RtssReadback,
-        ):
-            raise TypeError("readback must be an RtssReadback or None")
         if not isinstance(self.current_owner, RtssOwnershipToken):
             raise TypeError("current_owner must be an RtssOwnershipToken")
-        if not isinstance(self.classification, RtssDegradedClassification):
+        if self.readback_evidence is not None and not isinstance(
+            self.readback_evidence,
+            RtssReadbackEvidence,
+        ):
             raise TypeError(
-                "classification must be an RtssDegradedClassification"
-            )
-        if not isinstance(self.ownership_retained, bool):
-            raise TypeError("ownership_retained must be a bool")
-        if not self.ownership_retained:
-            raise ValueError(
-                "unresolved degraded state must retain ownership"
+                "readback_evidence must be RtssReadbackEvidence or None"
             )
         _require_nonempty_string(self.reason, label="degraded reason")
 
         generation = self.request.generation
-        if self.captured_state.generation != generation:
+        if self.current_owner.generation != generation:
             raise ValueError(
-                "degraded captured generation must match the request"
-            )
-        if self.evidence_generation != generation:
-            raise ValueError(
-                "degraded evidence generation must match the request"
-            )
-        if self.readback is not None and self.readback.generation != generation:
-            raise ValueError(
-                "degraded readback generation must match the request"
+                "degraded owner generation and profile must match the request"
             )
         if (
-            self.current_owner.transaction_identity
-            != self.transaction_identity
+            self.readback_evidence is not None
+            and self.readback_evidence.ownership != self.current_owner
         ):
             raise ValueError(
-                "degraded owner transaction identity must match"
-            )
-        if self.current_owner.generation != generation:
-            raise ValueError("degraded owner generation must match")
-        if self.current_owner.captured_state != self.captured_state:
-            raise ValueError(
-                "degraded owner must own the exact captured state"
+                "degraded readback evidence must match the exact transaction owner"
             )
 
         for operation, expected_field in (
@@ -2685,40 +3021,59 @@ class RtssDegradedState:
                 )
             if operation.operation is not expected_field:
                 raise ValueError("operation evidence is assigned to the wrong field")
-            if operation.generation != generation:
-                raise ValueError("operation evidence generation must match")
+            if operation.ownership != self.current_owner:
+                raise ValueError(
+                    "operation evidence must match the exact transaction owner"
+                )
+            if (
+                operation.readback_evidence is not None
+                and operation.readback_evidence != self.readback_evidence
+            ):
+                raise ValueError(
+                    "operation and degraded readback observations must be coherent"
+                )
         if self.conflict_evidence is not None:
             if not isinstance(self.conflict_evidence, RtssConflictEvidence):
                 raise TypeError(
                     "conflict_evidence must be an RtssConflictEvidence or None"
                 )
-            if self.conflict_evidence.generation != generation:
-                raise ValueError("conflict evidence generation must match")
+            if self.conflict_evidence.ownership != self.current_owner:
+                raise ValueError(
+                    "conflict evidence must match the exact transaction owner"
+                )
+            if (
+                self.conflict_evidence.readback_evidence
+                != self.readback_evidence
+            ):
+                raise ValueError(
+                    "conflict and degraded readback observations must be identical"
+                )
 
-        applicable = set(_captured_owned_fields(self.captured_state))
+        captured_state = self.current_owner.captured_state
+        readback = (
+            None
+            if self.readback_evidence is None
+            else self.readback_evidence.readback
+        )
+        applicable = set(_captured_owned_fields(captured_state))
         resolved = set(
-            _resolved_captured_fields(self.captured_state, self.readback)
+            _resolved_captured_fields(captured_state, readback)
         )
         applicable.add(RtssOwnedField.BACKEND_EPOCH)
-        observed_backend_generations = [self.captured_state.backend_generation]
-        if self.readback is not None and self.readback.backend_generation is not None:
-            observed_backend_generations.append(self.readback.backend_generation)
-        for operation in (self.save_evidence, self.activation_evidence):
-            if operation is not None:
-                observed_backend_generations.append(operation.backend_generation)
-        if self.conflict_evidence is not None:
+        observed_backend_generations = [captured_state.backend_generation]
+        if self.readback_evidence is not None:
             observed_backend_generations.append(
-                self.conflict_evidence.backend_generation
+                self.readback_evidence.backend_generation
             )
         if any(
-            observed < self.captured_state.backend_generation
+            observed < captured_state.backend_generation
             for observed in observed_backend_generations
         ):
             raise ValueError(
                 "degraded backend evidence cannot predate captured ownership"
             )
         latest_backend_generation = max(observed_backend_generations)
-        if latest_backend_generation == self.captured_state.backend_generation:
+        if latest_backend_generation == captured_state.backend_generation:
             resolved.add(RtssOwnedField.BACKEND_EPOCH)
         applicable.add(RtssOwnedField.RETAINED_OWNERSHIP)
         resolved.add(RtssOwnedField.RETAINED_OWNERSHIP)
@@ -2743,8 +3098,8 @@ class RtssDegradedState:
                 owned_field,
                 _unresolved_availability(
                     owned_field,
-                    self.captured_state,
-                    self.readback,
+                    captured_state,
+                    self.readback_evidence,
                     self.save_evidence,
                     self.activation_evidence,
                 ),
@@ -2761,31 +3116,53 @@ class RtssDegradedState:
             unresolved_evidence,
         )
         object.__setattr__(self, "accounting", accounting)
-        expected_classification = _derived_degraded_classification(
+        classification = _derived_degraded_classification(
             accounting,
-            readback=self.readback,
+            readback_evidence=self.readback_evidence,
             conflict_evidence=self.conflict_evidence,
         )
-        if self.classification is not expected_classification:
-            raise ValueError(
-                "degraded classification is not justified by concrete evidence"
-            )
+        object.__setattr__(self, "classification", classification)
+
+    @property
+    def transaction_identity(self) -> RtssTransactionIdentity:
+        return self.current_owner.transaction_identity
+
+    @property
+    def captured_state(self) -> CapturedProfileState:
+        return self.current_owner.captured_state
+
+    @property
+    def evidence_generation(self) -> RtssGeneration:
+        if self.readback_evidence is not None:
+            return self.readback_evidence.generation
+        return self.current_owner.generation
+
+    @property
+    def readback(self) -> RtssReadback | None:
+        if self.readback_evidence is None:
+            return None
+        return self.readback_evidence.readback
+
+    @property
+    def ownership_retained(self) -> bool:
+        return True
 
     @property
     def latest_backend_generation(self) -> int:
         observations = [self.captured_state.backend_generation]
-        if self.readback is not None and self.readback.backend_generation is not None:
-            observations.append(self.readback.backend_generation)
-        for operation in (self.save_evidence, self.activation_evidence):
-            if operation is not None:
-                observations.append(operation.backend_generation)
-        if self.conflict_evidence is not None:
-            observations.append(self.conflict_evidence.backend_generation)
+        if self.readback_evidence is not None:
+            observations.append(self.readback_evidence.backend_generation)
         return max(observations)
 
     @property
     def capability_generation(self) -> int:
-        return self.current_owner.capability_generation
+        return self.latest_capability_evidence.capability_generation
+
+    @property
+    def latest_capability_evidence(self) -> RtssCapabilityEvidence:
+        if self.readback_evidence is not None:
+            return self.readback_evidence.capability_evidence
+        return self.current_owner.capability_evidence
 
     @property
     def save_state(self) -> RtssOperationState:
@@ -2817,9 +3194,9 @@ class RtssDegradedState:
 
     @property
     def readback_generation(self) -> RtssGeneration | None:
-        if self.readback is None:
+        if self.readback_evidence is None:
             return None
-        return self.readback.generation
+        return self.readback_evidence.generation
 
 
 @dataclass(frozen=True, slots=True)
