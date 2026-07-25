@@ -29,8 +29,8 @@ approved for explicit user acceptance on 25 July 2026, and the user explicitly
 accepted it that day. Accepted Stage 2 decisions are recorded in
 `DECISIONS.md`.
 
-**Accepted Stage 2 design; prerequisite sequence item 1 corrected locally a
-third time after three implementation reviews failed.** Implementation commit
+**Accepted Stage 2 design; prerequisite sequence item 1 complete and
+independently approved with non-blocking review findings.** Implementation commit
 `c83aa281d961222eeeb70dbb994c4f33aef46381` was not approved because its
 ownership proof, exact-field applicability, degraded evidence, failure
 diagnostics, and enum-alias coverage were insufficient. First correction
@@ -41,10 +41,13 @@ constructible without sufficient transaction binding. Second correction
 internally consistent caller-forged future backend and capability generations
 could still advance trusted evidence. A third focused corrective slice anchors
 accepted generations to the owner's captured evidence and passes 181
-deterministic tests. Sequence item 1 remains at the independent-review gate.
-The coordinator, capability and supported-name policy, sequence item 2,
-mutation, and production integration are not implemented or authorized. The
-branch has not been pushed and no Stage 2 pull request exists.
+deterministic tests. Independent read-only review of approved source commit
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa` ended **Approved with
+non-blocking review findings**, so sequence item 1 is complete. Capability and
+supported-name policy is sequence item 2: its planning and design review are
+the next authorized activity, but its implementation remains unauthorized.
+The coordinator, mutation, and production integration are not implemented or
+authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
@@ -167,8 +170,10 @@ independent review found that caller-forged future epochs remained
 constructible. The third corrective slice requires readback backend generation
 and capability evidence to equal the owner's captured evidence, introduces no
 trusted advanced-generation observation mechanism, and passes all 181
-deterministic tests. Independent read-only review of the new corrective commit
-remains required before later Stage 2 logic may rely on these contracts.
+deterministic tests. Independent read-only review approved that correction with
+two non-blocking test-quality observations. Trusted observation of a
+legitimately advanced backend or capability generation remains a later design
+concern and was not implemented in sequence item 1.
 
 ### Mandatory degraded-state identity and handoff schema
 
@@ -542,7 +547,7 @@ recovery mechanism, universal component limit, or compatibility claim.
 
 The independently verified and explicitly accepted implementation sequence is:
 
-1. **Prerequisite contract correction - corrected locally; review pending**
+1. **Prerequisite contract correction - complete and independently approved**
    - restrict `RtssReadback` to read-only outcome/failure-step allowlists;
    - add the exhaustive readback matrix and a justified exhaustive apply
      matrix;
@@ -553,9 +558,10 @@ The independently verified and explicitly accepted implementation sequence is:
      remaining forged-future-generation defect, tests, and related
      documentation;
    - completed without transaction coordination, mutation, or production
-     integration; independent read-only review of the new corrective commit is
-     the next gate.
-2. **Capability and supported-name policy**
+     integration; independent review approved the third correction with
+     non-blocking test-quality observations.
+2. **Capability and supported-name policy - planning/design review authorized;
+   implementation unauthorized**
    - add configured/backend range intersections, exact-field capabilities,
      component lengths, lexical/path rejection, and exact encoding policy.
 3. **Coordinator admission and capture**
@@ -683,13 +689,15 @@ Stage 2 coordinator implementation is complete only when:
   ordering, test matrices, and production-integration boundary.
 
 The planning-review and explicit-acceptance gates are satisfied. Sequence item
-1 is corrected locally with no admitted mutation after three implementation
-reviews failed. The next gate is an independent read-only review of the new
-corrective commit. Sequence item 2 and each later mutation-bearing slice remain
-unauthorized and gated by their applicable review, rollback, degraded-state,
-ownership, and failure-matrix requirements. The accepted 12-item focused
-sequence above is unchanged. Push and pull-request creation require separate
-explicit approval.
+1 is independently approved and complete with no admitted mutation after three
+failed implementation reviews and three focused corrections. The next
+authorized activity is a separate focused sequence-item-2 planning and design
+review. Sequence item 2 implementation and each later mutation-bearing slice
+remain unauthorized and gated by their applicable review, rollback,
+degraded-state, ownership, and failure-matrix requirements. No mutation is
+admitted before item 5 and its prerequisites, and production integration
+remains item 12. The accepted 12-item focused sequence above is unchanged.
+Push and pull-request creation require separate explicit approval.
 
 ### Rollback considerations
 
@@ -751,9 +759,11 @@ generation-aware, reversible RTSS boundary.
   explicitly accepted the corrected plan on 25 July 2026. Acceptance commit
   `d10feead8a3707ee52a54f80e4e53c14945309d0` records that gate. The focused
   prerequisite contract/test sequence item was corrected locally a third time
-  after three implementation reviews failed and now passes all 181 deterministic
-  tests. No coordinator or mutation exists, no production caller uses the
-  contracts, and production integration remains later work.
+  after three implementation reviews failed, passes all 181 deterministic
+  tests, and is independently approved and complete. Sequence item 2 planning
+  and design review are authorized; its implementation remains unauthorized.
+  No coordinator or mutation exists, no production caller uses the contracts,
+  and production integration remains item 12.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.

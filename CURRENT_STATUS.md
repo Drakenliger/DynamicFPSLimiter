@@ -6,8 +6,12 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 sequence item 1 corrected locally a third time
-  after three failed implementation reviews; new corrective-commit review pending
+- Current phase: RTSS Stage 2 sequence item 1 complete and independently
+  approved; sequence item 2 planning and design review authorized, with
+  implementation still unauthorized
+- Current approved source commit:
+  `4011d7e1e29fc2a4bbe901d184c53774b33e7baa`
+  (`fix: anchor RTSS evidence generations`)
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -220,14 +224,51 @@ introduced. Regressions cover direct construction, nested
 degraded latest-generation derivation, structural token copies, and valid
 current-generation controls.
 
-The complete deterministic suite now passes all 181 tests with
+The complete deterministic suite passes all 181 tests with
 `PYTHONDONTWRITEBYTECODE=1`. The third correction remains contract/test-only:
 no coordinator, mutation, production integration, capability/name policy, or
 live system behavior was added. It has not been pushed and has no pull request.
-Sequence item 1 is not approved or complete; its next gate is an independent
-read-only review of the new local corrective commit. Stage 2 sequence item 2
-remains unauthorized. Display and Frame Generation Awareness remains future
-planning only and is not implemented by this correction.
+Display and Frame Generation Awareness remains future planning only and is not
+implemented by this correction.
+
+## RTSS Stage 2 sequence item 1 independent approval
+
+Independent read-only review of approved source commit
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa` ended **Approved with
+non-blocking review findings**. The review found no remaining blocking
+correctness, provenance, scope, documentation, or repository-integrity issue.
+It independently confirmed:
+
+- `S2-DEGRADED-IMPL-002-A` remained corrected;
+- `S2-DEGRADED-IMPL-002-B` was corrected for the defined ownership trust
+  boundary;
+- `DOC-S2-DEGRADED-COVERAGE-001` was corrected accurately;
+- `S2-OWNERSHIP-TOKEN-SEMANTICS-001` remains correctly deferred and
+  non-blocking because single-use token consumption and duplicate-release
+  prevention belong to a future coordinator registry;
+- all 181 deterministic tests passed;
+- the original production finding ledger remained exactly 50 rows with 50
+  unique identifiers in its original order, with all nine production RTSS
+  findings still Open; and
+- the work remained within sequence item 1, local, clean, and unpublished,
+  without sequence-item-2 or later operational behavior.
+
+The review recorded two non-blocking findings:
+
+- `TEST-S2-PREFIX-COUNT-001` corrects a historical implementation-session
+  statement: replaying the targeted 35-test prefix against the parent produced
+  9 failures, not 8. Eight new rejection tests and one modified existing
+  latest-epoch test failed. This affects historical test-count accuracy only.
+- `TEST-S2-DOWNSTREAM-PATH-001` observes that several operation, conflict, and
+  degraded-state rejection tests combine readback binding and downstream
+  construction in one `assertRaises` block. Binding rejects first, so the
+  downstream constructor does not execute. The tests still prove that forged
+  evidence cannot reach those public downstream paths, and the factory-only
+  API cannot construct a separately invalid already-bound evidence object.
+
+Neither finding requires a source or test correction now, and neither reopens
+sequence item 1. RTSS Stage 2 sequence item 1 is complete and independently
+approved as deterministic contract work only.
 
 ## Current work
 
@@ -235,13 +276,13 @@ RTSS Stage 1 is complete and merged. It provides deterministic identity,
 rational-cap, generation, capability, capture, readback, apply, restoration,
 ownership, evidence, and result contracts with deterministic tests.
 
-RTSS Stage 2 planning, both planning corrections, all three independent
-reviews, and explicit user acceptance are recorded on
+RTSS Stage 2 planning, both planning corrections, all planning reviews, and
+explicit user acceptance are recorded on
 `feature/rtss-transaction-coordinator`. The first accepted Stage 2
 contract/test-only sequence item and its three focused review corrections are
-implemented locally. The new corrective commit still requires independent
-read-only review. No transaction coordinator exists, and no production caller
-uses these contracts.
+implemented locally. Sequence item 1 is independently approved and complete.
+No transaction coordinator exists, no source implementation for sequence item
+2 exists, and no production caller uses these contracts.
 
 The initial local Stage 2 planning commit changed exactly:
 
@@ -264,11 +305,24 @@ ignored review inputs, or external state. The branch remains local only: no
 Stage 2 push, remote branch, configured upstream for this branch, or pull
 request exists.
 
+This documentation-only sequence-item-1 approval update changes exactly:
+
+- `CURRENT_STATUS.md`;
+- `REVIEW_FINDINGS.md`;
+- `IMPLEMENTATION_PLAN.md`;
+- `TEST_PLAN.md`; and
+- `RELEASE_NOTES.md`.
+
+It changes no source, tests, configuration, workflow, dependency, packaging,
+license, generated file, application behavior, or external system.
+`DECISIONS.md` remains unchanged because no new architectural decision was
+introduced. The documentation commit recording this approval is not itself
+claimed to have received independent review.
+
 ## Design-review status
 
-**Accepted Stage 2 design; sequence item 1 corrected locally a third time
-after three failed implementation reviews and awaiting new corrective-commit
-review.**
+**Accepted Stage 2 design; sequence item 1 complete and independently approved
+with non-blocking review findings.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -294,11 +348,13 @@ coordinator:
   GUI, lifecycle, and production-caller integration.
 
 The readback, exact stored-field, degraded-state, handoff, and retained-
-ownership prerequisites in sequence item 1 are corrected and pass locally, but
-remain unapproved pending independent review of the new corrective commit.
-Capability-driven name policy, coordinator logic, mutation, production
-integration, and their later tests remain planned, unimplemented, and
-non-production-reachable.
+ownership prerequisites in sequence item 1 are corrected, independently
+approved, and complete. Capability-driven name policy is sequence item 2:
+planning and design review for that item are authorized, but implementation is
+not. Coordinator logic, mutation, production integration, and their later
+tests remain planned, unimplemented, and non-production-reachable. Trusted
+observation of an advanced backend or capability generation remains a later
+design concern and was not implemented in sequence item 1.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -343,18 +399,21 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The planning-review and explicit-acceptance gates are satisfied. Three
-implementation reviews of Stage 2 sequence item 1 failed, and a third focused
-contract/test correction is implemented locally without mutation. The next
-action is an independent read-only review of the new single corrective commit.
+The planning-review and explicit-acceptance gates are satisfied. After three
+failed implementation reviews and three focused corrections, Stage 2 sequence
+item 1 is independently approved and complete. The next authorized action is a
+separate focused sequence-item-2 planning and design-review session.
 
-Sequence item 2 remains unauthorized until that review. Coordinator admission,
-capture, rollback foundations, every mutation-bearing slice, production
-integration, push, and pull-request creation remain later separately gated
-work. Any later implementation task must use small, independently reviewable
-commits, may not admit mutation before its complete applicable rollback and
-degraded-state handling exist, and must keep production callers out of the
-coordinator phase.
+Sequence item 2 implementation remains unauthorized until its planning is
+independently reviewed and explicitly accepted. No sequence-item-2 branch or
+source implementation exists. Coordinator admission, capture, rollback
+foundations, every mutation-bearing slice, production integration, push, and
+pull-request creation remain later separately gated work. No mutation is
+admitted before sequence item 5 and its prerequisites, and production
+integration remains sequence item 12. Any later implementation task must use
+small, independently reviewable commits, may not admit mutation before its
+complete applicable rollback and degraded-state handling exist, and must keep
+production callers out of the coordinator phase.
 
 ## Physical validation still required
 

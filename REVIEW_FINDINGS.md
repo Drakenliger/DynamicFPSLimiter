@@ -553,7 +553,7 @@ tests but did not pass its independent review. The history below describes that
 first correction; the second-review findings and second local correction are
 recorded separately before the unchanged active ledger.
 
-### `S2-OWNERSHIP-IMPL-001` - Blocking / corrected locally, review pending
+### `S2-OWNERSHIP-IMPL-001` - Blocking / corrected and independently confirmed
 
 - **Problem:** The same verified restore result could release different
   transaction owners because restoration lacked transaction identity and
@@ -569,7 +569,7 @@ recorded separately before the unchanged active ledger.
   capture, copied capability marker, profile identity/kind, each generation,
   backend epoch, incomplete proof, and `120/2` versus `60/1`.
 
-### `S2-DEGRADED-IMPL-001` - Blocking / corrected locally, review pending
+### `S2-DEGRADED-IMPL-001` - Blocking / corrected and independently confirmed
 
 - **Problem:** Exact numerator and denominator applicability was inferred from
   successful `AVAILABLE` evidence, so requested failed or unsupported fields
@@ -583,7 +583,7 @@ recorded separately before the unchanged active ledger.
 - **Regressions:** Failed, unsupported, asymmetric, unrequested, and captured
   pairs; unresolved degraded accounting; and pre-mutation fail-closed checks.
 
-### `S2-DEGRADED-IMPL-002` - Blocking / corrected locally, review pending
+### `S2-DEGRADED-IMPL-002` - Blocking / corrected and independently confirmed
 
 - **Problem:** Callers could author unresolved availability, classification,
   operation success, and latest backend claims without concrete evidence.
@@ -597,7 +597,7 @@ recorded separately before the unchanged active ledger.
   success, false verified absence, omitted or double-resolved fields, and empty
   degraded state with retained ownership.
 
-### `S2-EVIDENCE-IMPL-001` - Non-blocking / corrected locally, review pending
+### `S2-EVIDENCE-IMPL-001` - Non-blocking / corrected and independently confirmed
 
 - **Problem:** `RtssStoredFieldEvidence` represented only availability and
   value, so `READ_FAILED` had no required typed field-specific diagnostic.
@@ -608,7 +608,7 @@ recorded separately before the unchanged active ledger.
 - **Regressions:** Missing and empty diagnostics, incompatible diagnostics,
   numerator/denominator distinction, immutability, and accidental failed value.
 
-### `S1-READBACK-ALIAS-001` - Non-blocking / corrected locally, review pending
+### `S1-READBACK-ALIAS-001` - Non-blocking / corrected and independently confirmed
 
 - **Problem:** Normal enum iteration and set comparisons omit aliases, allowing
   a future alias to bypass exhaustive-matrix review.
@@ -648,7 +648,7 @@ focused local correction are recorded below.
 - **Second-correction review result:** Corrected. The independent review of
   `ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` confirmed this protection.
 
-### `S2-DEGRADED-IMPL-002-B` - Blocking / corrected locally again, review pending
+### `S2-DEGRADED-IMPL-002-B` - Blocking / corrected for the defined ownership trust boundary and independently confirmed
 
 - **Problem:** Readback lacked transaction attribution; operation success,
   conflict values, capability markers, and backend epochs remained
@@ -688,8 +688,12 @@ focused local correction are recorded below.
   operations, conflicts, degraded latest backend/capability truth, structural
   owner copies, nested `dataclasses.replace()` substitution, and exact-current
   valid controls. The complete deterministic suite contains 181 passing tests.
+- **Third-correction review result:** Corrected for the defined ownership trust
+  boundary. The independent review found no remaining blocking correctness or
+  provenance issue. Trusting a legitimately advanced backend or capability
+  generation remains a later design concern and was not implemented here.
 
-### `DOC-S2-DEGRADED-COVERAGE-001` - Non-blocking / corrected locally again, review pending
+### `DOC-S2-DEGRADED-COVERAGE-001` - Non-blocking / corrected accurately and independently confirmed
 
 - **Problem:** Tracked status, test, plan, and release documentation overstated
   protection against fabricated availability, Boolean operation success,
@@ -708,6 +712,10 @@ focused local correction are recorded below.
   `S2-DEGRADED-IMPL-002-B` as requiring this additional correction, record the
   captured-generation anchor and 181-test result, and continue to claim no
   approval, coordinator, mutation, production behavior, or compatibility.
+- **Third-correction review result:** Corrected accurately. The independent
+  review confirmed that the tracked documentation matches the implemented
+  captured-generation boundary and does not overstate production, mutation, or
+  compatibility coverage.
 
 ## RTSS Stage 2 sequence-item-1 second-correction review outcome
 
@@ -721,15 +729,75 @@ capability evidence.
 
 The third focused local correction is contract/test/documentation-only and
 fails closed by anchoring accepted readback and capability generations to the
-owner's captured evidence. It has not been independently approved, pushed, or
-published in a pull request. Stage 2 sequence item 2 remains unauthorized, and
-no live RTSS, Windows, GPU, Lossless Scaling, display, VRR, or frame-generation
-compatibility claim is made.
+owner's captured evidence. It has not been pushed or published in a pull
+request. No live RTSS, Windows, GPU, Lossless Scaling, display, VRR, or
+frame-generation compatibility claim is made.
 
 The durable sequence remains: initial sequence-item-1 implementation; first
 failed review; first correction; second failed review; second correction; third
-failed review; this third focused correction; and another independent review
-still required.
+failed review; third focused correction; and the independent approval recorded
+below.
+
+## RTSS Stage 2 sequence-item-1 third-correction approval
+
+Independent read-only review of
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa` ended **Approved with
+non-blocking review findings**. It found no blocking correctness, provenance,
+scope, documentation, or repository-integrity finding remaining and confirmed
+that sequence item 1 contains no sequence-item-2 or later operational behavior.
+
+The review confirmed:
+
+- `S2-DEGRADED-IMPL-002-A` remained corrected;
+- `S2-DEGRADED-IMPL-002-B` was corrected for the defined ownership trust
+  boundary;
+- `DOC-S2-DEGRADED-COVERAGE-001` was corrected accurately;
+- the earlier `S2-OWNERSHIP-IMPL-001`, `S2-DEGRADED-IMPL-001`,
+  `S2-DEGRADED-IMPL-002`, `S2-EVIDENCE-IMPL-001`, and
+  `S1-READBACK-ALIAS-001` corrections remained effective;
+- all 181 deterministic tests passed; and
+- the original production ledger remained exactly 50 unchanged, uniquely
+  ordered rows, with all nine production RTSS findings still Open.
+
+### `S2-OWNERSHIP-TOKEN-SEMANTICS-001` - Non-blocking / deferred
+
+- **Observation:** Structurally identical immutable ownership-token copies
+  represent the same logical owner. Sequence item 1 does not enforce
+  single-consumption or duplicate-release prevention.
+- **Disposition:** Correctly deferred to the future coordinator registry. It is
+  outside the deterministic contract trust boundary corrected by sequence item
+  1 and does not block its approval.
+
+### `TEST-S2-PREFIX-COUNT-001` - Low / Confirmed / non-blocking
+
+- **Observation:** The implementation-session historical statement that the
+  targeted parent replay produced 35 tests with 8 failures was inaccurate.
+- **Independent reproduction:** The parent replay produced 35 tests with 9
+  failures: eight newly added rejection tests failed, and one modified existing
+  latest-epoch test also failed.
+- **Impact and disposition:** Historical test-count accuracy only. No source or
+  test correction is required, and the finding does not reopen sequence item
+  1.
+
+### `TEST-S2-DOWNSTREAM-PATH-001` - Informational / Improvement / non-blocking
+
+- **Observation:** Several operation, conflict, and degraded-state rejection
+  tests place readback binding and downstream construction in one
+  `assertRaises` block. Binding rejects first, so the later downstream
+  constructor does not execute.
+- **Coverage effect:** The tests still prove forged evidence cannot reach those
+  downstream public paths. A separately invalid already-bound evidence object
+  cannot be created through the public API because the evidence types are
+  factory-only.
+- **Disposition:** Defer restructuring until a legitimate trusted
+  advanced-generation observation seam exists. No source or test correction is
+  required now, and the finding does not reopen sequence item 1.
+
+RTSS Stage 2 sequence item 1 is therefore independently approved and complete
+as deterministic contract work only. Sequence item 2 planning and design
+review are authorized next; sequence item 2 implementation remains
+unauthorized. This supplemental approval record does not alter or close any
+entry in the original production ledger.
 
 ## Active finding ledger
 

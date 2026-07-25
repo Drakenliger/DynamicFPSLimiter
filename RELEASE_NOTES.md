@@ -37,7 +37,10 @@ backend and capability generations could still become trusted readback,
 operation, conflict, and degraded-state evidence. The third focused local
 correction anchors bound readback and capability generations to the ownership
 token's captured evidence. It intentionally adds no mechanism for trusting an
-advanced generation.
+advanced generation. Independent read-only review of approved source commit
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa` ended **Approved with
+non-blocking review findings**. Sequence item 1 deterministic contracts are
+therefore independently approved and complete.
 
 Regressions cover the readback and apply outcome/failure-step matrices, exact
 stored `120/2` versus normalized `60/1` restoration, foreign or stale ownership
@@ -49,11 +52,20 @@ derivation, backend-epoch observations, contradictory evidence,
 diagnostics, enum aliases, forged future generations, and accepted and rejected
 handoff behavior. The deterministic suite contains 181 passing tests.
 
+The independent approval passed all 181 tests. Two non-blocking test-quality
+observations remain deferred: a historical targeted-parent replay count is
+corrected from 35 tests with 8 failures to 35 tests with 9 failures, and some
+downstream rejection tests stop at readback binding before separately invoking
+the downstream constructor. Neither requires a source or test correction now
+or reopens sequence item 1.
+
 No transaction coordinator, mutation, production wiring, live RTSS behavior,
 profile write, capability/name policy, dependency, or external-system behavior
-changes in this prerequisite slice. Sequence item 1 remains unapproved pending
-independent read-only review of the new corrective commit; sequence item 2
-remains unauthorized.
+changes in this prerequisite slice. Sequence item 2 planning and design review
+are authorized next, but sequence item 2 implementation remains unauthorized.
+No production integration, push, pull request, live validation, release, or
+RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or frame-generation
+compatibility claim exists.
 
 ### RTSS Stage 1 - preparatory internal infrastructure
 

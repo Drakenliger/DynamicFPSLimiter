@@ -68,14 +68,16 @@ established by this validation.
 ## RTSS Stage 2 deterministic coordinator tests
 
 The prerequisite contract matrices and exact stored/degraded ownership tests
-for sequence item 1 are implemented and passing locally. The first
+for sequence item 1 are implemented, passing, independently approved, and
+complete. The first
 implementation at `c83aa281d961222eeeb70dbb994c4f33aef46381` and first
 correction at `c323ddeb5cd62636a608d312af873a1552142f67` did not pass
 independent review. Second correction
 `ee9d0c7526861aeb999e1b410b3d2b21b71a6c23` also did not pass independent
 review because caller-forged future backend and capability generations remained
-trusted. The third focused corrective regressions below now pass, but the new
-corrective commit still requires independent read-only review.
+trusted. The third focused corrective regressions below pass, and independent
+read-only review approved source commit
+`4011d7e1e29fc2a4bbe901d184c53774b33e7baa` with non-blocking findings.
 Coordinator, capability/name-policy, mutation, production-adapter, and physical
 tests in later subsections remain **planned** and must not be described as
 passing.
@@ -83,9 +85,10 @@ passing.
 The corrected Stage 2 test plan at
 `677b6b5750ac52953fd1581efbc658adbc171b22` was independently verified and
 explicitly accepted on 25 July 2026. The separately authorized first
-implementation gate is now complete locally: the prerequisite contract
-matrices and exact stored/degraded-state coverage remain contract/test-only and
-enable no mutation. Later planned tests remain unimplemented.
+implementation gate is complete and independently approved: the prerequisite
+contract matrices and exact stored/degraded-state coverage remain
+contract/test-only and enable no mutation. Later planned tests remain
+unimplemented.
 
 The Stage 2 tests will use only pure contracts, an in-memory fake backend, a
 fake lifecycle/admission owner, deterministic barriers, and an ordered
@@ -235,6 +238,30 @@ These tests remain pure contract tests. They do not provide coordinator
 admission, capture execution, mutation, save, activation, rollback,
 restoration, production-adapter, or live-system coverage; that work remains in
 the later planned sections.
+
+### Sequence item 1 independent approval record
+
+Independent review reran the complete deterministic suite with
+`PYTHONDONTWRITEBYTECODE=1` and passed all 181 tests. It recorded two
+non-blocking observations:
+
+- `TEST-S2-PREFIX-COUNT-001`: replaying the targeted parent prefix produced 35
+  tests with 9 failures, not the historically reported 8. Eight newly added
+  rejection tests and one modified existing latest-epoch test failed against
+  the parent. This corrects historical count accuracy only.
+- `TEST-S2-DOWNSTREAM-PATH-001`: several operation, conflict, and
+  degraded-state rejection tests combine readback binding and downstream
+  construction in one `assertRaises` block. Binding rejects first, so the
+  downstream constructor is not separately executed. The tests still prove
+  forged evidence cannot reach those downstream public paths, and public
+  factory-only construction provides no separately invalid already-bound
+  evidence object.
+
+Neither observation requires a source or test change now, and neither reopens
+sequence item 1. Test restructuring is deferred until a legitimate trusted
+advanced-generation observation seam exists. Future sequence-item-2 planning
+must define and independently review its own deterministic test matrix before
+implementation; sequence-item-2 implementation remains unauthorized.
 
 ### Planned request, identity, path, and capability admission
 
