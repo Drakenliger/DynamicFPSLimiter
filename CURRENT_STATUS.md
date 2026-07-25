@@ -8,8 +8,9 @@
 - Current local branch: `feature/rtss-transaction-coordinator`
 - Current phase: RTSS Stage 2 sequence item 1 complete and independently
   approved; the first sequence-item-2 planning commit and its first corrected
-  planning commit, and its second corrected planning commit were all rejected;
-  this documentation-only third planning correction is complete locally and
+  planning commit, its second corrected planning commit, and its third corrected
+  planning commit were all rejected; this documentation-only fourth planning
+  correction addresses the two remaining applicability-contract blockers and
   awaits another independent read-only review and later explicit acceptance;
   implementation remains unauthorized
 - Current approved source commit:
@@ -467,13 +468,39 @@ It changes exactly `CURRENT_STATUS.md`, `DECISIONS.md`,
 configuration, workflow, dependency, packaging, license, release note,
 generated file, application behavior, or external state.
 
-The third corrected sequence-item-2 plan is complete locally but remains
-unapproved. No source or test file changed. No push or pull request exists.
-The next action is another independent read-only review of this focused third
-planning-correction commit followed, only if approved, by a later
-documentation-only acceptance step that explicitly authorizes implementation.
-Sequence item 2 implementation remains unauthorized, and sequence item 3
-remains unauthorized.
+Independent read-only review of the third corrected planning commit
+`2825a8fbed1b3bc1e10d42e3c5d73b352c57ab73`
+(`docs: finalize RTSS capability policy plan`) ended **Not approved -
+blocking planning findings require correction**. The review confirmed that
+Groups A-F are legally constructible, the literal positive and negative
+arithmetic oracles are correct, the 12-item sequence boundaries are preserved,
+and the production ledger remains 50 uniquely identified rows with all nine
+RTSS findings Open. It found exactly two remaining blockers:
+
+- `S2-CAP-PLAN-004-R3`: child-specific applicability mismatch reasons were
+  assigned to the public evaluator even though a mismatched child has no legal
+  path into a consistent admitted parent; and
+- `S2-CAP-PLAN-005-R3`: applicability and equivalent name-rule duplicate/
+  overlap language lacked literal canonical keys and predicates.
+
+This fourth documentation-only correction keeps the existing typed
+contradictory-parent policy. Applicability-child invariants, exact-scope
+requirements, duplicates, and overlaps are decided at factory admission. A
+semantic conflict produces one current contradictory admitted parent with
+canonically ordered admission diagnostics and no selectable records; the
+parent-only public evaluator then returns exactly `UNKNOWN /
+CONTRADICTORY_EVIDENCE`. It never accepts or diagnoses a standalone child.
+The correction also defines the literal applicability key, immutable
+field-set representation, exact duplicate and intersection predicates,
+wildcard prohibition, primitive-versus-compound scope, deterministic ordering,
+and the equivalent exact-scope rule for admitted name-rule sets.
+
+The fourth corrected sequence-item-2 plan remains unapproved pending another
+independent read-only review. No source or test file changed. No push or pull
+request exists. The next authorized action is that review followed, only if
+approved, by a later documentation-only acceptance step. Sequence item 2
+implementation remains unauthorized, sequence item 3 remains unauthorized,
+and push and pull-request creation remain unauthorized.
 
 ## Current work
 
@@ -611,11 +638,11 @@ beyond the statically reviewed baseline.
 The planning-review and explicit-acceptance gates are satisfied. After three
 failed implementation reviews and three focused corrections, Stage 2 sequence
 item 1 is independently approved and complete. The separate focused
-sequence-item-2 planning and design work has received three rejected planning
-reviews. The third documentation-only correction is complete locally. The next
+sequence-item-2 planning and design work has received four rejected planning
+reviews. The fourth documentation-only correction is complete locally. The next
 action is independent read-only review of its focused correction commit.
 
-Sequence item 2 implementation remains unauthorized until this third
+Sequence item 2 implementation remains unauthorized until this fourth
 corrected planning commit is independently reviewed and a later acceptance
 documentation step explicitly authorizes implementation. No sequence-item-2
 source implementation exists. Coordinator admission, capture, rollback

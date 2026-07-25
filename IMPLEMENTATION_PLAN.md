@@ -62,10 +62,19 @@ blocking planning findings require correction**. It found exactly three
 remaining blockers: unconditional save/activation dependencies
 (`S2-CAP-PLAN-003-R2`), an impossible all-category reason-order fixture
 (`S2-TEST-PLAN-002-R2`), and missing literal negative discrete-bound oracles
-(`S2-TEST-PLAN-001-R2`). This third documentation-only correction addresses
-only those defects while preserving every other corrected planning semantic.
-It still requires another independent read-only review and a later explicit
-acceptance documentation step. Implementation remains unauthorized.
+(`S2-TEST-PLAN-001-R2`). The third documentation-only correction addressed
+those defects while preserving every other corrected planning semantic.
+Independent review of third corrected commit
+`2825a8fbed1b3bc1e10d42e3c5d73b352c57ab73` again returned **Not approved -
+blocking planning findings require correction**. Groups A-F, arithmetic
+oracles, sequence boundaries, and ledger integrity passed, but the review found
+two remaining applicability-contract blockers: child mismatch diagnostics had
+no legal public evaluator path (`S2-CAP-PLAN-004-R3`), and applicability plus
+equivalent name-rule overlap had no literal predicate
+(`S2-CAP-PLAN-005-R3`). This fourth documentation-only correction closes only
+those ambiguities. It still requires another independent read-only review and
+a later explicit acceptance documentation step. Implementation remains
+unauthorized.
 The coordinator, mutation, and production integration are not implemented or
 authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
@@ -327,7 +336,8 @@ non-overlapping name:
 | `RtssInternalDependencyBundle` | Closed non-public dependency expansion used by terminal requirements. `COORDINATED_FRACTIONAL_WRITE` expands to the admitted ordered numerator-write and denominator-write primitives. It is reversible sequencing, not atomicity, and has no evaluator entry point or terminal decision. |
 | `RtssRequiredPostcondition` | Closed required future observations: exact value observed; save confirmed; activation confirmed; profile exists; profile absent; and restored state equals captured state. Item 2 checks whether primitives needed to establish them are supported; runtime truth is recorded only by later sequences. |
 | `RtssMechanismCapability` | One mechanism/primitive/profile-kind record containing support state, validity, exact stored-field applicability using existing `RtssStoredFieldKind`, origin, source references, and any domain-specific exact range. Duplicate keys are forbidden. Contradictory direct or derived sources produce the one typed contradictory observation described below. |
-| `RtssMechanismDependencyApplicability` | Factory-controlled immutable child record keyed by parent observation identity, backend generation, capability generation, exact mechanism, profile kind, terminal compound requirement, dependency context, exact field set where applicable, and exactly one of save/persist or activate/reload. It contains `RtssDependencyApplicability`, immutable provenance, and canonical source references. |
+| `RtssMechanismDependencyApplicability` | Factory-controlled immutable child record keyed by parent observation identity, backend generation, capability generation, exact mechanism, profile kind, terminal compound requirement, dependency context, exactly one of save/persist or activate/reload, and a non-empty canonical exact field set. It contains `RtssDependencyApplicability`, immutable provenance, and canonical source references. |
+| `RtssApplicabilityAdmissionDiagnostic` | Factory-only unique enum, separate from public evaluator reasons. It records untrusted or foreign input; parent, backend-generation, capability-generation, mechanism, profile-kind, compound, phase-context, field-set, or primitive mismatch; exact duplicate; non-empty field overlap; empty field set; missing compound/primitive; and wildcard-like or otherwise non-exact primitive/field scope. |
 | `RtssCapabilityObservationIdentity` | Opaque immutable observation identifier, distinct from transaction identity. Equality is structural and auditable. |
 | `RtssRawCapabilityReport` | Public untrusted adapter/request-shaped data. It can never directly produce `SUPPORTED`. |
 | `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records and dependency-applicability records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
@@ -373,13 +383,14 @@ absence, success, failure, or a Boolean. The sole applicability state is
   primitive belongs to this exact dependency graph.
 
 Every factory-admitted mechanism manifest contains exactly one immutable
-`RtssMechanismDependencyApplicability` record for each save/activation slot
-declared by each admitted compound/context key. A missing raw source does not
-let a caller omit the slot: the factory materializes the slot as
-`UNKNOWN` with canonical `APPLICABILITY_EVIDENCE_MISSING` provenance. This
-distinguishes an observed `UNKNOWN` applicability assertion from absent source
-evidence while preserving one applicability state enum and a structurally
-complete admitted manifest.
+`RtssMechanismDependencyApplicability` record for each declared complete
+applicability key. A compound/context/primitive may declare multiple
+field-specific keys only when their canonical field sets are disjoint. A
+missing raw source does not let a caller omit a declared exact key: the factory
+materializes that key as `UNKNOWN` with canonical
+`APPLICABILITY_EVIDENCE_MISSING` provenance. This distinguishes an observed
+`UNKNOWN` applicability assertion from absent source evidence while preserving
+one applicability state enum and a structurally complete admitted manifest.
 
 Each applicability record is bound to:
 
@@ -394,20 +405,112 @@ Each applicability record is bound to:
 
 The record is immutable, structurally comparable, provenance-bearing, and
 governed by the parent observation's freshness and validity. A structurally
-equal factory-admitted copy is equivalent. Direct/raw construction,
-caller-authored enums or Booleans, changed nested source references,
-`dataclasses.replace()`, a foreign parent, generation mismatch, mechanism
-mismatch, profile-kind mismatch, compound mismatch, context mismatch, field-set
-mismatch, or primitive mismatch cannot prove applicability. Every
-reconstruction path revalidates the same invariants.
+equal immutable copy of a factory-admitted child is equivalent; object identity
+is not required. Every copied-with-replacement or reconstructed child is
+untrusted input to the factory and is revalidated. Originating from an admitted
+object does not preserve authority after any bound field or nested source is
+changed. Direct/raw construction, caller-authored enums or Booleans, changed
+nested source references, `dataclasses.replace()`, a foreign parent, generation
+mismatch, mechanism mismatch, profile-kind mismatch, compound mismatch, context
+mismatch, field-set mismatch, or primitive mismatch can never become a
+selectable child in a consistent admitted observation.
 
-Applicability keys are exact and non-overlapping. Duplicate exact keys or
-overlapping wildcard-like reports are never resolved by order. The admission
-factory converts contradictory applicability sources into the already-defined
-current `CONTRADICTORY` parent observation with canonical contradiction
-sources and no selectable primitive or applicability records. Illegal
-contradictory stale/invalid combinations remain construction errors. A raw
-report cannot invoke the admission factory as a production trust source.
+The canonical applicability key is literally:
+
+```text
+(
+    parent_observation_identity,
+    backend_generation,
+    capability_generation,
+    mechanism,
+    profile_kind,
+    terminal_compound_requirement,
+    dependency_phase_context,
+    primitive_dependency,
+    canonical_exact_field_set,
+)
+```
+
+`canonical_exact_field_set` is a non-empty immutable tuple of unique
+`RtssStoredFieldKind` members sorted by enum declaration order. Raw duplicate
+field members are malformed rather than silently deduplicated. Insertion order
+therefore cannot affect equality. Empty field sets are illegal: they prove no
+exact stored-field scope and never mean "all fields" or "not field-specific."
+Each record names exactly one terminal compound, one primitive, one phase, one
+mechanism, one profile kind, and one canonical field set. Wildcard, prefix,
+range, all-primitives, all-fields, missing-primitive, missing-compound, and
+compound-versus-primitive polymorphic scopes are not admitted. A later
+production adapter may expand broad source information into independently
+validated exact records before admission; that is item 12 work, not item 2.
+
+The base key is the first eight components, excluding
+`canonical_exact_field_set`. Two complete canonical keys that are equal are an
+exact duplicate. For two records with different base keys there is no
+applicability overlap. For the same base key, equal field sets are an exact
+duplicate; unequal field sets with a non-empty intersection overlap and
+contradict; and disjoint field sets may coexist as distinct field-specific
+records. Thus strict subsets, strict supersets, and partial non-empty
+intersections contradict, while disjoint field-specific evidence is legal.
+Primitive and compound are separate exact dimensions: neither implicitly
+supplies or covers the other, and a primitive report never applies to every
+compound that references that primitive.
+
+The admission factory uses one policy for all semantic applicability conflicts.
+It produces the already-defined current `CONTRADICTORY` parent observation,
+with no selectable primitive or applicability records, and records exact
+factory-only `RtssApplicabilityAdmissionDiagnostic` values. The diagnostic
+names are:
+
+```text
+APPLICABILITY_EVIDENCE_UNTRUSTED
+FOREIGN_APPLICABILITY_EVIDENCE
+APPLICABILITY_PARENT_OBSERVATION_MISMATCH
+APPLICABILITY_BACKEND_GENERATION_MISMATCH
+APPLICABILITY_CAPABILITY_GENERATION_MISMATCH
+APPLICABILITY_MECHANISM_MISMATCH
+APPLICABILITY_PROFILE_KIND_MISMATCH
+APPLICABILITY_COMPOUND_MISMATCH
+APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH
+APPLICABILITY_FIELD_SET_MISMATCH
+APPLICABILITY_PRIMITIVE_MISMATCH
+APPLICABILITY_EXACT_DUPLICATE
+APPLICABILITY_FIELD_SET_OVERLAP
+APPLICABILITY_FIELD_SET_EMPTY
+APPLICABILITY_FIELD_MEMBER_DUPLICATE
+APPLICABILITY_COMPOUND_MISSING
+APPLICABILITY_PRIMITIVE_MISSING
+APPLICABILITY_PRIMITIVE_SCOPE_NOT_EXACT
+APPLICABILITY_FIELD_SCOPE_NOT_EXACT
+```
+
+An otherwise admitted child taken from a different admitted parent produces
+`FOREIGN_APPLICABILITY_EVIDENCE`; replacing only its parent identity produces
+`APPLICABILITY_PARENT_OBSERVATION_MISMATCH`. Backend generation, capability
+generation, mechanism, profile kind, compound, phase, field set, and primitive
+substitutions are likewise detected at this factory boundary and produce their
+correspondingly named diagnostics. Raw enums, Booleans, directly constructed
+children, and caller-authored children produce
+`APPLICABILITY_EVIDENCE_UNTRUSTED`. Duplicate, overlap, empty, missing, and
+broad-scope and repeated-field-member cases use their literal diagnostics
+above. In every case
+construction succeeds as one admitted contradictory parent, so the public
+evaluator may be called with that parent and returns exactly terminal
+`UNKNOWN`, public reason tuple `(CONTRADICTORY_EVIDENCE,)`. Admission
+diagnostics remain attached to contradiction sources for factory tests and
+audit; they are never re-emitted as public evaluator reasons.
+
+Candidate keys are compared after canonicalization. Enum dimensions use
+declaration order; structural identities and generations use their canonical
+immutable value tuples; field tuples use `RtssStoredFieldKind` declaration
+order. Conflict pairs are stored with the lesser key first. Contradiction
+sources are sorted by admission-diagnostic declaration order, first canonical
+key, second canonical key, then canonical provenance/source-reference tuple.
+Duplicate detection, overlap detection, diagnostics, and tests therefore have
+the same result under every raw input permutation. No first-wins, last-wins,
+set-order choice, or silent deduplication exists. Illegal contradictory
+stale/invalid parent combinations remain construction errors because they are
+invalid parent-state cross-products, not an alternative child-conflict policy.
+A raw report cannot invoke the admission factory as a production trust source.
 
 The required context matrix is:
 
@@ -431,19 +534,14 @@ Applicability-unknown reasons are exact and context-specific:
 | Profile creation integer forward | `PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
 | Profile creation fractional forward | `PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
 
-Every mismatch is also exact: the one-element reasons are
-`FOREIGN_APPLICABILITY_EVIDENCE`,
-`APPLICABILITY_PARENT_OBSERVATION_MISMATCH`,
-`APPLICABILITY_BACKEND_GENERATION_MISMATCH`,
-`APPLICABILITY_CAPABILITY_GENERATION_MISMATCH`,
-`APPLICABILITY_MECHANISM_MISMATCH`,
-`APPLICABILITY_PROFILE_KIND_MISMATCH`,
-`APPLICABILITY_COMPOUND_MISMATCH`,
-`APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH`,
-`APPLICABILITY_FIELD_SET_MISMATCH`, and
-`APPLICABILITY_PRIMITIVE_MISMATCH`. Raw/direct/caller-forged applicability
-uses exactly `APPLICABILITY_EVIDENCE_UNTRUSTED`. These reasons are distinct
-from the primitive reasons `SAVE_PERSIST_UNSUPPORTED`,
+Child mismatch names above are admission diagnostics, not public
+`RtssPolicyReason` values. The public evaluator accepts only the complete
+`RtssAdmittedCapabilityObservation`; it has no standalone-child overload and
+never reinterprets raw, copied-with-modification, replaced, or caller-authored
+applicability as admitted evidence. A consistent admitted parent can expose
+only a matching selectable child. A contradictory parent exposes no child and
+evaluates with the parent-level tuple `(CONTRADICTORY_EVIDENCE,)`. This boundary
+is distinct from the primitive evaluator reasons `SAVE_PERSIST_UNSUPPORTED`,
 `SAVE_PERSIST_EVIDENCE_MISSING`, `ACTIVATE_RELOAD_UNSUPPORTED`, and
 `ACTIVATE_RELOAD_EVIDENCE_MISSING`.
 
@@ -460,11 +558,14 @@ only when separately admitted records prove those facts.
 
 For each conditional dependency, the evaluator applies this exact algorithm:
 
-1. Match and validate the applicability record before consulting the primitive
-   support record.
-2. If the parent observation is unusable, or applicability is missing-source,
-   foreign, stale, invalid, contradictory, mismatched, or `UNKNOWN`, return
-   `UNKNOWN` for that dependency with the exact applicability reason. Do not
+1. Validate the complete parent observation. A current contradictory parent
+   returns `UNKNOWN / CONTRADICTORY_EVIDENCE` before child selection. The
+   evaluator never accepts or validates a standalone child.
+2. In a consistent parent, select the already factory-validated exact-key
+   applicability record before consulting the primitive support record. If the
+   parent is stale/invalid, or applicability is missing-source or `UNKNOWN`,
+   return `UNKNOWN` for that dependency with the exact public applicability
+   reason. Do not
    evaluate the conditional primitive for that context. The compound terminal
    result is `UNKNOWN` unless a different active dependency is currently and
    explicitly unsupported under the existing status-precedence rule.
@@ -486,7 +587,8 @@ exactly these legal whole-observation states:
 
 1. `CONSISTENT + CURRENT`, with exactly one structurally complete record for
    every declared primitive key and exactly one factory-admitted dependency-
-   applicability record for every declared save/activation slot;
+   applicability record for every declared complete applicability key, allowing
+   only the explicitly permitted disjoint field-specific keys;
 2. `CONSISTENT + STALE`, preserving the same complete last-observed record set
    for diagnostics;
 3. `CONSISTENT + INVALID`, preserving a complete raw-derived record set plus
@@ -502,7 +604,8 @@ errors. Missing raw primitive or applicability source is normalized rather
 than omitted: the factory creates the exact keyed `UNKNOWN` primitive record
 with `PRIMITIVE_EVIDENCE_MISSING` provenance or the exact keyed `UNKNOWN`
 applicability record with `APPLICABILITY_EVIDENCE_MISSING` provenance.
-Duplicate or overlapping applicability sources instead create the typed
+Duplicate complete keys, or equal-base-key field sets with a non-empty
+intersection under the literal predicate above, instead create the typed
 current contradictory observation. A whole-observation absence is represented
 only by `None`. The factory uses exactly one contradiction policy:
 contradictory direct, derived, or applicability sources produce the fourth
@@ -1139,9 +1242,51 @@ untrusted `RtssRawNameRuleReport` records; item 3 or item 12 later owns trusted
 admission. Raw reports, caller-created mappings, and values copied from a rule
 set cannot prove support. A consistent rule set contains exactly one rule for
 each declared applicability key and complete coverage for the evaluated key.
-Any duplicate or overlapping applicability report produces one current
+Name-rule applicability has one literal complete canonical key:
+
+```text
+(
+    rule_set_identity,
+    parent_observation_identity,
+    backend_generation,
+    capability_generation,
+    profile_kind,
+    namespace_scope,
+    mechanism,
+    tagged_subject_kind,
+    exact_subject,
+    name_context,
+)
+```
+
+`tagged_subject_kind` is exactly `PRIMITIVE` or `TERMINAL_COMPOUND`, and
+`exact_subject` is exactly one member of that taxonomy; the tag prevents a
+primitive and compound with similar values from colliding. All other
+dimensions are exact. Wildcard, prefix, range, all-mechanisms, all-primitives,
+all-compounds, all-contexts, or untagged primitive/compound-polymorphic
+applicability is malformed and produces a current contradictory rule set with
+typed `NAME_RULE_SCOPE_NOT_EXACT`. Rule content may contain the already-planned
+exact character/length/encoding policy, but broad applicability scope may not.
+A later adapter must expand broad source scope into exact records before
+admission.
+
+One aggregate rule record owns each complete key. Two legal records are exact
+duplicates iff their complete canonical keys are equal; because every
+dimension is exact and no wildcard is admitted, legal name-rule applicability
+overlaps iff those complete keys are equal. A second record with that key,
+whether content-equal or content-conflicting, produces
+`NAME_RULE_EXACT_DUPLICATE`; there is no first/last-wins merge or silent
+deduplication. Different complete keys do not overlap and may coexist.
+Canonical key comparison uses the same structural-value and enum-declaration
+ordering as capability admission. Duplicate conflict pairs and diagnostics are
+sorted by diagnostic declaration order, lesser key, greater key, then
+provenance/source reference, so reverse input order is invariant.
+
+Any duplicate or non-exact applicability report produces one current
 `CONTRADICTORY` admitted rule set with a canonical non-empty conflict tuple and
-no selectable rules. Contradictory stale/invalid combinations, missing
+no selectable rules. Its public result is exactly `UNKNOWN /
+CONTRADICTORY_NAME_RULES`; the factory-only duplicate/scope diagnostic is not a
+public evaluator reason. Contradictory stale/invalid combinations, missing
 coverage, or selectable rules inside a contradictory set are construction
 errors.
 
@@ -1639,11 +1784,13 @@ Corrected planning semantics - context matching, legal observation states,
 decision precedence, failure-only reason ordering, contradiction
 representation, internal fractional dependency expansion, bit-width and exact
 bound conversion including literal negative oracles, mechanism-specific
-save/activation applicability semantics, legally constructible diagnostic
-groups, aggregating raw-name classification, identity fail-closed behavior,
-name-rule ownership, named-normalization compatibility, and namespace
-completeness - are resolved proposed design pending independent review; they
-are not live-fact questions and do not appear as open rows.
+save/activation applicability semantics, the parent-only evaluator boundary,
+canonical applicability keys and literal duplicate/overlap predicates,
+legally constructible diagnostic groups, aggregating raw-name classification,
+identity fail-closed behavior, exact-scope name-rule ownership,
+named-normalization compatibility, and namespace completeness - are resolved
+proposed design pending independent review; they are not live-fact questions
+and do not appear as open rows.
 
 The item-2 planning correction leaves only these real-world or later-lifecycle
 decisions explicit:
@@ -1692,8 +1839,8 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - three planning reviews rejected;
-   third correction completed locally; independent review and later explicit
+2. **Capability and supported-name policy - four planning reviews rejected;
+   fourth correction completed locally; independent review and later explicit
    acceptance required; implementation unauthorized**
    - future unit 2a: add unique status, support, validity, origin, mechanism,
      primitive-operation, terminal compound-requirement, internal-dependency,

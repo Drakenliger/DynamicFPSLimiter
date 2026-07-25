@@ -86,9 +86,9 @@ and sequencing, not completed implementation or production behavior.
 The following durable design decisions were produced by the local RTSS Stage 2
 sequence-item-2 planning session. They are not accepted implementation
 authority until the planning commit is independently reviewed and explicitly
-accepted. The initial plan and its first and second corrected commits were
-rejected; Decisions 48-50 are the third correction to the remaining findings.
-All decisions in this section remain proposed and pending review.
+accepted. The initial plan and its first three corrected commits were rejected;
+Decisions 51-52 are the fourth correction to the two remaining findings. All
+decisions in this section remain proposed and pending review.
 
 34. Capability and supported-name policy is pure, deterministic, immutable,
     mechanism-specific, and fail-closed. Its terminal decision is exactly one
@@ -151,9 +151,9 @@ All decisions in this section remain proposed and pending review.
     observation and its backend/capability generations and scoped to profile
     kind, mechanism, operation, and name context. Raw caller-authored rules,
     direct construction, stale/foreign/replaced rules, incomplete coverage,
-    and mismatches cannot prove support. Duplicate or overlapping applicability
-    is admitted only as one typed contradictory rule set and evaluates
-    `UNKNOWN`.
+    and mismatches cannot prove support. Duplicate or non-exact applicability
+    is governed by the literal key and overlap predicate in Decision 52,
+    admitted only as one typed contradictory rule set, and evaluates `UNKNOWN`.
 43. Namespace and collision evidence is immutable, factory-controlled,
     observation-identity-bound, backend/capability-generation-bound, and
     complete by either proved enumeration or authoritative exact-query
@@ -205,6 +205,33 @@ All decisions in this section remain proposed and pending review.
     negative empty and non-empty intersections, mixed-sign and exact-negative
     controls, negative-zero behavior, equal negative boundaries, and signed
     minimum underflow, with no float construction or conversion.
+51. Applicability-child trust is decided only by the admitted-observation
+    factory. A structurally equal immutable factory-admitted copy is equivalent,
+    but every replaced or caller-authored child is revalidated. A foreign,
+    generation-mismatched, mechanism-mismatched, profile-kind-mismatched,
+    compound-mismatched, phase-mismatched, field-set-mismatched,
+    primitive-mismatched, raw, Boolean, or caller-authored child produces the
+    single typed current contradictory parent with canonically ordered
+    admission diagnostics and no selectable records. The public evaluator
+    accepts only the complete parent; it never accepts a standalone child or
+    emits child-admission diagnostics. Evaluating the contradictory parent is
+    always exactly `UNKNOWN / CONTRADICTORY_EVIDENCE`.
+52. Every admitted applicability record has one literal complete key:
+    parent observation identity, backend generation, capability generation,
+    mechanism, profile kind, terminal compound requirement, dependency phase
+    context, exact primitive dependency, and a non-empty immutable exact field
+    set canonically ordered by `RtssStoredFieldKind` declaration order. No
+    wildcard, prefix, range, all-fields, all-primitives, or
+    compound/primitive-polymorphic scope is admitted. Equal complete keys are
+    duplicates. For equal base keys excluding fields, equal field sets are
+    duplicates, a non-empty intersection is contradictory, and disjoint field
+    sets may coexist; different base keys do not overlap. Admission sorts keys,
+    conflict pairs, and typed diagnostics canonically, so reversed input has
+    identical results. Name-rule applicability likewise uses one exact tagged
+    primitive-or-terminal-compound key per exact context; because broad scopes
+    are prohibited and one aggregate rule owns each key, two legal name-rule
+    records overlap only when their complete keys are equal, which is a
+    contradictory duplicate.
 
 ## Unresolved decisions
 
