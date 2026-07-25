@@ -6,8 +6,8 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 plan accepted; implementation authorization
-  pending
+- Current phase: RTSS Stage 2 sequence item 1 implemented locally; independent
+  implementation review pending
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -21,6 +21,9 @@
 - Final Stage 2 planning correction:
   `677b6b5750ac52953fd1581efbc658adbc171b22`
   (`docs: complete RTSS Stage 2 planning corrections`)
+- Stage 2 acceptance record:
+  `d10feead8a3707ee52a54f80e4e53c14945309d0`
+  (`docs: accept RTSS Stage 2 coordinator design`)
 
 ## Verified Stage 1 merge state
 
@@ -136,6 +139,37 @@ transaction-coordinator plan at `677b6b5750ac52953fd1581efbc658adbc171b22` on
 pull-request creation, production integration, or live RTSS/hardware
 interaction.
 
+## RTSS Stage 2 sequence item 1 implementation
+
+The accepted prerequisite contract correction was implemented locally after
+the planning-review and explicit-acceptance gates completed at
+`d10feead8a3707ee52a54f80e4e53c14945309d0`.
+
+The focused deterministic change:
+
+- restricts `RtssReadback` through explicit closed read-only outcome,
+  failure-step, and outcome/step allowlists;
+- preserves exact stored numerator and denominator evidence independently of
+  reduced mathematical `RationalCap` equality;
+- requires representation-exact restoration when exact stored evidence is
+  owned;
+- adds immutable complete degraded-field accounting, typed transaction and
+  ownership attribution, save and activation uncertainty, retained ownership,
+  explicit degraded handoff, and proof-gated ownership release; and
+- adds exhaustive readback and apply matrices plus exact-representation,
+  degraded-state, identity, generation, ownership, and handoff regressions.
+
+The deterministic suite passes all 122 tests with
+`PYTHONDONTWRITEBYTECODE=1`. No coordinator, transaction admission, capture
+execution, mutation, rollback execution, production integration, live adapter,
+dependency, or external-system behavior was added.
+
+This implementation remains local. It has not been pushed and has no pull
+request. Its next gate is an independent read-only review of the single local
+implementation commit. Stage 2 sequence item 2, capability and supported-name
+policy, remains unauthorized until that review is complete and separately
+accepted for further work.
+
 ## Current work
 
 RTSS Stage 1 is complete and merged. It provides deterministic identity,
@@ -144,9 +178,9 @@ ownership, evidence, and result contracts with deterministic tests.
 
 RTSS Stage 2 planning, both planning corrections, all three independent
 reviews, and explicit user acceptance are recorded on
-`feature/rtss-transaction-coordinator`. Stage 2 source implementation has not
-started. No transaction coordinator exists, and no production caller uses the
-Stage 1 contracts.
+`feature/rtss-transaction-coordinator`. The first accepted Stage 2
+contract/test-only sequence item is implemented locally. No transaction
+coordinator exists, and no production caller uses these contracts.
 
 The initial local Stage 2 planning commit changed exactly:
 
@@ -171,8 +205,8 @@ request exists.
 
 ## Design-review status
 
-**Accepted Stage 2 design; implementation not started or authorized by the
-acceptance-record task.**
+**Accepted Stage 2 design; sequence item 1 implemented locally and awaiting
+independent read-only review.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -197,8 +231,11 @@ coordinator:
 - keep deterministic coordination separate from later live DLL, profile-file,
   GUI, lifecycle, and production-caller integration.
 
-These items and their Stage 2 tests are accepted plans only. They are not
-implemented, passing, closed, or production-reachable.
+The readback, exact stored-field, degraded-state, handoff, and retained-
+ownership prerequisites in sequence item 1 are now implemented and passing
+locally. Capability-driven name policy, coordinator logic, mutation,
+production integration, and their later tests remain planned, unimplemented,
+and non-production-reachable.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -243,18 +280,17 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The planning review and explicit-acceptance gates are satisfied. The next
-implementation action, only if separately authorized, is the accepted
-contract/test-only prerequisite slice: correct the readback contract and
-matrices, add exact stored-field evidence, and add the immutable degraded-state
-and retained-ownership schema. That slice must enable no RTSS mutation.
+The planning-review and explicit-acceptance gates are satisfied, and Stage 2
+sequence item 1 is implemented locally without mutation. The next action is an
+independent read-only review of its single implementation commit.
 
-Implementation, push, and pull-request creation remain unauthorized by this
-acceptance-record task. Any later implementation task must use small,
-independently reviewable commits, may not admit mutation before its complete
-applicable rollback and degraded-state handling exist, and must keep production
-callers out of the coordinator phase. Push and pull-request creation require
-separate explicit approval.
+Sequence item 2 remains unauthorized until that review. Coordinator admission,
+capture, rollback foundations, every mutation-bearing slice, production
+integration, push, and pull-request creation remain later separately gated
+work. Any later implementation task must use small, independently reviewable
+commits, may not admit mutation before its complete applicable rollback and
+degraded-state handling exist, and must keep production callers out of the
+coordinator phase.
 
 ## Physical validation still required
 

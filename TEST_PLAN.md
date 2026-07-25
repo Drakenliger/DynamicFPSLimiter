@@ -25,10 +25,11 @@ The harness currently covers pure legacy decrease characterization
 (`CTRL-001`), an unwired structural cap-ladder validator (`CTRL-005`),
 standard-library discovery and import isolation (`TEST-001`), and initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
-It also covers the RTSS Stage 1 contract and deterministic-fake validation
-recorded below. It performs no live RTSS, GUI, sensor, process, registry,
-profile, or hardware interaction. CI and later production adapters remain
-outstanding.
+It also covers the RTSS Stage 1 contract and deterministic-fake validation plus
+the RTSS Stage 2 sequence item 1 prerequisite contracts recorded below. The
+complete suite contains 122 passing deterministic tests. It performs no live
+RTSS, GUI, sensor, process, registry, profile, or hardware interaction. CI and
+later production adapters remain outstanding.
 
 ## RTSS Stage 1 validation record
 
@@ -63,18 +64,19 @@ These are contract and deterministic-fake tests only. Stage 1 did not test:
 No supported-version, hardware, profile-file, or runtime compatibility claim is
 established by this validation.
 
-## RTSS Stage 2 deterministic coordinator tests - planned
+## RTSS Stage 2 deterministic coordinator tests
 
-Every test in this section is **planned**. None is implemented or passing as
-part of the Stage 2 planning commit. The historical Stage 1 result remains 95
-passing deterministic tests.
+The prerequisite contract matrices and exact stored/degraded ownership tests
+for sequence item 1 are implemented and passing locally. Coordinator,
+capability/name-policy, mutation, production-adapter, and physical tests in
+later subsections remain **planned** and must not be described as passing.
 
 The corrected Stage 2 test plan at
 `677b6b5750ac52953fd1581efbc658adbc171b22` was independently verified and
-explicitly accepted on 25 July 2026. Acceptance does not make any planned test
-implemented or passing. The first separately authorized implementation gate is
-the prerequisite contract matrices and exact stored/degraded-state contract
-coverage below; it must remain contract/test-only and enable no mutation.
+explicitly accepted on 25 July 2026. The separately authorized first
+implementation gate is now complete locally: the prerequisite contract
+matrices and exact stored/degraded-state coverage remain contract/test-only and
+enable no mutation. Later planned tests remain unimplemented.
 
 The Stage 2 tests will use only pure contracts, an in-memory fake backend, a
 fake lifecycle/admission owner, deterministic barriers, and an ordered
@@ -82,27 +84,55 @@ operation log. They must run on any supported development platform without
 RTSS, Windows, a GPU, a game, Dear PyGui, LibreHardwareMonitor, PDH, or Lossless
 Scaling.
 
-### Planned prerequisite contract matrices
+### Implemented prerequisite contract matrices
 
-- **Planned `S1-READBACK-001` / `S1-TEST-001`:** iterate every
+- **Implemented `S1-READBACK-001` / `S1-TEST-001`:** iterate every
   `RtssOutcome`/`RtssFailureStep` pair and assert the explicit read-only
   acceptance table. Verify `VERIFIED/NONE`, permitted validation, generation,
   capability, conflict, and readback failures, and reject mutation-only apply,
   save, update, rollback, restore, and delete states. Assert the table covers
   every enum member so additions fail closed.
-- **Planned apply matrix:** iterate every
+- **Implemented apply matrix:** iterate every
   `RtssOutcome`/`RtssFailureStep` pair with the minimum valid supporting state
   for that pair. Accept only the defined pre-mutation, exact no-change,
   verified apply, verified rollback, conflict, and degraded graphs; reject all
-  other pairs. If one cross-product cell cannot be represented independently,
-  document the invariant that makes it impossible and retain a fail-closed
-  assertion over both enums.
+  other pairs.
 - **Planned restore matrix:** retain the Stage 1 exhaustive matrix and extend
   it for any new non-flag unresolved-state accounting without weakening the
   existing exact-restoration and closed-state assertions.
 - **Planned capability-name prerequisite (`S1-DESIGN-001`):** test zero,
   one-below, exact, and one-above boundaries for DLL-name bytes and derived
   profile-filename components, including the `.cfg` suffix and Global mapping.
+
+### Implemented sequence item 1 evidence and ownership regressions
+
+- Exact stored numerator and denominator remain unreduced independent evidence;
+  partial pairs and invalid availability/value combinations fail closed.
+- `NOT_REQUESTED`, `AVAILABLE`, `READ_FAILED`, `UNSUPPORTED`, and
+  `VERIFIED_ABSENT` stored evidence remain distinct.
+- Captured `120/2` and readback `60/1` are mathematically equal effective caps
+  but fail representation-exact restoration; `120/2` matched by `120/2`
+  verifies when all other evidence matches.
+- Exact stored representation is not inferred from `RationalCap`.
+- Degraded accounting partitions every applicable field exactly once and
+  covers stored numerator/denominator, effective cap, profile
+  existence/deletion/verified absence, document, revision, owned limiter flags,
+  save, activation, backend epoch, and retained ownership.
+- Incomplete accounting, false resolution, unavailable evidence, and
+  unrequested/unowned-field inflation fail closed; save and activation
+  uncertainty are independent.
+- Typed transaction, canonical profile, profile-kind, request, capture,
+  evidence, application/session/profile/source, backend, and capability
+  attribution are immutable and generation checked.
+- Case-only display spelling preserves canonical ownership; cross-profile,
+  cross-generation, backend-epoch, capability-generation, recipient, and
+  transaction mismatches are rejected.
+- Complete explicit handoff acceptance can release ownership; rejection,
+  missing acceptance, incomplete attribution, or a wrong recipient retains
+  ownership. Exact verified restoration is the only other admitted release
+  proof.
+- These 27 focused tests raise the complete deterministic result from 95 to
+  122 passing tests with zero failures, errors, or unexpected skips.
 
 ### Planned request, identity, path, and capability admission
 

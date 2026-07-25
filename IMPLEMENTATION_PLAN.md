@@ -29,11 +29,12 @@ approved for explicit user acceptance on 25 July 2026, and the user explicitly
 accepted it that day. Accepted Stage 2 decisions are recorded in
 `DECISIONS.md`.
 
-**Accepted Stage 2 design; implementation not started.**
-Coordinator source, contract corrections, fakes, and Stage 2 tests are not
+**Accepted Stage 2 design; prerequisite sequence item 1 implemented locally.**
+The readback correction, exact stored-field evidence, immutable degraded-state
+and retained-ownership contracts, and their deterministic matrices are
+implemented locally after separate authorization. The coordinator, capability
+and supported-name policy, mutation, and production integration are not
 implemented. The branch has not been pushed and no Stage 2 pull request exists.
-Acceptance of the plan does not authorize implementation, production
-integration, push, or pull-request creation.
 
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
@@ -118,7 +119,8 @@ rejection.
 
 ### Required Stage 1 prerequisites and focused contract extensions
 
-The first implementation work must be contract/test-only:
+The first implementation work was completed locally as a contract/test-only
+slice:
 
 - `S1-READBACK-001`: define an explicit read-only outcome/failure-step table
   for `RtssReadback`. Mutation-only outcomes such as
@@ -144,8 +146,9 @@ The first implementation work must be contract/test-only:
   failure, retained ownership, and explicit degraded handoff. Silent ownership
   release is invalid.
 
-These corrections require focused regression tests and independent review
-before coordinator logic relies on them.
+These corrections now have focused regression tests in the 122-test
+deterministic suite. Independent read-only review of the implementation commit
+remains required before later Stage 2 logic may rely on them.
 
 ### Mandatory degraded-state identity and handoff schema
 
@@ -519,12 +522,14 @@ recovery mechanism, universal component limit, or compatibility claim.
 
 The independently verified and explicitly accepted implementation sequence is:
 
-1. **Prerequisite contract correction**
+1. **Prerequisite contract correction - completed locally**
    - restrict `RtssReadback` to read-only outcome/failure-step allowlists;
    - add the exhaustive readback matrix and a justified exhaustive apply
      matrix;
    - add exact stored-field evidence types; and
    - add the immutable degraded-state and retained-ownership schema.
+   - completed without transaction coordination, mutation, or production
+     integration; independent read-only review is the next gate.
 2. **Capability and supported-name policy**
    - add configured/backend range intersections, exact-field capabilities,
      component lengths, lexical/path rejection, and exact encoding policy.
@@ -652,12 +657,13 @@ Stage 2 coordinator implementation is complete only when:
 - an independent read-only review accepts the contract changes, coordinator
   ordering, test matrices, and production-integration boundary.
 
-The planning-review and explicit-acceptance gates are satisfied. The next
-implementation gate, only in a separately authorized task, is commit 1:
-contract/test-only prerequisite correction with no admitted mutation. Each
-later mutation-bearing slice remains gated by its complete applicable rollback,
-degraded-state, ownership, failure-matrix, and independent-review requirements.
-Push and pull-request creation require separate explicit approval.
+The planning-review and explicit-acceptance gates are satisfied, and sequence
+item 1 is implemented locally with no admitted mutation. The next gate is an
+independent read-only review of that implementation commit. Sequence item 2 and
+each later mutation-bearing slice remain unauthorized and gated by their
+applicable review, rollback, degraded-state, ownership, and failure-matrix
+requirements. Push and pull-request creation require separate explicit
+approval.
 
 ### Rollback considerations
 
@@ -716,9 +722,12 @@ generation-aware, reversible RTSS boundary.
   `677b6b5750ac52953fd1581efbc658adbc171b22` are complete on local branch
   `feature/rtss-transaction-coordinator`. The final independent review
   recommendation was **Approved for explicit user acceptance**, and the user
-  explicitly accepted the corrected plan on 25 July 2026. No coordinator
-  source or planned Stage 2 test is implemented, no production caller uses the
-  Stage 1 contracts, and production integration remains later work.
+  explicitly accepted the corrected plan on 25 July 2026. Acceptance commit
+  `d10feead8a3707ee52a54f80e4e53c14945309d0` records that gate. The focused
+  prerequisite contract/test sequence item is implemented locally and passes
+  all 122 deterministic tests. No coordinator or mutation exists, no
+  production caller uses the contracts, and production integration remains
+  later work.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.

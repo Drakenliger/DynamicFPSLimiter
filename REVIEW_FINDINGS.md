@@ -280,7 +280,7 @@ ledger and its identifiers; they are not duplicate ledger entries.
   production defect. The commit containing this follow-up must be verified
   through Git after creation and through GitHub after any approved publication.
 
-### `S1-READBACK-001` - Low / Confirmed / deferred
+### `S1-READBACK-001` - Low / Confirmed / corrected locally
 
 - **Location:** `RtssReadback.__post_init__`.
 - **Problem:** The readback contract accepts mutation-only outcomes and failure
@@ -290,18 +290,33 @@ ledger and its identifiers; they are not duplicate ledger entries.
 - **Current reachability:** No production caller uses the Stage 1 contracts.
 - **Required correction:** Restrict `RtssReadback` to an explicit set of valid
   read-only outcomes and failure steps.
-- **Disposition:** Deferred Stage 2 prerequisite before production adapters rely
-  on the contract.
+- **Implemented correction:** Stage 2 sequence item 1 defines immutable closed
+  read-only outcome and failure-step allowlists plus an explicit compatible
+  outcome/step table. Mutation, save, update, rollback, restore, deletion, and
+  mutation-only terminal outcomes now fail closed.
+- **Verification:** The exhaustive readback cross-product and direct allowlist
+  membership assertions pass in the 122-test deterministic suite.
+- **Disposition:** Corrected locally; independent read-only review of the
+  implementation commit is the next gate. No production RTSS finding is
+  closed by this contract correction.
 
-### `S1-TEST-001` - Low / Confirmed / deferred
+### `S1-TEST-001` - Low / Confirmed / corrected locally
 
 - **Location:** Readback contract tests.
 - **Problem:** The deterministic suite has no exhaustive readback
   outcome/failure-step matrix.
 - **Required correction:** Add an exhaustive readback outcome/failure-step
   matrix and retain fail-closed coverage when outcomes or steps change.
-- **Disposition:** Deferred with `S1-READBACK-001` before production
-  integration.
+- **Implemented correction:** The focused prerequisite test module iterates
+  every current `RtssOutcome` and `RtssFailureStep` combination, proves the
+  exact accepted readback graph, proves every other combination rejected, and
+  compares complete enum membership with the explicit allowlists. It also adds
+  the accepted exhaustive apply outcome/failure-step matrix.
+- **Verification:** All matrix, exact-representation, degraded-accounting,
+  identity, generation, ownership, and handoff regressions pass; the complete
+  deterministic suite contains 122 tests.
+- **Disposition:** Corrected locally with `S1-READBACK-001`; independent
+  read-only review remains required before later Stage 2 work.
 
 ### `S1-DESIGN-001` - Low / Improvement / deferred
 

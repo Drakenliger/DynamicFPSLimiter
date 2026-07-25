@@ -4,6 +4,24 @@
 
 No fix has been released from the review baseline.
 
+### RTSS Stage 2 - prerequisite contract correction
+
+The first accepted Stage 2 sequence item adds deterministic closed read-only
+outcome and failure-step allowlists for `RtssReadback`, exact stored numerator
+and denominator evidence distinct from reduced `RationalCap` equality, and
+immutable complete degraded-state, handoff, retained-ownership, and
+proof-gated ownership-release contracts.
+
+New regressions exhaustively cover the readback and apply outcome/failure-step
+matrices, exact stored `120/2` versus normalized `60/1` restoration, evidence
+availability, complete degraded-field accounting, canonical identity and
+generation attribution, and accepted and rejected handoff behavior. The
+deterministic suite contains 122 passing tests.
+
+No transaction coordinator, mutation, production wiring, live RTSS behavior,
+profile write, capability/name policy, dependency, or external-system behavior
+changes in this prerequisite slice.
+
 ### RTSS Stage 1 - preparatory internal infrastructure
 
 RTSS Stage 1 adds deterministic contracts for RTSS profile identity, apply
