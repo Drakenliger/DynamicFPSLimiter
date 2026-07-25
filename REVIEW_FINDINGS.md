@@ -327,10 +327,19 @@ A second independent, read-only review assessed correction commit
 `S2-NAME-001`, `S1-PROVENANCE-001`, `S2-STATUS-001`, and `S2-DECISION-001` as
 corrected, while finding `S2-DEGRADED-001`, `S2-SEQUENCE-001`, and
 `S2-INVENTORY-001` only partially corrected. The latter three dispositions
-below record the further correction and remain pending another independent
-verification.
+below record the further correction that was subsequently reviewed.
 
-### `S2-DEGRADED-001` - High / Confirmed / corrected pending another independent verification
+Final correction commit
+`677b6b5750ac52953fd1581efbc658adbc171b22` received a third independent,
+strictly read-only review on 25 July 2026. Its recommendation was **Approved for
+explicit user acceptance**. It found the three remaining partial findings fully
+corrected, found no regression in the four findings already independently
+verified, and found no new blocking or non-blocking Stage 2 planning issue. The
+user explicitly accepted the corrected plan at that commit on 25 July 2026.
+This acceptance does not close any production finding in the original 50-item
+active technical-review ledger.
+
+### `S2-DEGRADED-001` - High / Confirmed / corrected and independently verified
 
 - **Location:** Stage 1 restoration-result contracts and the Stage 2
   degraded-state, rollback, restoration, and ownership plan.
@@ -373,8 +382,12 @@ verification.
   restoration is verified against the same canonical identity and generations,
   or the defined recipient accepts a complete explicit handoff preserving all
   identity, generation, unresolved-state, and responsibility evidence.
-- **Status:** Corrected pending another independent verification; not closed or
-  independently verified.
+- **Third independent-review result:** Fully corrected. Required identity,
+  generation, evidence, handoff-acceptance, transition, and ownership-retention
+  rules are explicit schema and test-plan requirements rather than implications
+  of “complete unresolved state.”
+- **Acceptance:** Explicitly accepted as part of corrected Stage 2 planning at
+  `677b6b5750ac52953fd1581efbc658adbc171b22`.
 
 ### `S2-NAME-001` - Medium / Confirmed / corrected and independently verified
 
@@ -391,8 +404,9 @@ verification.
   encoding, defined canonicalization behavior, and applicable encoded-byte and
   character limits. No Unicode support is claimed.
 - **Second independent-review result:** Corrected and independently verified.
+- **Third independent-review regression result:** Remained correct.
 
-### `S2-SEQUENCE-001` - High / Confirmed / corrected pending another independent verification
+### `S2-SEQUENCE-001` - High / Confirmed / corrected and independently verified
 
 - **Location:** Proposed Stage 2 implementation commits.
 - **Problem:** A mutation-bearing intermediate commit was planned before
@@ -428,8 +442,12 @@ verification.
   they cannot remain independently reviewable. Creation/deletion restoration,
   flags, additional mechanisms, switching, cancellation/generation
   transitions, and production adapters remain separate later slices.
-- **Status:** Corrected pending another independent verification; not closed or
-  independently verified.
+- **Third independent-review result:** Fully corrected. The first
+  mutation-bearing slice is objectively limited to one existing-profile
+  exact-cap operation through one admitted mechanism, with complete applicable
+  rollback, degradation, ownership, failure, and deterministic-test gates.
+- **Acceptance:** Explicitly accepted as part of corrected Stage 2 planning at
+  `677b6b5750ac52953fd1581efbc658adbc171b22`.
 
 ### `S1-PROVENANCE-001` - Medium / Confirmed / corrected and independently verified
 
@@ -446,6 +464,7 @@ verification.
   appropriate regression coverage before technical allocation or closure. No
   content is inferred for these identifiers.
 - **Second independent-review result:** Corrected and independently verified.
+- **Third independent-review regression result:** Remained correct.
 
 ### `S2-STATUS-001` - Low / Confirmed / corrected and independently verified
 
@@ -455,8 +474,9 @@ verification.
 - **Correction:** Use stable historical wording identifying the local Stage 2
   planning commit and its exact scope.
 - **Second independent-review result:** Corrected and independently verified.
+- **Third independent-review regression result:** Remained correct.
 
-### `S2-INVENTORY-001` - Low / Confirmed / corrected pending another independent verification
+### `S2-INVENTORY-001` - Low / Confirmed / corrected and independently verified
 
 - **Location:** Production inventory for
   `RTSSController.set_fractional_framerate`.
@@ -477,8 +497,11 @@ verification.
   The denominator file rewrite remains unconditional in both paths; update
   count and timing differ. A later ordered-fake characterization test is
   planned for each branch.
-- **Status:** Corrected pending another independent verification; not closed or
-  independently verified.
+- **Third independent-review result:** Fully corrected. The documentation
+  matches both method-level update paths and the eight active production
+  callers, all of which omit `update` and use the default `update=False`.
+- **Acceptance:** Explicitly accepted as part of corrected Stage 2 planning at
+  `677b6b5750ac52953fd1581efbc658adbc171b22`.
 
 ### `S2-DECISION-001` - Medium / Improvement / corrected and independently verified
 
@@ -490,9 +513,16 @@ verification.
   **Proposed Stage 2 design pending independent verification and explicit
   acceptance.** They become accepted only after the complete corrected plan is
   independently verified, the user explicitly accepts it, and accepted
-  decisions are durably recorded before implementation where needed. Existing
-  accepted decisions in `DECISIONS.md` remain unchanged.
+  decisions are durably recorded before implementation where needed. At the
+  time of that correction, existing accepted decisions in `DECISIONS.md`
+  remained unchanged.
 - **Second independent-review result:** Corrected and independently verified.
+- **Third independent-review regression result:** Remained correct.
+- **Acceptance record:** The corrected plan was independently verified and
+  explicitly accepted at
+  `677b6b5750ac52953fd1581efbc658adbc171b22`. Stage 2 Decisions 27-33 are now
+  recorded in `DECISIONS.md`; implementation and production integration remain
+  separate, unauthorized work.
 
 ## Active finding ledger
 

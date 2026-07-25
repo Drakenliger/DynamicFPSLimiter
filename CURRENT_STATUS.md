@@ -6,7 +6,8 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 planning correction review
+- Current phase: RTSS Stage 2 plan accepted; implementation authorization
+  pending
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
 - Stage 1 squash merge:
   `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
@@ -17,6 +18,9 @@
 - First Stage 2 planning correction:
   `15a3774eb0ff10741e6684bf3414b4fdde61ae72`
   (`docs: address RTSS Stage 2 planning review`)
+- Final Stage 2 planning correction:
+  `677b6b5750ac52953fd1581efbc658adbc171b22`
+  (`docs: complete RTSS Stage 2 planning corrections`)
 
 ## Verified Stage 1 merge state
 
@@ -103,11 +107,34 @@ It found these findings only partially corrected:
 - `S2-INVENTORY-001`, because the non-default `update=True` path and its two
   update activations were not recorded.
 
-The subsequent documentation correction addresses those three remaining
-planning items. It must still receive another independent, read-only review and
-must not be treated as independently verified or accepted. Stage 2
-implementation remains blocked. No Stage 2 source implementation, production
-integration, remote branch, configured branch upstream, or pull request exists.
+At that point, the subsequent documentation correction addressed those three
+remaining planning items but still required another independent, read-only
+review and explicit acceptance. Stage 2 implementation remained blocked. No
+Stage 2 source implementation, production integration, remote branch,
+configured branch upstream, or pull request existed.
+
+## Final Stage 2 correction review and acceptance
+
+Final planning correction
+`677b6b5750ac52953fd1581efbc658adbc171b22` received an independent, strictly
+read-only review on 25 July 2026. The result was **Approved for explicit user
+acceptance**. The review found `S2-DEGRADED-001`, `S2-SEQUENCE-001`, and
+`S2-INVENTORY-001` fully corrected and found no regression in `S2-NAME-001`,
+`S1-PROVENANCE-001`, `S2-STATUS-001`, or `S2-DECISION-001`.
+
+The review confirmed the original active ledger still contained exactly 50
+unchanged, uniquely ordered findings. Both planning diffs were whitespace-clean,
+all 95 deterministic tests passed, the worktree and index remained clean, and
+no cache or bytecode artifacts were present. The branch had no configured
+upstream, remote Stage 2 branch, or pull request; only the fork origin was
+queried and the configured upstream repository was not contacted.
+
+The user explicitly accepted the corrected RTSS Stage 2
+transaction-coordinator plan at `677b6b5750ac52953fd1581efbc658adbc171b22` on
+25 July 2026. Accepted Stage 2 architectural decisions are recorded in
+`DECISIONS.md`. This acceptance does not authorize implementation, push,
+pull-request creation, production integration, or live RTSS/hardware
+interaction.
 
 ## Current work
 
@@ -115,10 +142,11 @@ RTSS Stage 1 is complete and merged. It provides deterministic identity,
 rational-cap, generation, capability, capture, readback, apply, restoration,
 ownership, evidence, and result contracts with deterministic tests.
 
-RTSS Stage 2 planning, the first planning correction, and both independent
-reviews are recorded on `feature/rtss-transaction-coordinator`. Stage 2 source
-implementation has not started. No transaction coordinator exists, and no
-production caller uses the Stage 1 contracts.
+RTSS Stage 2 planning, both planning corrections, all three independent
+reviews, and explicit user acceptance are recorded on
+`feature/rtss-transaction-coordinator`. Stage 2 source implementation has not
+started. No transaction coordinator exists, and no production caller uses the
+Stage 1 contracts.
 
 The initial local Stage 2 planning commit changed exactly:
 
@@ -126,22 +154,25 @@ The initial local Stage 2 planning commit changed exactly:
 - `IMPLEMENTATION_PLAN.md`; and
 - `TEST_PLAN.md`.
 
-The follow-up corrections are documentation-only and limited to:
+The planning corrections were documentation-only and limited to:
 
 - `CURRENT_STATUS.md`;
 - `REVIEW_FINDINGS.md`;
 - `IMPLEMENTATION_PLAN.md`; and
 - `TEST_PLAN.md`.
 
-They do not change production source, tests, configuration, workflows, ignored
-review inputs, or external state. The branch remains local only: no Stage 2
-push, remote branch, configured upstream for this branch, or pull request
-exists.
+The acceptance record is also documentation-only and limited to
+`CURRENT_STATUS.md`, `REVIEW_FINDINGS.md`, `DECISIONS.md`,
+`IMPLEMENTATION_PLAN.md`, and `TEST_PLAN.md`. None of this planning or
+acceptance work changes production source, tests, configuration, workflows,
+ignored review inputs, or external state. The branch remains local only: no
+Stage 2 push, remote branch, configured upstream for this branch, or pull
+request exists.
 
 ## Design-review status
 
-**Proposed Stage 2 design pending independent verification and explicit
-acceptance.**
+**Accepted Stage 2 design; implementation not started or authorized by the
+acceptance-record task.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -166,8 +197,8 @@ coordinator:
 - keep deterministic coordination separate from later live DLL, profile-file,
   GUI, lifecycle, and production-caller integration.
 
-These items and their tests are planned only. They are not implemented, tested,
-closed, or production-reachable.
+These items and their Stage 2 tests are accepted plans only. They are not
+implemented, passing, closed, or production-reachable.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -212,16 +243,18 @@ beyond the statically reviewed baseline.
 
 ## Next action and gates
 
-The next action is an independent, read-only review of the additional local
-documentation correction that addresses the three remaining partial Stage 2
-planning-review findings.
+The planning review and explicit-acceptance gates are satisfied. The next
+implementation action, only if separately authorized, is the accepted
+contract/test-only prerequisite slice: correct the readback contract and
+matrices, add exact stored-field evidence, and add the immutable degraded-state
+and retained-ownership schema. That slice must enable no RTSS mutation.
 
-Stage 2 implementation remains blocked pending that correction review and
-explicit user acceptance of the corrected plan. Any push and pull-request
-creation remain separately blocked and require explicit approval. A later
-implementation task must use small, independently reviewable commits, may not
-admit mutation before its complete applicable rollback and degraded-state
-handling exist, and must keep production callers out of the coordinator phase.
+Implementation, push, and pull-request creation remain unauthorized by this
+acceptance-record task. Any later implementation task must use small,
+independently reviewable commits, may not admit mutation before its complete
+applicable rollback and degraded-state handling exist, and must keep production
+callers out of the coordinator phase. Push and pull-request creation require
+separate explicit approval.
 
 ## Physical validation still required
 

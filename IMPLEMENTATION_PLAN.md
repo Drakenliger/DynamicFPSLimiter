@@ -22,19 +22,18 @@ production RTSS caller uses its contracts.
 
 ### Planning state and boundary
 
-Planning is active on local branch
-`feature/rtss-transaction-coordinator`. Coordinator source, contract
-corrections, fakes, and tests are not implemented. The branch has not been
-pushed and no Stage 2 pull request exists.
+Planning was completed on local branch
+`feature/rtss-transaction-coordinator`. Corrected planning commit
+`677b6b5750ac52953fd1581efbc658adbc171b22` was independently reviewed and
+approved for explicit user acceptance on 25 July 2026, and the user explicitly
+accepted it that day. Accepted Stage 2 decisions are recorded in
+`DECISIONS.md`.
 
-**Proposed Stage 2 design pending independent verification and explicit
-acceptance.**
-The Stage 2-specific architecture and sequence below are not accepted merely
-because the older repository-wide implementation order predates them. They
-become accepted only after the complete corrected plan is independently
-verified, the user explicitly accepts it, and accepted decisions are durably
-recorded before implementation where needed. Existing accepted decisions in
-`DECISIONS.md` remain unchanged.
+**Accepted Stage 2 design; implementation not started.**
+Coordinator source, contract corrections, fakes, and Stage 2 tests are not
+implemented. The branch has not been pushed and no Stage 2 pull request exists.
+Acceptance of the plan does not authorize implementation, production
+integration, push, or pull-request creation.
 
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
@@ -516,10 +515,9 @@ restart-persistent storage has been designed. No Stage 2 plan selects an RTSS
 version, fractional mechanism, overwrite policy, cross-process lock, restart
 recovery mechanism, universal component limit, or compatibility claim.
 
-### Proposed small implementation commits
+### Accepted small implementation commits
 
-This sequence is proposed pending independent verification and explicit
-acceptance:
+The independently verified and explicitly accepted implementation sequence is:
 
 1. **Prerequisite contract correction**
    - restrict `RtssReadback` to read-only outcome/failure-step allowlists;
@@ -654,9 +652,12 @@ Stage 2 coordinator implementation is complete only when:
 - an independent read-only review accepts the contract changes, coordinator
   ordering, test matrices, and production-integration boundary.
 
-The implementation remains blocked until this planning correction receives
-independent read-only review and the user explicitly accepts the corrected
-plan. Push and pull-request creation require separate explicit approval.
+The planning-review and explicit-acceptance gates are satisfied. The next
+implementation gate, only in a separately authorized task, is commit 1:
+contract/test-only prerequisite correction with no admitted mutation. Each
+later mutation-bearing slice remains gated by its complete applicable rollback,
+degraded-state, ownership, failure-matrix, and independent-review requirements.
+Push and pull-request creation require separate explicit approval.
 
 ### Rollback considerations
 
@@ -710,15 +711,14 @@ generation-aware, reversible RTSS boundary.
   restore, ownership, evidence, and result contracts plus deterministic fakes
   and regressions.
 - **Stage 2 status:** Planning commit
-  `7adfb5406b091ccd8c55872fc1b75036029fee8a` and first correction commit
-  `15a3774eb0ff10741e6684bf3414b4fdde61ae72` are complete on local branch
-  `feature/rtss-transaction-coordinator`. The second independent review
-  recommendation was **Not approved; further correction required**. The
-  additional documentation correction addresses its three remaining partial
-  findings and remains pending another independent verification and explicit
-  acceptance. No coordinator source or planned Stage 2 test is implemented, no
-  production caller uses the Stage 1 contracts, and production integration
-  remains later work.
+  `7adfb5406b091ccd8c55872fc1b75036029fee8a`, first correction commit
+  `15a3774eb0ff10741e6684bf3414b4fdde61ae72`, and final correction commit
+  `677b6b5750ac52953fd1581efbc658adbc171b22` are complete on local branch
+  `feature/rtss-transaction-coordinator`. The final independent review
+  recommendation was **Approved for explicit user acceptance**, and the user
+  explicitly accepted the corrected plan on 25 July 2026. No coordinator
+  source or planned Stage 2 test is implemented, no production caller uses the
+  Stage 1 contracts, and production integration remains later work.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.

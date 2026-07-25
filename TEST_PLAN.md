@@ -69,6 +69,13 @@ Every test in this section is **planned**. None is implemented or passing as
 part of the Stage 2 planning commit. The historical Stage 1 result remains 95
 passing deterministic tests.
 
+The corrected Stage 2 test plan at
+`677b6b5750ac52953fd1581efbc658adbc171b22` was independently verified and
+explicitly accepted on 25 July 2026. Acceptance does not make any planned test
+implemented or passing. The first separately authorized implementation gate is
+the prerequisite contract matrices and exact stored/degraded-state contract
+coverage below; it must remain contract/test-only and enable no mutation.
+
 The Stage 2 tests will use only pure contracts, an in-memory fake backend, a
 fake lifecycle/admission owner, deterministic barriers, and an ordered
 operation log. They must run on any supported development platform without
@@ -358,7 +365,7 @@ result construction and then by degraded-handoff acceptance.
 - Running the planned suite with `PYTHONDONTWRITEBYTECODE=1` must leave no
   `__pycache__`, `.pyc`, or `.pyo` artifact in the repository.
 
-### Planned implementation-sequence gates
+### Accepted implementation-sequence gates
 
 - No mutation test or implementation path becomes enabled before the
   applicable rollback interfaces, degraded-state construction, and failure
