@@ -121,7 +121,7 @@ environment-dependent runtime qualification.
 ## RTSS Stage 1 independent-review findings
 
 RTSS Stage 1 is limited to deterministic contracts and tests. The corrections
-below are locally committed in
+below were published in draft pull request #3 at
 `42a4485c6d6b078d442e57061e745a2ea43e3d89`
 (`test: add deterministic RTSS transaction contracts`). Two independent
 read-only reviews were completed, and the final independent review found no
@@ -243,6 +243,64 @@ The following final-review items remain explicitly deferred and non-blocking:
 No physical RTSS, profile-file, Windows runtime, RX 7900 XTX, Lossless Scaling,
 LibreHardwareMonitor, PDH, GUI, or lifecycle integration testing was performed
 for Stage 1.
+
+## Draft PR #3 independent review
+
+Draft pull request #3 was independently reviewed in full at published head
+`afd43e0373001a9f471573bbfb3535ae0b3c1ac3`. The review reran all 95
+deterministic tests, confirmed that production RTSS callers remained unchanged,
+and found no code or RTSS-safety merge blocker. GitHub reported no automated
+checks. The review recommendation was to approve after the documentation-only
+correction recorded below.
+
+These supplemental Stage 1 review findings preserve the existing 50-item active
+ledger and its identifiers; they are not duplicate ledger entries.
+
+### `S1-DOC-001` - Medium / Confirmed / corrected locally
+
+- **Location:** `CURRENT_STATUS.md` and `IMPLEMENTATION_PLAN.md`.
+- **Problem:** Tracked documentation continued to describe the pre-publication
+  state after the Stage 1 branch had been pushed and draft PR #3 had been
+  created.
+- **Effect:** A future session could repeat publication work, use the wrong
+  branch head, or apply the wrong phase gate.
+- **Disposition:** Fix before merge through a documentation-only correction.
+- **Current state:** Corrected by the current local documentation commit. The
+  correction is not published until a later explicitly approved push.
+
+### `S1-READBACK-001` - Low / Confirmed / deferred
+
+- **Location:** `RtssReadback.__post_init__`.
+- **Problem:** The readback contract accepts mutation-only outcomes and failure
+  steps, including rollback states, without a read-only outcome/step allowlist.
+- **Effect:** A future adapter could construct a semantically impossible
+  read-only result.
+- **Current reachability:** No production caller uses the Stage 1 contracts.
+- **Required correction:** Restrict `RtssReadback` to an explicit set of valid
+  read-only outcomes and failure steps.
+- **Disposition:** Deferred Stage 2 prerequisite before production adapters rely
+  on the contract.
+
+### `S1-TEST-001` - Low / Confirmed / deferred
+
+- **Location:** Readback contract tests.
+- **Problem:** The deterministic suite has no exhaustive readback
+  outcome/failure-step matrix.
+- **Required correction:** Add an exhaustive readback outcome/failure-step
+  matrix and retain fail-closed coverage when outcomes or steps change.
+- **Disposition:** Deferred with `S1-READBACK-001` before production
+  integration.
+
+### `S1-DESIGN-001` - Low / Improvement / deferred
+
+- **Location:** Application-profile-name validation and derived profile
+  filename construction.
+- **Problem:** The Stage 1 identity contract has no explicit component-length
+  boundary for the DLL name or derived profile filename.
+- **Required correction:** Define capability-driven application and profile
+  component-length limits before filesystem integration.
+- **Disposition:** Deferred to the Stage 2 capability and supported-name
+  policy.
 
 ## Active finding ledger
 

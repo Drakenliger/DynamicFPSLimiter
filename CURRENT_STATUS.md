@@ -6,10 +6,12 @@
 - Upstream: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current branch: `fix/rtss-transaction-and-restore`
-- Current `HEAD`: `42a4485c6d6b078d442e57061e745a2ea43e3d89`
+- Published Stage 1 head before the local documentation correction:
+  `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`
 - Reviewed commit and branch point:
   `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
-- Current phase: RTSS Stage 1 locally committed; draft PR preparation
+- Current phase: draft PR #3 reviewed; documentation correction committed
+  locally and awaiting separate review and push approval
 
 ## Completed
 
@@ -43,18 +45,33 @@
 - RTSS Stage 1 contracts and deterministic tests are complete in local commit
   `42a4485c6d6b078d442e57061e745a2ea43e3d89`
   (`test: add deterministic RTSS transaction contracts`).
+- The Stage 1 documentation snapshot was committed in
+  `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`
+  (`docs: record RTSS Stage 1 completion`).
 - Stage 1 corrected all six blocking independent-review findings:
   `S1-FINAL-001`, `S1-FINAL-002`, `S1-FINAL-003`, `S1-FINAL-004`,
   `S1-FINAL-002-R1`, and `S1-FINAL-003-R1`.
 - Two independent read-only reviews were completed. The final independent
   review found no remaining Stage 1 blockers or regressions.
-- Stage 1 validation completed with 95 passing deterministic unit tests.
-- The working tree was clean after the Stage 1 commit and at the documentation
-  update preflight.
-- Nothing has been pushed or published from the Stage 1 branch, and no draft
-  pull request exists yet.
+- The Stage 1 branch was pushed only to `Drakenliger/DynamicFPSLimiter`.
+- Draft pull request #3 targets `main` from
+  `fix/rtss-transaction-and-restore`. It is open, draft, and unmerged.
+- Before this local documentation correction, the published PR contained two
+  commits and 12 changed files at head
+  `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`.
+- Publication and the independent PR review each completed with all 95
+  deterministic unit tests passing. GitHub reported no automated checks.
+- The independent PR review found no code or RTSS-safety merge blocker.
+  `S1-DOC-001` was the only required pre-merge correction.
+- `S1-DOC-001` is corrected by the current local documentation-only commit.
+  That correction is not part of the remote branch or PR until a later
+  explicitly approved push.
+- `S1-READBACK-001`, `S1-TEST-001`, and `S1-DESIGN-001` are deferred Stage 2
+  prerequisites and are not production-reachable in Stage 1.
 - Stage 2 has not started. No production RTSS caller uses the Stage 1 contracts,
   and no production RTSS behavior changed.
+- No physical RTSS, GPU, driver, game, GUI, LibreHardwareMonitor, PDH, or
+  Lossless Scaling validation has been performed.
 
 The three detailed verification reports under `review-input/codex-results/`
 were local, ignored review inputs used to reconcile this documentation
@@ -80,13 +97,17 @@ beyond the statically reviewed baseline.
 
 ## Next work
 
-The next action is to review and commit this documentation synchronization,
-then push only `fix/rtss-transaction-and-restore` and open a focused draft pull
-request against `Drakenliger/DynamicFPSLimiter:main`.
+RTSS Stage 2 remains unstarted and blocked until all of these steps complete:
 
-RTSS Stage 2 remains blocked until the Stage 1 pull request has been reviewed
-and merged. Stage 2 must begin on an updated branch based on the merged `main`.
-The complete accepted implementation order remains in `IMPLEMENTATION_PLAN.md`.
+1. Review this local documentation-only correction and push it only with
+   explicit approval.
+2. Reverify draft PR #3 after the correction is published.
+3. Merge PR #3 only after its review requirements are met.
+4. Synchronize local `main` with the merged fork branch.
+
+Stage 2 must begin on a new, focused branch based on that synchronized `main`.
+Its deferred prerequisites and the complete accepted implementation order are
+recorded in `IMPLEMENTATION_PLAN.md`.
 
 ## Physical validation still required
 
@@ -117,8 +138,10 @@ The earlier `docs/review-baseline` branch contained documentation-only changes.
 No application source code changed on that historical branch, and no production
 fix was implemented or released there.
 
-The current `fix/rtss-transaction-and-restore` branch contains the locally
-committed RTSS Stage 1 contracts and deterministic tests at
-`42a4485c6d6b078d442e57061e745a2ea43e3d89`. Its current working-tree changes
-are this uncommitted documentation synchronization. No production RTSS runtime
-behavior changed, and Stage 2 has not started.
+The published `fix/rtss-transaction-and-restore` branch and draft PR #3 contain
+the Stage 1 contract/test commit
+`42a4485c6d6b078d442e57061e745a2ea43e3d89` and documentation commit
+`afd43e0373001a9f471573bbfb3535ae0b3c1ac3`. This documentation correction is
+one additional local commit and is not published until a later explicitly
+approved push. No production RTSS runtime behavior changed, and Stage 2 has not
+started.

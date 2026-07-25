@@ -7,25 +7,38 @@ started.
 
 ## Current RTSS Stage 1 gate
 
-RTSS Stage 1 contracts and deterministic tests are complete in local commit
+RTSS Stage 1 contracts and deterministic tests were published in commit
 `42a4485c6d6b078d442e57061e745a2ea43e3d89`
-(`test: add deterministic RTSS transaction contracts`). All 95 deterministic
-unit tests passed, and two independent read-only reviews are complete. No
-production caller changed, no production RTSS behavior changed, and no Stage 2
-transaction coordination was implemented.
+(`test: add deterministic RTSS transaction contracts`), followed by
+documentation commit `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`
+(`docs: record RTSS Stage 1 completion`). The branch was pushed only to
+`Drakenliger/DynamicFPSLimiter`, and draft PR #3 was created against `main`.
+Before the current local documentation correction, the published PR contained
+two commits and 12 changed files at head
+`afd43e0373001a9f471573bbfb3535ae0b3c1ac3`.
 
-The next gated steps are:
+Publication, PR verification, and an independent read-only review are complete.
+All 95 deterministic unit tests passed during publication and review. GitHub
+reported no automated checks. The review found no code or RTSS-safety merge
+blocker and required only the `S1-DOC-001` documentation correction before
+merge.
 
-1. Review and commit this documentation synchronization.
-2. Push only `fix/rtss-transaction-and-restore` to
-   `Drakenliger/DynamicFPSLimiter`.
-3. Open a focused draft pull request against
-   `Drakenliger/DynamicFPSLimiter:main`.
-4. Review the draft pull request and CI.
-5. Merge only after review requirements are met.
-6. Begin Stage 2 only from an updated branch based on merged `main`.
+Current gated status:
 
-None of the push, pull request, CI review, merge, or Stage 2 steps is complete.
+1. Stage 1 contracts, tests, and initial documentation: complete.
+2. Stage 1 branch push to `Drakenliger/DynamicFPSLimiter`: complete.
+3. Draft PR #3 creation and verification: complete.
+4. Independent read-only PR review: complete.
+5. `S1-DOC-001` documentation correction: committed locally by the current
+   documentation-only commit; not yet pushed.
+6. Review and explicitly approved push of this correction: not complete.
+7. Reverification of PR #3 after that push: not complete.
+8. Merge of PR #3: not complete.
+9. Synchronization of local `main` after merge: not complete.
+10. Stage 2: not started.
+
+Stage 2 remains blocked until steps 6-9 complete. It must begin on a new,
+focused branch based on the synchronized, merged `main`.
 
 ## 1. `test/controller-and-adapter-harness`
 
@@ -60,13 +73,22 @@ changing production policy.
 **Objective:** Replace overlapping writers with one validated, serialized,
 generation-aware, reversible RTSS boundary.
 
-- **Stage 1 status:** Completed locally in
+- **Stage 1 status:** Published in draft PR #3 through
   `42a4485c6d6b078d442e57061e745a2ea43e3d89` with 95 passing deterministic
-  unit tests and completed independent review. This stage provides identity,
-  request, capture, readback, apply, restore, ownership, evidence, and result
-  contracts plus deterministic fakes and regressions.
+  unit tests and completed independent review. The current documentation-only
+  correction is local and is not yet part of the remote PR. Stage 1 provides
+  identity, request, capture, readback, apply, restore, ownership, evidence, and
+  result contracts plus deterministic fakes and regressions.
 - **Stage 2 status:** Not started. No production callers use the Stage 1
   contracts, and no transaction coordinator or production integration exists.
+- **Additional Stage 2 prerequisites from the independent PR review:**
+  1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
+  2. Add an exhaustive readback outcome/failure-step matrix.
+  3. Consider an exhaustive apply outcome/failure-step matrix.
+  4. Define capability-driven application and profile component-length limits
+     before filesystem integration.
+  5. Preserve every existing transaction, ownership, readback, rollback, and
+     restoration requirement listed below.
 - **Included findings:** `RTSS-001` through `RTSS-009`, `SEC-002`, and the RTSS
   handshake portion of `RTSS-005`.
 - **Expected areas:** RTSS interface/controller boundary; canonical profile
