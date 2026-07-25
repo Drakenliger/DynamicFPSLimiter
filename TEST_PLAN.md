@@ -63,6 +63,207 @@ These are contract and deterministic-fake tests only. Stage 1 did not test:
 No supported-version, hardware, profile-file, or runtime compatibility claim is
 established by this validation.
 
+## RTSS Stage 2 deterministic coordinator tests - planned
+
+Every test in this section is **planned**. None is implemented or passing as
+part of the Stage 2 planning commit. The historical Stage 1 result remains 95
+passing deterministic tests.
+
+The Stage 2 tests will use only pure contracts, an in-memory fake backend, a
+fake lifecycle/admission owner, deterministic barriers, and an ordered
+operation log. They must run on any supported development platform without
+RTSS, Windows, a GPU, a game, Dear PyGui, LibreHardwareMonitor, PDH, or Lossless
+Scaling.
+
+### Planned prerequisite contract matrices
+
+- **Planned `S1-READBACK-001` / `S1-TEST-001`:** iterate every
+  `RtssOutcome`/`RtssFailureStep` pair and assert the explicit read-only
+  acceptance table. Verify `VERIFIED/NONE`, permitted validation, generation,
+  capability, conflict, and readback failures, and reject mutation-only apply,
+  save, update, rollback, restore, and delete states. Assert the table covers
+  every enum member so additions fail closed.
+- **Planned apply matrix:** iterate every
+  `RtssOutcome`/`RtssFailureStep` pair with the minimum valid supporting state
+  for that pair. Accept only the defined pre-mutation, exact no-change,
+  verified apply, verified rollback, conflict, and degraded graphs; reject all
+  other pairs. If one cross-product cell cannot be represented independently,
+  document the invariant that makes it impossible and retain a fail-closed
+  assertion over both enums.
+- **Planned restore matrix:** retain the Stage 1 exhaustive matrix and extend
+  it for any new non-flag unresolved-state accounting without weakening the
+  existing exact-restoration and closed-state assertions.
+- **Planned capability-name prerequisite (`S1-DESIGN-001`):** test zero,
+  one-below, exact, and one-above boundaries for DLL-name bytes and derived
+  profile-filename components, including the `.cfg` suffix and Global mapping.
+
+### Planned request, identity, path, and capability admission
+
+- Valid Global and application requests with canonical case-only equality.
+- Request identity versus capture/readback/profile-owner identity mismatch.
+- Application, session, profile, source/evidence, and backend generation
+  mismatches varied independently.
+- Mismatch before lock acquisition, after lock acquisition, before mutation,
+  during readback, during rollback, and during restore.
+- Negative, zero where disallowed, Boolean, non-integer, non-finite, and
+  over-wide cap inputs.
+- Exact configured/backend capability-range intersection for numerator,
+  denominator, bit widths, and inclusive/exclusive effective-cap limits.
+- Empty intersections, unsupported denominator strategies, missing exact
+  readback, missing create/delete support, missing flag read/write support, and
+  unresolved policy.
+- Exact rational handling for reducible, irreducible, high-precision, minimum,
+  maximum, and boundary caps without any float conversion.
+- Exact stored numerator/denominator evidence distinct from reduced effective
+  rational equality, including prior `120/2` restored as `120/2`, not `60/1`.
+- Capability-driven DLL and filename component lengths with ASCII byte count,
+  suffix expansion, and backend-policy changes.
+- Rejection matrix for empty input, whitespace, controls, Unicode/lossy
+  encoding, missing `.exe`, dot components, trailing dot/space, reserved
+  Windows stems, forward/back separators, mixed separators, drive-rooted,
+  drive-relative, rooted, UNC, extended/device, `\??\`, ADS/colon, and
+  containment-escape forms.
+- Abstract-root containment failure and a simulated reparse escape reported by
+  the adapter; no real filesystem or reparse point is required.
+- No capture or mutation operation after any admission rejection.
+
+### Planned exact capture and ownership
+
+- Existing Global and application profiles capture exact stored numerator,
+  denominator, effective cap, existence, backend generation, owned limiter
+  bits, document evidence, and revision evidence.
+- Missing application profile records verified absence for profile, document,
+  and revision; missing Global is rejected.
+- Complete document bytes and approved immutable SHA-256 digest cases,
+  including matching, mismatch, unsupported, read-failed, truncated, mutable
+  input, and ambiguous dual-evidence rejection.
+- Exact revision available, verified absent, unsupported, read failure, and
+  changed-between-fields cases.
+- Requested limiter bits require exact prior ownership; unrequested/unowned
+  bits remain outside apply ownership.
+- Profile creation requires explicit permission and produces created-profile
+  ownership bound to the admitted session/profile generation.
+- Capture failure for profile existence, numerator, denominator, flags,
+  document, revision, or backend generation is pre-mutation and state-free.
+- False-return and exception variants for every capture operation.
+
+### Planned apply, save, update, and readback
+
+- Successful apply logs the exact order:
+  admission -> capability -> lock -> generation recheck -> load/read/capture ->
+  pre-mutation recheck -> mutation -> save -> update -> readback -> verify ->
+  ownership retention -> unlock.
+- Exact verified no-change performs capture and exact readback but no mutation,
+  save, or update.
+- Existing-profile cap-only apply, flag-only apply where representable, and
+  combined cap/owned-flag apply.
+- Authorized missing-profile creation from the approved adapter mechanism,
+  followed by exact readback and created-profile ownership.
+- Exact numerator and denominator write ordering without Decimal-to-float or
+  binary-float conversion.
+- False-return and exception paths for profile load/create, numerator write,
+  denominator write, each owned flag read/write, save, update, each readback
+  field, and final verification.
+- Readback mismatch for existence, numerator, denominator, effective cap,
+  owned flags, document evidence, revision evidence, canonical identity, and
+  backend generation.
+- Verified readback with unrelated flag bits or unrelated document fields
+  according to the admitted mechanism.
+- Controller-facing fake state remains unchanged for validation rejection,
+  stale generation, unsupported capability, policy required, failure,
+  conflict, rollback, and degraded results; it advances only after
+  `RtssApplyResult.succeeded` is verified.
+
+### Planned rollback and durable degradation
+
+- Every possible mutation failure at numerator, denominator, flags, save,
+  update, and readback enters rollback while serialization is retained.
+- Rollback success restores exact prior numerator, denominator, effective cap,
+  profile existence, complete document/digest evidence, revision evidence, and
+  owned limiter bits, then saves, updates, and verifies.
+- Successful rollback produces `FAILED_ROLLED_BACK`, never ordinary `FAILED`
+  or `DEGRADED`.
+- Exact readback proving no change after a post-mutation failure permits
+  ordinary `FAILED` and performs no unnecessary restoration write.
+- False-return and exception paths for every rollback mutation, save, update,
+  delete, and readback operation.
+- Partial rollback of cap, denominator, document, revision, existence, or flags
+  produces durable degraded-state reporting for every unresolved owned field.
+- Unresolved owned limiter-bit masks are exact for all bits, requested subsets,
+  missing flag readback, and backend-generation mismatch; unrelated bits are
+  excluded.
+- A transaction-created profile is deleted on rollback/restore and exact
+  absence is verified. Delete false, exception, profile still present, and
+  delete unsupported cases are degraded.
+- Backend restart before mutation is state-free rejection; restart after
+  possible mutation attempts permitted rollback and otherwise reports durable
+  degradation with the lost backend generation.
+
+### Planned external edits and revision conflicts
+
+- External document/revision edit before the first mutation rejects or
+  recaptures only according to explicit policy and never overwrites silently.
+- External edit after capture but before apply is detected by the pre-mutation
+  conflict check.
+- External edit after verified apply but before stop/restore returns
+  `CONFLICT` under the default fail-closed policy.
+- Field-disjoint merge behavior is tested only if a later decision explicitly
+  authorizes it; until then, tests require no overwrite.
+- ABA revision, same bytes with changed revision, changed bytes with same
+  revision, missing evidence, and backend-restart conflicts.
+- Conflict outcomes retain ownership/degraded handoff information and never
+  claim exact restoration.
+
+### Planned duplicates, serialization, and profile switching
+
+- Duplicate in-flight transaction ID, duplicate completed transaction ID, and
+  replay after retry are rejected without mutation.
+- Two requests for the same profile and two requests for different profiles
+  cannot interleave loaded-profile/property/save/update operations.
+- Global flag access serializes with every profile transaction.
+- A request waiting for the lock rechecks all generations, cancellation, and
+  ownership before capture or mutation.
+- Operation logs prove deterministic order for concurrent scheduling scripts.
+- Profile A -> B before A mutation: A releases without mutation and B may then
+  acquire.
+- Profile A -> B after possible A mutation: A is exactly restored and released
+  before B capture; failed A restoration blocks B and returns durable degraded
+  ownership.
+- Switching among case-only identity spellings does not create a second owner.
+- Ownership transfer never depends on mutable GUI state.
+
+### Planned cancellation, stop, and idempotent restore
+
+- Cancellation is injected at admission, capability read, lock wait, every
+  capture field, pre-mutation, create, numerator write, denominator write, flag
+  mutation, save, update, readback, rollback, verification, and release.
+- Cancellation before mutation is state-free; cancellation after possible
+  mutation completes rollback/restoration as far as capability permits.
+- Stop during each transaction phase waits for the serialized result and then
+  performs at most one restore.
+- Repeated stop, repeated restore, restore after verified release, and
+  concurrent stop requests are idempotent and produce no repeated mutation.
+- Stale application/session/profile/backend generation cannot restore or write
+  state owned by a newer generation.
+- Ownership release occurs only after exact verified restoration or explicit
+  durable degraded handoff.
+- Adapter exceptions never escape as an unstructured controller success and
+  never permit controller state advancement.
+
+### Planned operation-order and isolation assertions
+
+- Every scenario asserts the complete ordered operation log, not only its
+  terminal result.
+- Unexpected operations after a terminal result fail the test.
+- Failure-injection tables cover both Boolean failure and exception behavior
+  for every adapter operation.
+- Import-isolation tests reject Dear PyGui, Windows registry/Win32, RTSS DLL,
+  LHM, PDH, GPU, game, and Lossless Scaling imports from coordinator modules.
+- Test teardown proves no in-flight transaction, held serialization lease,
+  profile owner, pending barrier, or unconsumed scripted operation remains.
+- Running the planned suite with `PYTHONDONTWRITEBYTECODE=1` must leave no
+  `__pycache__`, `.pyc`, or `.pyo` artifact in the repository.
+
 ## Pure controller unit tests
 
 Exercise one controller step using immutable runtime configuration and typed

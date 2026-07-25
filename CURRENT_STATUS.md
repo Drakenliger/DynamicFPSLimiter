@@ -3,101 +3,116 @@
 ## Repository
 
 - Fork: `Drakenliger/DynamicFPSLimiter`
-- Upstream: `SameSalamander5710/DynamicFPSLimiter`
+- Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
-- Current branch: `fix/rtss-transaction-and-restore`
-- Pre-merge status verified on 25 July 2026.
-- Published Stage 1 head at that snapshot:
-  `e002045a0285a03706b5560969b8a9f1c9ac8b31`
-- Reviewed commit and branch point:
-  `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
-- Current phase: final RTSS Stage 1 merge gate
+- Current local branch: `feature/rtss-transaction-coordinator`
+- Current phase: RTSS Stage 2 planning
+- Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
+- Stage 1 squash merge:
+  `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`
+  (`Add deterministic RTSS transaction contracts (#3)`)
 
-## Completed
+## Verified Stage 1 merge state
 
-- The main-branch deep technical review is complete.
-- Three independent P0 verification batches covering controller/hardware,
-  RTSS/security, and lifecycle/Autopilot are recorded as complete.
-- The three batches independently reverified 24 existing findings: 23 were
-  Confirmed, while `RTSS-008` remained Medium / Likely because compatibility
-  depends on the supported RTSS version and fractional-limit mechanism.
-- The original 48 deep-review findings retain stable identifiers.
-- Two additional findings were accepted: `HW-013` is High / Confirmed and
-  `RTSS-009` is Low / Confirmed, producing a 50-item active ledger.
-- `GUI-003` was upgraded to Medium / Confirmed for its inconsistent,
-  unnormalized, case-sensitive process-identity design. Its Windows, RTSS, and
-  Lossless Scaling manifestations remain environment-dependent and require
-  runtime validation.
-- No controller-policy fix has been implemented or released.
-- The `test/controller-and-adapter-harness` branch now contains a deterministic
-  standard-library `unittest` suite, pure controller contracts, scripted
-  adapters, an unwired cap-ladder validator, and characterization of the
-  reviewed decrease selector.
-- The production monitoring loop delegates decrease-cap selection to the
-  characterized pure selector without changing the reviewed controller policy.
-- `CTRL-001` and `CTRL-005` remain open. The former is characterized with its
-  defect preserved; the latter has pure validation scaffolding that is not
-  wired into startup or runtime.
-- The automated-suite portion of `TEST-001` exists, but CI remains absent.
-  `TEST-002` has initial deterministic clock, FPS/process, sensor, RTSS, and
-  generation seams; production adapters and later controller work remain
-  outstanding.
-- RTSS Stage 1 contracts and deterministic tests are complete in commit
-  `42a4485c6d6b078d442e57061e745a2ea43e3d89`
-  (`test: add deterministic RTSS transaction contracts`).
-- The Stage 1 documentation snapshot was committed in
-  `afd43e0373001a9f471573bbfb3535ae0b3c1ac3`
-  (`docs: record RTSS Stage 1 completion`).
-- Stage 1 corrected all six blocking independent-review findings:
-  `S1-FINAL-001`, `S1-FINAL-002`, `S1-FINAL-003`, `S1-FINAL-004`,
-  `S1-FINAL-002-R1`, and `S1-FINAL-003-R1`.
-- Two independent read-only reviews were completed. The final independent
-  review found no remaining Stage 1 blockers or regressions.
-- The Stage 1 branch was pushed only to `Drakenliger/DynamicFPSLimiter`.
-- Commit `e002045a0285a03706b5560969b8a9f1c9ac8b31`
-  (`docs: record RTSS Stage 1 publication review`) corrected `S1-DOC-001`.
-  Its scope was exactly `CURRENT_STATUS.md`, `IMPLEMENTATION_PLAN.md`, and
-  `REVIEW_FINDINGS.md`; it changed no production, test, or configuration file.
-- The `e002045` correction passed independent read-only review and was pushed
-  successfully to the existing Stage 1 branch. Local and remote branch heads
-  were synchronized at that commit.
-- All 95 deterministic unit tests passed during creation, independent review,
-  and pre-push validation of `e002045`.
-- No application source or external runtime state changed during that
-  documentation work, and `SameSalamander5710/DynamicFPSLimiter` was not
-  involved.
-- At the pre-merge snapshot verified on 25 July 2026, draft pull request #3
-  targeted `main` from `fix/rtss-transaction-and-restore`, was open, draft,
-  mergeable, and unmerged, and contained three commits and 12 changed files at
-  head `e002045a0285a03706b5560969b8a9f1c9ac8b31`.
-- GitHub reported no automated checks at that snapshot.
-- The independent PR review found no code or RTSS-safety merge blocker.
-  `S1-DOC-001` was the only required pre-merge correction.
-- `S1-DOC-001` is corrected and published.
-- `S1-READBACK-001`, `S1-TEST-001`, and `S1-DESIGN-001` are deferred Stage 2
-  prerequisites and are not production-reachable in Stage 1.
-- Stage 2 has not started. No production RTSS caller uses the Stage 1 contracts,
-  and no production RTSS behavior changed.
-- No physical RTSS, GPU, driver, game, GUI, LibreHardwareMonitor, PDH, or
-  Lossless Scaling validation has been performed.
+On 25 July 2026, the repository and fork were independently checked before
+this planning branch was created:
 
-The three detailed verification reports under `review-input/codex-results/`
-were local, ignored review inputs used to reconcile this documentation
-baseline. They are not tracked in Git and are not required by a fresh clone.
+- local `main`, `origin/main`, and the initial `HEAD` all resolved to
+  `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`;
+- local `main` was zero commits ahead of and zero commits behind
+  `origin/main`;
+- pull request #3 in `Drakenliger/DynamicFPSLimiter` was merged into `main`;
+- GitHub reported the PR #3 merge commit as
+  `f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`;
+- the repository was clean and the index was empty;
+- no local or `origin` branch named
+  `feature/rtss-transaction-coordinator` existed; and
+- the existing Stage 1 branch `fix/rtss-transaction-and-restore` was not
+  switched to, reused, reset, deleted, or modified.
 
-The durable repository sources of truth are:
+Only `origin` was fetched and queried. The upstream repository was not
+contacted.
 
-- `CURRENT_STATUS.md`
-- `REVIEW_FINDINGS.md`
-- `DECISIONS.md`
-- `IMPLEMENTATION_PLAN.md`
-- `TEST_PLAN.md`
-- `RELEASE_NOTES.md`
+The deterministic command
+`python -m unittest discover -s tests -t . -v`, with
+`PYTHONDONTWRITEBYTECODE=1`, passed all 95 tests before this planning branch was
+created. The repository remained clean and contained no `__pycache__`, `.pyc`,
+or `.pyo` artifacts.
 
-This document records the verified pre-merge gate. The commit containing this
-document must be verified through Git after creation and through GitHub after
-any approved publication. The next status update is required after PR #3 is
-merged and local `main` is synchronized.
+## Current work
+
+RTSS Stage 1 is complete and merged. It provides deterministic identity,
+rational-cap, generation, capability, capture, readback, apply, restoration,
+ownership, evidence, and result contracts with deterministic tests.
+
+RTSS Stage 2 planning has started on
+`feature/rtss-transaction-coordinator`. Stage 2 source implementation has not
+started. No transaction coordinator exists, and no production caller uses the
+Stage 1 contracts.
+
+The current planning task changes exactly:
+
+- `CURRENT_STATUS.md`;
+- `IMPLEMENTATION_PLAN.md`; and
+- `TEST_PLAN.md`.
+
+It does not change production source, tests, configuration, workflows, ignored
+review inputs, or external state. The branch is local only: no Stage 2 push,
+remote branch, configured upstream for this branch, or pull request exists.
+
+## Design-review status
+
+The Stage 2 design review preserves the Stage 1 contract layer while planning
+the focused prerequisites and extensions required by a deterministic
+coordinator:
+
+- correct `S1-READBACK-001` by restricting `RtssReadback` to read-only
+  outcomes and failure steps;
+- correct `S1-TEST-001` with an exhaustive readback outcome/failure-step
+  acceptance and rejection matrix;
+- correct `S1-DESIGN-001` with capability-driven DLL-name and derived-profile
+  component limits;
+- add exact stored numerator and denominator capture because the existing
+  reduced `RationalCap` represents the effective value but cannot alone prove
+  representation-exact restoration;
+- add explicit transaction identity/admission around immutable Stage 1
+  requests so duplicates and concurrent writers can be rejected; and
+- keep deterministic coordination separate from later live DLL, profile-file,
+  GUI, lifecycle, and production-caller integration.
+
+These items are planned only. They are not implemented, tested, closed, or
+production-reachable.
+
+The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
+`S1-FINAL-007` only as deferred, non-blocking items and does not retain their
+root-cause or acceptance text. This planning task therefore does not invent or
+silently close them. Each remains deferred test-maintenance/provenance cleanup
+until an independent review supplies durable definitions; any item then shown
+to affect coordinator correctness must be promoted into a separately reviewed
+Stage 2 prerequisite.
+
+## Production status
+
+The existing production RTSS paths remain unchanged and unsafe for unattended
+use:
+
+- `RTSSController` exposes separate, unserialized profile loads, property
+  reads/writes, saves, updates, direct profile-file rewrites, deletion, and
+  global flag mutation;
+- application startup unconditionally enables the RTSS limiter;
+- start and stop both initiate cap writes;
+- the monitoring loop performs overload, headroom, idle-entry, and idle-exit
+  writes and advances logical cap state before write verification;
+- exit may write the Global cap without a captured prior state or verified
+  restoration;
+- profile deletion is initiated directly by `ConfigManager`; and
+- Autopilot and monitoring profile changes are not transactional or
+  generation-owned.
+
+No physical RTSS, profile-file, Windows runtime, GPU, driver, game, GUI,
+LibreHardwareMonitor, PDH, registry, or Lossless Scaling validation was
+performed. No supported RTSS-version, RX 7900 XTX, or Lossless Scaling
+compatibility claim is made.
 
 ## Release status
 
@@ -108,23 +123,15 @@ lifecycle races can permit stale generations to act.
 No RTSS-version, RX 7900 XTX, or Lossless Scaling compatibility claim extends
 beyond the statically reviewed baseline.
 
-## Next work
+## Next action and gates
 
-RTSS Stage 2 remains unstarted and blocked until all of these steps complete:
+The next action is an independent, read-only review of the local planning
+commit.
 
-1. Review this final transition-stable documentation correction.
-2. Publish it only after explicit approval.
-3. Reverify the resulting PR head, commit count, 12-file scope, draft/open
-   state, and absence or result of checks.
-4. Mark PR #3 ready and merge it only through a separate explicitly approved
-   task.
-5. Synchronize local `main`.
-6. Begin Stage 2 only on a new focused branch from synchronized `main`.
-
-After the merge, the first Stage 2 branch commit must refresh
-`CURRENT_STATUS.md` to record the merge and synchronized `main`. The deferred
-prerequisites and complete accepted implementation order are recorded in
-`IMPLEMENTATION_PLAN.md`.
+Stage 2 implementation, any push, and pull-request creation remain blocked
+pending that review. A later implementation task must use small, independently
+reviewable commits and must not wire production callers in the first
+coordinator implementation commit.
 
 ## Physical validation still required
 
@@ -138,26 +145,20 @@ prerequisites and complete accepted implementation order are recorded in
 - Long-uptime idle behavior, Win32 ABI behavior, driver/RTSS restart, sleep, and
   shutdown resilience.
 
-## Documentation branch scope
+## Historical documentation scope
 
-These seven documentation files were prepared on
-`docs/review-baseline` and introduced through pull request #1:
+The seven durable project documents were introduced through pull request #1:
 
-- `AGENTS.md`
-- `CURRENT_STATUS.md`
-- `REVIEW_FINDINGS.md`
-- `DECISIONS.md`
-- `IMPLEMENTATION_PLAN.md`
-- `TEST_PLAN.md`
-- `RELEASE_NOTES.md`
+- `AGENTS.md`;
+- `CURRENT_STATUS.md`;
+- `REVIEW_FINDINGS.md`;
+- `DECISIONS.md`;
+- `IMPLEMENTATION_PLAN.md`;
+- `TEST_PLAN.md`; and
+- `RELEASE_NOTES.md`.
 
-The earlier `docs/review-baseline` branch contained documentation-only changes.
-No application source code changed on that historical branch, and no production
-fix was implemented or released there.
-
-At the pre-merge snapshot verified on 25 July 2026, the published
-`fix/rtss-transaction-and-restore` branch and draft PR #3 ended at
-`e002045a0285a03706b5560969b8a9f1c9ac8b31`. The PR contained the Stage 1
-contract/test commit, the initial Stage 1 documentation commit, and the
-reviewed and published `S1-DOC-001` correction. No production RTSS runtime
-behavior changed, and Stage 2 has not started.
+The Stage 1 branch and pull request #3 added the deterministic RTSS contracts,
+tests, and synchronized documentation. PR #3 is now merged; its final squash
+commit is
+`f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`. Production RTSS behavior did not
+change in Stage 1.
