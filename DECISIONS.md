@@ -86,7 +86,9 @@ and sequencing, not completed implementation or production behavior.
 The following durable design decisions were produced by the local RTSS Stage 2
 sequence-item-2 planning session. They are not accepted implementation
 authority until the planning commit is independently reviewed and explicitly
-accepted.
+accepted. The initial plan and its first and second corrected commits were
+rejected; Decisions 48-50 are the third correction to the remaining findings.
+All decisions in this section remain proposed and pending review.
 
 34. Capability and supported-name policy is pure, deterministic, immutable,
     mechanism-specific, and fail-closed. Its terminal decision is exactly one
@@ -117,8 +119,9 @@ accepted.
     internal ordered, reversible numerator/denominator write bundle. It is not
     atomic, is not publicly selectable, and never independently returns a
     terminal mutation-support decision. Existing fractional mutation includes
-    capture reads, the internal write bundle, save, activation, exact readback,
-    and exact restoration capability.
+    capture reads, the internal write bundle, mechanism/context-specific save
+    and activation dependencies when admitted as required, exact readback, and
+    exact restoration capability.
 39. Integer limit, fractional numerator, fractional denominator, optional
     effective rational representability, and stored-field bit width use
     immutable domain-specific exact ranges. Bit-width derivation recognizes
@@ -184,6 +187,24 @@ accepted.
     restoration, or mutation. The detailed unresolved-fact and later-owner
     table in `IMPLEMENTATION_PLAN.md` is authoritative; this file deliberately
     does not duplicate it.
+48. Save and activation dependency applicability is explicit,
+    mechanism-specific, factory-controlled evidence with exactly
+    `REQUIRED`, `NOT_REQUIRED`, and `UNKNOWN`. Only admitted
+    `NOT_REQUIRED` evidence may omit the matching primitive. Missing or
+    `UNKNOWN` applicability yields `UNKNOWN`; unsupported or absent primitive
+    support never implies `NOT_REQUIRED`. Forward mutation and exact
+    restoration use distinct applicability contexts and may differ only when
+    admitted evidence says so.
+49. An impossible all-category diagnostic fixture is prohibited. Stable reason
+    ordering is tested through explicitly enumerated maximal legally
+    co-applicable groups, with mutually exclusive or short-circuited states in
+    separate fixtures and success isolated as exactly
+    `(SUPPORTED_REQUIREMENT,)`.
+50. Exact discrete-bound conversion tests are independent mathematical
+    oracles. They include literal positive and negative ceiling/floor results,
+    negative empty and non-empty intersections, mixed-sign and exact-negative
+    controls, negative-zero behavior, equal negative boundaries, and signed
+    minimum underflow, with no float construction or conversion.
 
 ## Unresolved decisions
 

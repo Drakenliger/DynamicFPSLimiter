@@ -55,9 +55,17 @@ correction commit `88efe137be44b8be6f26da9b5982f045e6aa10f0` also returned
 **Not approved - blocking planning findings require correction**. This second
 documentation-only correction closes the remaining seven blocking capability,
 range, name, name-rule, and test-oracle findings plus one non-blocking
-reason-order finding in proposed planning terms. It still requires another
-independent read-only review and a later explicit acceptance documentation
-step. Implementation remains unauthorized.
+reason-order finding in proposed planning terms. Independent review of the
+second corrected planning commit
+`ae252ff8341570e2c55aa3c8555117dfb4e3db8c` again returned **Not approved —
+blocking planning findings require correction**. It found exactly three
+remaining blockers: unconditional save/activation dependencies
+(`S2-CAP-PLAN-003-R2`), an impossible all-category reason-order fixture
+(`S2-TEST-PLAN-002-R2`), and missing literal negative discrete-bound oracles
+(`S2-TEST-PLAN-001-R2`). This third documentation-only correction addresses
+only those defects while preserving every other corrected planning semantic.
+It still requires another independent read-only review and a later explicit
+acceptance documentation step. Implementation remains unauthorized.
 The coordinator, mutation, and production integration are not implemented or
 authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
@@ -309,6 +317,8 @@ non-overlapping name:
 | --- | --- |
 | `RtssPolicyDecisionStatus` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`. Only `SUPPORTED` admits the exact requested policy operation. |
 | `RtssCapabilitySupportState` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE`. It is one primitive record's observed support state, not provenance or validity. Contradiction is observation-level diagnostic state, not a second meaning of support. |
+| `RtssDependencyApplicability` | Unique enum with exactly `REQUIRED`, `NOT_REQUIRED`, and `UNKNOWN`. It says whether one exact save/persist or activate/reload primitive belongs to one exact mechanism/compound/phase dependency graph. It is not primitive support, operation success, or a caller-authored Boolean. |
+| `RtssDependencyApplicabilityContext` | Closed unique phase labels for `INTEGER_FORWARD_MUTATION`, `FRACTIONAL_FORWARD_MUTATION`, `INTEGER_EXACT_RESTORATION`, `FRACTIONAL_EXACT_RESTORATION`, `PROFILE_CREATION_INTEGER_FORWARD`, and `PROFILE_CREATION_FRACTIONAL_FORWARD`. A future compound that lists save or activation must add a reviewed exact context before it can be evaluated. |
 | `RtssEvidenceValidity` | Unique enum separating `CURRENT`, `STALE`, and `INVALID` for whole observations and their records. Missing evidence is represented by absence. There is deliberately no observation-level unavailable member. |
 | `RtssEvidenceOrigin` | Unique enum separating `DIRECT` and `DERIVED`. Derived evidence names its complete immutable source observations. Origin never implies support. |
 | `RtssAccessMechanism` | Closed unique identifiers for mechanisms actually modeled. Initial values may correspond to the existing RTSS API and profile-file strategies, but no value implies a supported RTSS version. Enum additions fail closed. |
@@ -317,9 +327,10 @@ non-overlapping name:
 | `RtssInternalDependencyBundle` | Closed non-public dependency expansion used by terminal requirements. `COORDINATED_FRACTIONAL_WRITE` expands to the admitted ordered numerator-write and denominator-write primitives. It is reversible sequencing, not atomicity, and has no evaluator entry point or terminal decision. |
 | `RtssRequiredPostcondition` | Closed required future observations: exact value observed; save confirmed; activation confirmed; profile exists; profile absent; and restored state equals captured state. Item 2 checks whether primitives needed to establish them are supported; runtime truth is recorded only by later sequences. |
 | `RtssMechanismCapability` | One mechanism/primitive/profile-kind record containing support state, validity, exact stored-field applicability using existing `RtssStoredFieldKind`, origin, source references, and any domain-specific exact range. Duplicate keys are forbidden. Contradictory direct or derived sources produce the one typed contradictory observation described below. |
+| `RtssMechanismDependencyApplicability` | Factory-controlled immutable child record keyed by parent observation identity, backend generation, capability generation, exact mechanism, profile kind, terminal compound requirement, dependency context, exact field set where applicable, and exactly one of save/persist or activate/reload. It contains `RtssDependencyApplicability`, immutable provenance, and canonical source references. |
 | `RtssCapabilityObservationIdentity` | Opaque immutable observation identifier, distinct from transaction identity. Equality is structural and auditable. |
 | `RtssRawCapabilityReport` | Public untrusted adapter/request-shaped data. It can never directly produce `SUPPORTED`. |
-| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
+| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records and dependency-applicability records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
 | `RtssCapabilityEvaluationContext` | Public immutable matching context containing expected observation identity, backend generation, capability generation, profile kind, and exact source/policy scope. It contains no support assertion. Transaction/ownership attribution is absent because item 2 owns neither; item 3 later binds context to the active item-1 transaction when required. |
 | `RtssCapabilityRequirement` | Pure request for one exact mechanism, compound requirement or primitive query, profile kind, exact-field set, and domain-specific configured policy bounds. It contains intent, not proof. |
 | `RtssCapabilityDecision` | Immutable status, exact request, admitted observation identity/generations when present, selected mechanism only on support, effective configured/evidence range intersection, and a non-empty tuple of typed reasons. |
@@ -347,13 +358,135 @@ constructed, replaced, foreign, or otherwise untrusted evidence cannot produce
 current observation to coordinator transaction context and item 12 will create
 versioned production observations.
 
+##### Mechanism-specific save and activation applicability
+
+Save/persist and activate/reload are conditional dependencies. Their
+applicability is never inferred from primitive support-state presence,
+absence, success, failure, or a Boolean. The sole applicability state is
+`RtssDependencyApplicability`, with exactly:
+
+- `REQUIRED`: the matching primitive is an active dependency and must be
+  evaluated;
+- `NOT_REQUIRED`: the matching primitive is omitted from this exact dependency
+  graph, and its support record is irrelevant to this requirement; and
+- `UNKNOWN`: the factory-admitted evidence does not establish whether the
+  primitive belongs to this exact dependency graph.
+
+Every factory-admitted mechanism manifest contains exactly one immutable
+`RtssMechanismDependencyApplicability` record for each save/activation slot
+declared by each admitted compound/context key. A missing raw source does not
+let a caller omit the slot: the factory materializes the slot as
+`UNKNOWN` with canonical `APPLICABILITY_EVIDENCE_MISSING` provenance. This
+distinguishes an observed `UNKNOWN` applicability assertion from absent source
+evidence while preserving one applicability state enum and a structurally
+complete admitted manifest.
+
+Each applicability record is bound to:
+
+- the exact parent `RtssAdmittedCapabilityObservation` identity;
+- the exact backend and capability generations;
+- the exact access mechanism and profile kind;
+- the exact terminal compound requirement;
+- the exact dependency context;
+- the exact requested/captured field set when restoration or a compound can
+  vary by field; and
+- exactly one conditional primitive: save/persist or activate/reload.
+
+The record is immutable, structurally comparable, provenance-bearing, and
+governed by the parent observation's freshness and validity. A structurally
+equal factory-admitted copy is equivalent. Direct/raw construction,
+caller-authored enums or Booleans, changed nested source references,
+`dataclasses.replace()`, a foreign parent, generation mismatch, mechanism
+mismatch, profile-kind mismatch, compound mismatch, context mismatch, field-set
+mismatch, or primitive mismatch cannot prove applicability. Every
+reconstruction path revalidates the same invariants.
+
+Applicability keys are exact and non-overlapping. Duplicate exact keys or
+overlapping wildcard-like reports are never resolved by order. The admission
+factory converts contradictory applicability sources into the already-defined
+current `CONTRADICTORY` parent observation with canonical contradiction
+sources and no selectable primitive or applicability records. Illegal
+contradictory stale/invalid combinations remain construction errors. A raw
+report cannot invoke the admission factory as a production trust source.
+
+The required context matrix is:
+
+| Compound requirement | Dependency context | Conditional records |
+| --- | --- | --- |
+| Existing integer mutation, forward apply | `INTEGER_FORWARD_MUTATION` | save after integer write; activation after integer write |
+| Existing integer mutation, exact restoration prerequisite | `INTEGER_EXACT_RESTORATION` | save after integer restoration writes; activation after integer restoration writes |
+| Existing fractional mutation, forward apply | `FRACTIONAL_FORWARD_MUTATION` | save after `COORDINATED_FRACTIONAL_WRITE`; activation after that bundle |
+| Existing fractional mutation, exact restoration prerequisite | `FRACTIONAL_EXACT_RESTORATION` | save after coordinated fractional restoration writes; activation after those writes |
+| Profile creation transaction with an integer value | `PROFILE_CREATION_INTEGER_FORWARD` | save after the creation/write expansion; activation after it |
+| Profile creation transaction with a fractional value | `PROFILE_CREATION_FRACTIONAL_FORWARD` | save after the creation/coordinated-write expansion; activation after it |
+
+Applicability-unknown reasons are exact and context-specific:
+
+| Context | Save observed unknown | Save source missing | Activation observed unknown | Activation source missing |
+| --- | --- | --- | --- | --- |
+| Integer forward | `INTEGER_FORWARD_SAVE_APPLICABILITY_UNKNOWN` | `INTEGER_FORWARD_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `INTEGER_FORWARD_ACTIVATION_APPLICABILITY_UNKNOWN` | `INTEGER_FORWARD_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+| Fractional forward | `FRACTIONAL_FORWARD_SAVE_APPLICABILITY_UNKNOWN` | `FRACTIONAL_FORWARD_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `FRACTIONAL_FORWARD_ACTIVATION_APPLICABILITY_UNKNOWN` | `FRACTIONAL_FORWARD_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+| Integer restoration | `INTEGER_RESTORATION_SAVE_APPLICABILITY_UNKNOWN` | `INTEGER_RESTORATION_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `INTEGER_RESTORATION_ACTIVATION_APPLICABILITY_UNKNOWN` | `INTEGER_RESTORATION_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+| Fractional restoration | `FRACTIONAL_RESTORATION_SAVE_APPLICABILITY_UNKNOWN` | `FRACTIONAL_RESTORATION_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `FRACTIONAL_RESTORATION_ACTIVATION_APPLICABILITY_UNKNOWN` | `FRACTIONAL_RESTORATION_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+| Profile creation integer forward | `PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+| Profile creation fractional forward | `PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_EVIDENCE_MISSING` | `PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_UNKNOWN` | `PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING` |
+
+Every mismatch is also exact: the one-element reasons are
+`FOREIGN_APPLICABILITY_EVIDENCE`,
+`APPLICABILITY_PARENT_OBSERVATION_MISMATCH`,
+`APPLICABILITY_BACKEND_GENERATION_MISMATCH`,
+`APPLICABILITY_CAPABILITY_GENERATION_MISMATCH`,
+`APPLICABILITY_MECHANISM_MISMATCH`,
+`APPLICABILITY_PROFILE_KIND_MISMATCH`,
+`APPLICABILITY_COMPOUND_MISMATCH`,
+`APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH`,
+`APPLICABILITY_FIELD_SET_MISMATCH`, and
+`APPLICABILITY_PRIMITIVE_MISMATCH`. Raw/direct/caller-forged applicability
+uses exactly `APPLICABILITY_EVIDENCE_UNTRUSTED`. These reasons are distinct
+from the primitive reasons `SAVE_PERSIST_UNSUPPORTED`,
+`SAVE_PERSIST_EVIDENCE_MISSING`, `ACTIVATE_RELOAD_UNSUPPORTED`, and
+`ACTIVATE_RELOAD_EVIDENCE_MISSING`.
+
+Standalone exact restoration selects its integer or fractional restoration
+context and exact field set. A profile-creation transaction's deletion
+restoration currently expands only to delete plus verified absence, so it has
+no save/activation slot; adding either would require a new reviewed exact
+context and applicability records. Exact readback, existing read, verified
+absence, and deletion restoration likewise list neither conditional operation.
+No forward/restoration equivalence is assumed: for the same mechanism, forward
+save may be `REQUIRED` while restoration save is `NOT_REQUIRED`, and forward
+activation may be `NOT_REQUIRED` while restoration activation is `REQUIRED`,
+only when separately admitted records prove those facts.
+
+For each conditional dependency, the evaluator applies this exact algorithm:
+
+1. Match and validate the applicability record before consulting the primitive
+   support record.
+2. If the parent observation is unusable, or applicability is missing-source,
+   foreign, stale, invalid, contradictory, mismatched, or `UNKNOWN`, return
+   `UNKNOWN` for that dependency with the exact applicability reason. Do not
+   evaluate the conditional primitive for that context. The compound terminal
+   result is `UNKNOWN` unless a different active dependency is currently and
+   explicitly unsupported under the existing status-precedence rule.
+3. If applicability is `NOT_REQUIRED`, omit the primitive and its future
+   postcondition entirely. Missing or unsupported primitive evidence is
+   irrelevant and contributes no reason.
+4. If applicability is `REQUIRED`, evaluate the matching primitive. Current
+   explicit `UNSUPPORTED` yields terminal `UNSUPPORTED`; a missing-source,
+   unusable, `UNKNOWN`, or temporarily unavailable primitive yields terminal
+   `UNKNOWN`; only current explicit `SUPPORTED` satisfies that dependency.
+5. Never infer `NOT_REQUIRED` from an unsupported, unknown, unavailable, or
+   missing primitive. A caller-authored Boolean cannot substitute for the
+   applicability record.
+
 ##### Closed capability decision algebra
 
 The admitted-observation factory has no availability input and constructs
 exactly these legal whole-observation states:
 
 1. `CONSISTENT + CURRENT`, with exactly one structurally complete record for
-   every declared applicability key;
+   every declared primitive key and exactly one factory-admitted dependency-
+   applicability record for every declared save/activation slot;
 2. `CONSISTENT + STALE`, preserving the same complete last-observed record set
    for diagnostics;
 3. `CONSISTENT + INVALID`, preserving a complete raw-derived record set plus
@@ -361,15 +494,21 @@ exactly these legal whole-observation states:
 4. `CONTRADICTORY + CURRENT`, with a non-empty canonical contradiction-source
    tuple and no selectable records.
 
-`CONTRADICTORY + STALE`, `CONTRADICTORY + INVALID`, any consistent snapshot
-with missing or duplicate applicability keys, a contradictory snapshot with
-selectable records, and any attempted observation-level unavailable flag are
-construction errors. A whole-observation absence is represented only by
-`None`. The factory uses exactly one contradiction policy: contradictory direct
-records or derivation sources produce the fourth typed state, which always
-evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`; construction does not also reject
-that semantic state. A raw report cannot invoke the admission factory as a
-public trust source.
+`CONTRADICTORY + STALE`, `CONTRADICTORY + INVALID`, a consistent snapshot whose
+post-admission manifest still lacks a declared primitive or applicability key,
+a duplicate primitive manifest key, a contradictory snapshot with selectable
+records, and any attempted observation-level unavailable flag are construction
+errors. Missing raw primitive or applicability source is normalized rather
+than omitted: the factory creates the exact keyed `UNKNOWN` primitive record
+with `PRIMITIVE_EVIDENCE_MISSING` provenance or the exact keyed `UNKNOWN`
+applicability record with `APPLICABILITY_EVIDENCE_MISSING` provenance.
+Duplicate or overlapping applicability sources instead create the typed
+current contradictory observation. A whole-observation absence is represented
+only by `None`. The factory uses exactly one contradiction policy:
+contradictory direct, derived, or applicability sources produce the fourth
+typed state, which always evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`;
+construction does not also reject that semantic state. A raw report cannot
+invoke the admission factory as a public trust source.
 
 Within a consistent observation, legal primitive records combine support
 `SUPPORTED | UNSUPPORTED | UNKNOWN | TEMPORARILY_UNAVAILABLE`, their own
@@ -388,22 +527,29 @@ or record validity or creates support.
 Evaluation phases and terminal precedence are closed:
 
 1. Structural request failure returns `UNSUPPORTED`.
-2. Missing or untrusted observation, then observation identity, backend
-   generation, capability generation, profile kind, scope, and provenance
-   mismatches return `UNKNOWN` in that order.
+2. Missing or untrusted observation returns `UNKNOWN` in its exclusive
+   fixture. For a present admitted observation, aggregate every legally
+   co-applicable observation identity, backend generation, capability
+   generation, profile kind, scope, and provenance mismatch in that order,
+   then return `UNKNOWN`.
 3. An `INVALID` observation returns `UNKNOWN / INVALID_EVIDENCE`; a `STALE`
    observation returns `UNKNOWN / STALE_EVIDENCE`; a current contradictory
    observation returns `UNKNOWN / CONTRADICTORY_EVIDENCE`. Observation-level
    unavailability is not a legal branch.
-4. In a consistent current observation, any required current primitive that is
+4. In a consistent current observation, evaluate every exact conditional
+   save/activation applicability slot. An `UNKNOWN` or missing-source slot
+   makes the compound result `UNKNOWN` unless another active dependency is
+   conclusively unsupported. A `NOT_REQUIRED` slot removes the primitive and
+   its postcondition. A `REQUIRED` slot activates the matching primitive.
+5. Any active required current primitive that is
    explicitly
    `UNSUPPORTED` makes the compound result `UNSUPPORTED`, even when another
    required primitive is `UNKNOWN`, unavailable, stale, or invalid.
-5. Otherwise any missing, `UNKNOWN`, or temporarily unavailable required
+6. Otherwise any missing, `UNKNOWN`, or temporarily unavailable required
    primitive makes the result `UNKNOWN`.
-6. Only complete current supported primitive dependencies, satisfied exact
-   range requirements, and representable identity/name requirements return
-   `SUPPORTED`.
+7. Only complete current supported active primitive dependencies, resolved
+   conditional applicability, satisfied exact range requirements, and
+   representable identity/name requirements return `SUPPORTED`.
 
 An unsupported claim on the same stale or invalid record is not authoritative:
 its terminal result is `UNKNOWN`, while the ordered diagnostic tuple retains
@@ -426,6 +572,11 @@ and therefore returns `UNSUPPORTED`.
 | Foreign observation identity | `UNKNOWN` | `FOREIGN_OBSERVATION` |
 | Backend generation mismatch | `UNKNOWN` | `BACKEND_GENERATION_MISMATCH` |
 | Capability generation mismatch | `UNKNOWN` | `CAPABILITY_GENERATION_MISMATCH` |
+| Applicability observed `UNKNOWN` | `UNKNOWN` | exact context-specific `*_APPLICABILITY_UNKNOWN` reason |
+| Applicability source missing | `UNKNOWN` | exact context-specific `*_APPLICABILITY_EVIDENCE_MISSING` reason |
+| Applicability `REQUIRED`, matching primitive unsupported | `UNSUPPORTED` | exact ordered primitive `*_UNSUPPORTED` reason |
+| Applicability `REQUIRED`, matching primitive missing/unusable | `UNKNOWN` | exact ordered primitive missing/unusable reason |
+| Applicability `NOT_REQUIRED` | Continue without that primitive | no applicability or primitive failure reason |
 | One current dependency unsupported, another unknown | `UNSUPPORTED` | unsupported reason before unknown reason |
 | One dependency stale, another current unsupported | `UNSUPPORTED` | `STALE_EVIDENCE`, then unsupported reason |
 | All required dependencies current and supported | `SUPPORTED` | `SUPPORTED_REQUIREMENT` |
@@ -435,9 +586,10 @@ stable category order: request structure; identity representability; missing
 observation; observation identity; backend generation; capability generation;
 profile kind; source/policy scope; provenance/authenticity; whole-observation
 validity (`INVALID` before `STALE`); contradiction/derivation; primitive
-dependencies in the canonical dependency-table order below, with
-`UNSUPPORTED` before `TEMPORARILY_UNAVAILABLE` before `UNKNOWN` for the same
-primitive; range domain and
+dependencies in the canonical dependency-table order below, with each
+conditional dependency's applicability reason immediately before its matching
+primitive reason and with `UNSUPPORTED` before
+`TEMPORARILY_UNAVAILABLE` before `UNKNOWN` for the same primitive; range domain and
 intersection; name encoding/length/character; namespace completeness; case;
 normalization; encoding collision; canonical collision. A failing decision
 never contains `SUPPORTED_REQUIREMENT`; success is tested separately and its
@@ -449,7 +601,186 @@ fractional-numerator read; fractional-denominator read; limiter-flag read;
 integer write; fractional-numerator write; fractional-denominator write;
 limiter-flag write; save/persist; activate/reload; create; delete; verify
 absence. A compound filters this list to its dependencies without reordering
-them.
+them. For multiple applicability contexts attached to the same conditional
+primitive, forward contexts precede restoration contexts and the exact
+`RtssDependencyApplicabilityContext` enum order breaks any remaining tie; all
+save contexts therefore precede all activation contexts.
+
+##### Legally constructible diagnostic-order oracle groups
+
+There is no all-category fixture. Structural failure, absent observation,
+unusable observation, current evidence evaluation, name-rule evaluation,
+namespace evaluation, range evaluation, and success have mutually exclusive or
+short-circuited states. The following groups are the complete ordering oracles.
+Every tuple is literal and normative; tests do not build expected order from
+the evaluator.
+
+**Group A - structural raw-name failures**
+
+| Fixture | Why the reasons can coexist | Literal expected tuple | Leading reason / terminal status | Suppressed categories |
+| --- | --- | --- | --- | --- |
+| A1: raw application name `\\?\C:\..\game.exe:stream\u0000\u0001` | One non-empty string contains NUL and another control plus device, UNC, drive-qualified/rooted/full-path, dot-segment, separator, ADS, and generic-colon forms. | `(NUL_IN_NAME, CONTROL_CHARACTER, DEVICE_PATH, UNC_PATH, DRIVE_QUALIFIED_PATH, ROOTED_PATH, FULL_PATH, DOT_PATH_SEGMENT, PATH_SEPARATOR, ALTERNATE_DATA_STREAM, COLON_PATH_CONFUSION)` | `NUL_IN_NAME` / `UNSUPPORTED` | Current identity, capability, applicability, primitive, range, name-rule, and namespace evaluation |
+| A2: raw name `""` | Empty cannot coexist with any content-dependent reason. | `(EMPTY_NAME,)` | `EMPTY_NAME` / `UNSUPPORTED` | Every later category |
+| A3: raw name `"\t"` | The input is both whitespace-only and a control character; it cannot also be empty or a path form. | `(WHITESPACE_ONLY_NAME, CONTROL_CHARACTER)` | `WHITESPACE_ONLY_NAME` / `UNSUPPORTED` | Every later category |
+
+In A1 and A3, the displayed escapes denote the actual U+0000, U+0001, and
+U+0009 code points in the in-memory fixture; no NUL byte is written to a
+tracked file.
+
+The A1 positive control is exact `game.exe`; it has no classifier reason and
+continues. A2 and A3 are required exclusive controls, not omissions from an
+aggregate fixture.
+
+**Group B - evaluation-context mismatch**
+
+One current, valid, consistent, fully supporting observation is paired with a
+context whose expected observation identity, backend generation, capability
+generation, profile kind, and policy scope all differ. Those public context
+dimensions can legally differ simultaneously. The literal tuple is
+`(FOREIGN_OBSERVATION, BACKEND_GENERATION_MISMATCH,
+CAPABILITY_GENERATION_MISMATCH, PROFILE_KIND_MISMATCH,
+POLICY_SCOPE_MISMATCH)`, led by `FOREIGN_OBSERVATION`, with terminal
+`UNKNOWN`. Missing observation, observation validity, primitive,
+applicability, range, name-rule, and namespace reasons are suppressed. The
+positive control is a structurally equal matching context and otherwise
+identical evidence.
+
+**Group C - unusable admitted observation**
+
+The factory forbids combining these states, so each is a separate fixture:
+
+| Fixture | Literal expected tuple | Leading reason / terminal status | Suppressed categories |
+| --- | --- | --- | --- |
+| C1: matching admitted `STALE` observation | `(STALE_EVIDENCE,)` | `STALE_EVIDENCE` / `UNKNOWN` | Applicability, primitive, range, name-rule, namespace |
+| C2: matching admitted `INVALID` observation | `(INVALID_EVIDENCE,)` | `INVALID_EVIDENCE` / `UNKNOWN` | Applicability, primitive, range, name-rule, namespace |
+| C3: matching current `CONTRADICTORY` observation with no selectable records | `(CONTRADICTORY_EVIDENCE,)` | `CONTRADICTORY_EVIDENCE` / `UNKNOWN` | Applicability, primitive, range, name-rule, namespace |
+| C4: current valid foreign observation only | `(FOREIGN_OBSERVATION,)` | `FOREIGN_OBSERVATION` / `UNKNOWN` | Later context and evidence categories |
+| C5: current valid observation with only backend generation mismatched | `(BACKEND_GENERATION_MISMATCH,)` | `BACKEND_GENERATION_MISMATCH` / `UNKNOWN` | Capability generation and later evidence categories |
+| C6: current valid observation with only capability generation mismatched | `(CAPABILITY_GENERATION_MISMATCH,)` | `CAPABILITY_GENERATION_MISMATCH` / `UNKNOWN` | Later evidence categories |
+
+The C-group positive control is current, consistent, matching, fully
+supporting evidence. Missing observation is a separate single-category fixture
+with exactly `(CAPABILITY_EVIDENCE_MISSING,)`; it is never combined with C4-C6.
+
+**Group D - current consistent primitive and conditional-dependency failures**
+
+D1 uses one existing fractional-mutation requirement and one current, valid,
+consistent observation. Distinct exact keys carry: unsupported existence;
+temporarily unavailable numerator read; unknown denominator read; unsupported
+numerator write; temporarily unavailable denominator write; an incomplete
+derived coordinated-write bundle; observed-unknown forward save
+applicability; missing-source forward activation applicability;
+observed-unknown restoration save applicability; and missing-source
+restoration activation applicability. These states coexist because each
+belongs to a different primitive or applicability-context key. Its literal
+tuple is:
+
+`(DERIVED_DEPENDENCY_INCOMPLETE,
+PROFILE_EXISTENCE_LOOKUP_UNSUPPORTED,
+FRACTIONAL_NUMERATOR_READ_TEMPORARILY_UNAVAILABLE,
+FRACTIONAL_DENOMINATOR_READ_UNKNOWN,
+FRACTIONAL_NUMERATOR_WRITE_UNSUPPORTED,
+FRACTIONAL_DENOMINATOR_WRITE_TEMPORARILY_UNAVAILABLE,
+FRACTIONAL_FORWARD_SAVE_APPLICABILITY_UNKNOWN,
+FRACTIONAL_RESTORATION_SAVE_APPLICABILITY_UNKNOWN,
+FRACTIONAL_FORWARD_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING,
+FRACTIONAL_RESTORATION_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING)`.
+
+`DERIVED_DEPENDENCY_INCOMPLETE` is the evaluator's diagnostic derivation from
+the incomplete internal bundle; it is not a selectable support record or a
+terminal internal-bundle decision.
+
+The leading reason is `DERIVED_DEPENDENCY_INCOMPLETE`; terminal status is
+`UNSUPPORTED` because the current explicitly unsupported active primitives
+dominate unknown/unavailable dependencies. Save/activation primitive reasons
+are suppressed for every `UNKNOWN` or missing-source applicability context.
+Range and name evidence is supporting and contributes no reason. A missing
+primitive manifest key is not legal in a consistent admitted observation and
+has a separate factory-rejection test; a factory-materialized missing-source
+save or activation primitive record is legal and uses exactly
+`(SAVE_PERSIST_EVIDENCE_MISSING,)` or
+`(ACTIVATE_RELOAD_EVIDENCE_MISSING,)` in its single-dependency fixture.
+
+D2 fixtures vary one conditional slot while every other active dependency is
+current and supported: `REQUIRED` plus supported primitive succeeds;
+save `REQUIRED` plus unsupported primitive yields exactly
+`(SAVE_PERSIST_UNSUPPORTED,)`; save `REQUIRED` plus missing-source primitive
+yields exactly `(SAVE_PERSIST_EVIDENCE_MISSING,)`; activation `REQUIRED` plus
+unsupported primitive yields exactly `(ACTIVATE_RELOAD_UNSUPPORTED,)`; and
+activation `REQUIRED` plus missing-source primitive yields exactly
+`(ACTIVATE_RELOAD_EVIDENCE_MISSING,)`. `NOT_REQUIRED` succeeds while the
+corresponding unsupported or missing primitive is ignored. Observed `UNKNOWN`
+and missing-source applicability use the exact context-specific one-element
+tuples defined above. Separate forward/restoration fixtures prove their records
+may differ. The D-group positive control marks each actually active slot
+`REQUIRED` with supported primitive evidence and marks each deliberately
+omitted slot `NOT_REQUIRED`.
+
+**Group E - name-rule and namespace failures**
+
+| Fixture | Why/split rule | Literal expected tuple | Leading reason / terminal status | Suppressed categories |
+| --- | --- | --- | --- | --- |
+| E1: one current rule set with foreign rule identity plus mismatched parent, backend generation, capability generation, profile kind, namespace scope, mechanism, operation, and name context | These matching dimensions can all differ simultaneously. | `(FOREIGN_NAME_RULE_SET, NAME_RULE_PARENT_OBSERVATION_MISMATCH, NAME_RULE_BACKEND_GENERATION_MISMATCH, NAME_RULE_CAPABILITY_GENERATION_MISMATCH, NAME_RULE_PROFILE_KIND_MISMATCH, NAME_RULE_NAMESPACE_SCOPE_MISMATCH, NAME_RULE_MECHANISM_MISMATCH, NAME_RULE_OPERATION_MISMATCH, NAME_RULE_CONTEXT_MISMATCH)` | `FOREIGN_NAME_RULE_SET` / `UNKNOWN` | Rule contents and namespace |
+| E2: invalid rule set | Invalid, stale, and contradictory are factory-exclusive. | `(INVALID_NAME_RULES,)` | `INVALID_NAME_RULES` / `UNKNOWN` | Namespace |
+| E3: stale rule set | Separate factory-legal state. | `(STALE_NAME_RULES,)` | `STALE_NAME_RULES` / `UNKNOWN` | Namespace |
+| E4: current contradictory rule set, no selectable rules | Separate factory-legal state. | `(CONTRADICTORY_NAME_RULES,)` | `CONTRADICTORY_NAME_RULES` / `UNKNOWN` | Namespace |
+| E5: usable rules plus incomplete namespace evidence | Completeness must pass before collision/normalization evaluation. | `(NAMESPACE_COMPLETENESS_MISSING,)` | `NAMESPACE_COMPLETENESS_MISSING` / `UNKNOWN` | Case, normalization, encoding collision, canonical collision |
+| E6: usable rules and complete namespace proving one peer collides by case, named normalization, encoding, and current canonical key | Complete evidence can prove all four colliders for the same peer. | `(CASE_COLLISION, NORMALIZATION_COLLISION, ENCODING_COLLISION, CANONICAL_COLLISION)` | `CASE_COLLISION` / `UNSUPPORTED` | No later name category |
+| E7: usable complete namespace with unknown normalization mode | Mutually exclusive with named-compatible/incompatible modes. | `(NORMALIZATION_UNKNOWN,)` | `NORMALIZATION_UNKNOWN` / `UNKNOWN` | Normalization mapping and later collision derivation |
+| E8: named normalization with incomplete one-to-one proof | Complete proof, incomplete proof, and proved incompatibility are exclusive. | `(NORMALIZATION_PROOF_INCOMPLETE,)` | `NORMALIZATION_PROOF_INCOMPLETE` / `UNKNOWN` | Collision conclusions requiring that proof |
+| E9: named normalization proving a many-to-one external-to-current ownership mapping | This is a proved incompatibility, not incomplete evidence. | `(IDENTITY_MODEL_INCOMPATIBLE,)` | `IDENTITY_MODEL_INCOMPATIBLE` / `UNSUPPORTED` | Later collision categories |
+
+Each E fixture uses a structurally valid currently representable identity and
+fully supporting capability/range evidence. The positive control uses a
+matching current consistent rule set and complete current namespace evidence
+proving one-to-one mapping and no collision.
+
+**Group F - range failures**
+
+F1 uses one valid fractional request with current usable evidence: numerator
+`-129` against signed 8-bit `[-128, 127]`, denominator `256` against unsigned
+8-bit `[0, 255]`, and a requested effective-rational representability range
+whose evidence is explicitly unsupported. Distinct domains make the reasons
+co-applicable. The literal tuple is
+`(RANGE_UNSUPPORTED, RANGE_UNDERFLOW, RANGE_OVERFLOW,
+BIT_WIDTH_OVERFLOW)`, led by `RANGE_UNSUPPORTED`, with terminal
+`UNSUPPORTED`. Name categories are supporting and suppressed. The range
+within-category order is missing, invalid evidence, unsupported, underflow,
+overflow, bit-width overflow, then empty discrete intersection after
+request-structural invalid/empty checks.
+
+States that cannot coexist for the same range key use separate literal
+fixtures:
+
+- F2 missing required range:
+  `(RANGE_EVIDENCE_MISSING,)` / leading `RANGE_EVIDENCE_MISSING` /
+  `UNKNOWN`;
+- F3 typed invalid observed range:
+  `(INVALID_RANGE_EVIDENCE,)` / leading `INVALID_RANGE_EVIDENCE` /
+  `UNKNOWN`;
+- F4 reversed configured request:
+  `(INVALID_RANGE_REQUEST,)` / leading `INVALID_RANGE_REQUEST` /
+  `UNSUPPORTED`, with evidence evaluation suppressed;
+- F5 equal configured endpoints with either exclusive:
+  `(EMPTY_CONFIGURED_RANGE,)` / leading `EMPTY_CONFIGURED_RANGE` /
+  `UNSUPPORTED`, with evidence evaluation suppressed; and
+- F6 converted or intersected lower greater than upper:
+  `(EMPTY_DISCRETE_INTERSECTION,)` / leading
+  `EMPTY_DISCRETE_INTERSECTION` / `UNSUPPORTED`.
+
+The F-group positive control uses the same domains with current supported
+ranges containing each requested value and a non-empty exact intersection.
+
+**Separate success and single-category controls**
+
+Success is one entirely separate fixture with current matching evidence,
+resolved applicability, all active primitives supported, valid non-empty
+ranges, usable rules, and complete collision-free namespace evidence. It
+expects exactly `(SUPPORTED_REQUIREMENT,)`. No failing fixture contains that
+reason. Missing observation, raw/direct untrusted evidence, each single
+applicability mismatch, each required save/activation primitive state, and any
+other reason that cannot legally coexist with its group are tested as explicit
+single-category fixtures with their literal one-element tuple.
 
 Derived support is not a new assertion. A derived record is evaluated from its
 complete direct-source DAG: contradiction yields the typed contradictory
@@ -470,13 +801,13 @@ proof but never asserts that a runtime result occurred.
 | Terminal compound requirement | Ordered dependency expansion | Required future postconditions |
 | --- | --- | --- |
 | Exact readback | requested integer/numerator/denominator/flag reads | exact requested fields observed |
-| Exact restoration | reads and writes for every captured applicable field; for a fractional pair, `COORDINATED_FRACTIONAL_WRITE`; save; activate; exact-readback expansion | restored state equals captured state; save confirmed; activation confirmed |
+| Exact restoration | reads and writes for every captured applicable field; for a fractional pair, `COORDINATED_FRACTIONAL_WRITE`; restoration-context save if `REQUIRED`; restoration-context activation if `REQUIRED`; exact-readback expansion | restored state equals captured state; save confirmed only when restoration save is `REQUIRED`; activation confirmed only when restoration activation is `REQUIRED` |
 | Existing read | existence lookup; requested integer/numerator/denominator/flag reads | profile exists; exact requested fields observed |
-| Existing integer mutation | existence lookup; capture integer read; integer write; save; activate; exact integer readback; exact integer restoration | profile exists; exact requested value observed; save confirmed; activation confirmed; exact restoration remains possible |
-| Existing fractional mutation | existence lookup; capture numerator read; capture denominator read; `COORDINATED_FRACTIONAL_WRITE`; save; activate; exact numerator-and-denominator readback; exact numerator-and-denominator restoration | profile exists; exact requested pair observed; save confirmed; activation confirmed; exact restoration remains possible |
+| Existing integer mutation | existence lookup; capture integer read; integer write; forward-integer save if `REQUIRED`; forward-integer activation if `REQUIRED`; exact integer readback; exact integer restoration using its separate restoration applicability | profile exists; exact requested value observed; save confirmed only when forward save is `REQUIRED`; activation confirmed only when forward activation is `REQUIRED`; exact restoration remains possible |
+| Existing fractional mutation | existence lookup; capture numerator read; capture denominator read; `COORDINATED_FRACTIONAL_WRITE`; forward-fractional save if `REQUIRED`; forward-fractional activation if `REQUIRED`; exact numerator-and-denominator readback; exact numerator-and-denominator restoration using its separate restoration applicability | profile exists; exact requested pair observed; save confirmed only when forward save is `REQUIRED`; activation confirmed only when forward activation is `REQUIRED`; exact restoration remains possible |
 | Verified absence | verify absence | profile absent |
 | Deletion restoration | delete; verified-absence expansion | profile absent |
-| Profile creation transaction | existence lookup; create; required capture/read and write expansions; save; activate; exact-readback expansion; deletion-restoration expansion | profile exists after create; exact value observed; profile absent after restoration |
+| Profile creation transaction | existence lookup; create; required integer or fractional capture/read and write expansion; creation-context save if `REQUIRED`; creation-context activation if `REQUIRED`; exact-readback expansion; deletion-restoration expansion | profile exists after create; exact value observed; save/activation confirmed only when each is `REQUIRED`; profile absent after restoration |
 
 `COORDINATED_FRACTIONAL_WRITE` is the sole internal bundle. It expands in a
 mechanism-declared order to exactly one numerator-write primitive and one
@@ -492,14 +823,18 @@ The dependency graph is acyclic: terminal requirements expand only to
 primitives, the one internal bundle, or earlier non-recursive readback,
 restoration, and absence expansions. Exact restoration never depends on the
 mutation requirement that consumes it. The static evaluator flattens and
-deduplicates primitive leaves in canonical phase order while retaining phase
-labels for diagnostics. Removing any required leaf has an independent result:
+deduplicates active primitive leaves in canonical phase order while retaining
+phase labels and distinct forward/restoration applicability contexts for
+diagnostics. Removing any active required leaf has an independent result:
 a current explicit `UNSUPPORTED` leaf makes the terminal requirement
 `UNSUPPORTED`; a missing, unknown, stale, invalid, or temporarily unavailable
 leaf makes it `UNKNOWN`; only all current supported leaves allow `SUPPORTED`.
 Numerator-only or denominator-only read/write applicability therefore never
-supports existing fractional mutation. Missing save, activation, exact
-readback, or exact restoration likewise prevents support.
+supports existing fractional mutation. Unknown or missing save/activation
+applicability prevents support; a matching `NOT_REQUIRED` record omits that
+primitive without failure. A save/activation primitive that is `REQUIRED` but
+missing or unusable prevents support, as do missing exact readback or exact
+restoration.
 
 The terminal capability result is still not mutation admission. Item 4 must
 later provide the mutation journal, rollback interfaces, degraded-state
@@ -511,8 +846,11 @@ prerequisites are not fabricated as item-2 capability records.
 `PROFILE_EXISTS`, `PROFILE_ABSENT`, and
 `RESTORED_STATE_EQUALS_CAPTURED_STATE` are deterministic future requirements,
 not capability claims. Their actual pass/fail values are runtime results in
-items 3, 5, and 6. No item-2 record may claim that readback or restoration has
-already succeeded.
+items 3, 5, and 6. `SAVE_CONFIRMED` and `ACTIVATION_CONFIRMED` enter a
+particular future graph only when the matching applicability record is
+`REQUIRED`; `NOT_REQUIRED` omits both primitive and postcondition, while
+`UNKNOWN` cannot support the compound. No item-2 record may claim that
+readback or restoration has already succeeded.
 
 ##### Domain-specific exact range contracts
 
@@ -554,6 +892,40 @@ and `ceil(U) - 1` when `U` is exclusive. Open endpoints remain open. The
 converted denominator lower bound is additionally intersected with `1`.
 Conversion provenance retains the original endpoint, inclusivity, exact
 rational value, converted integer, and rule used.
+
+The independent negative conversion oracle is literal:
+
+| Bound type | Exact input | Exact converted inclusive discrete bound |
+| --- | ---: | ---: |
+| Inclusive lower | `-60.5` | `-60` |
+| Exclusive lower | `-60` | `-59` |
+| Exclusive lower | `-60.5` | `-60` |
+| Inclusive upper | `-59.5` | `-60` |
+| Exclusive upper | `-60` | `-61` |
+| Exclusive upper | `-59.5` | `-60` |
+
+These values follow `ceil(L)`, `floor(L) + 1`, `floor(U)`, and
+`ceil(U) - 1` exactly; no expected value is derived from future
+implementation code. The review request's candidate `-59` for exclusive upper
+`-59.5` is not adopted because `ceil(-59.5) - 1 = -59 - 1 = -60`, and `-59`
+does not satisfy the strict upper bound. Required interval controls are also
+literal:
+
+- lower `-60.5` inclusive and upper `-58.5` exclusive convert to `-60`
+  and `-59`, so the discrete set is exactly `{-60, -59}`;
+- lower `-60` exclusive and upper `-59.5` inclusive convert to `-59`
+  and `-60`, so the result is exactly
+  `UNSUPPORTED / EMPTY_DISCRETE_INTERSECTION`;
+- mixed-sign lower `-1.5` inclusive and upper `1.5` exclusive convert to
+  `-1` and `1`, so the set is exactly `{-1, 0, 1}`;
+- exact negative inclusive lower and upper `-60` convert to `-60` and
+  produce exactly `{-60}`; making either equal endpoint exclusive is exactly
+  `UNSUPPORTED / EMPTY_CONFIGURED_RANGE`;
+- `Decimal("-0")` converts exactly to rational `0/1` and discrete `0`; the
+  policy has no distinct negative-zero value; and
+- for signed two's-complement width 8, request `-129` is one below `-128` and
+  yields the ordered range reasons
+  `(RANGE_UNDERFLOW, BIT_WIDTH_OVERFLOW)`.
 
 Effective-rational bounds use canonical reduced numerator/denominator pairs
 with a positive denominator and compare only by exact cross multiplication.
@@ -784,10 +1156,11 @@ The evaluator matches, in order: rule-set identity requested by the public
 request; parent capability-observation identity; backend generation;
 capability generation; profile kind; namespace scope; mechanism; exact
 primitive or terminal compound; and name context. Missing or raw rules are
-`UNKNOWN / NAME_RULE_EVIDENCE_MISSING`; a foreign identity or any parent,
-generation, kind, scope, mechanism, operation, or context mismatch is
-`UNKNOWN` with its exact mismatch reason; invalid then stale rule sets are
-`UNKNOWN`; and a current contradictory rule set is
+`UNKNOWN / NAME_RULE_EVIDENCE_MISSING`; for one present rule set, all legally
+co-applicable foreign-identity, parent, generation, kind, scope, mechanism,
+operation, and context mismatches are aggregated in that order before
+returning `UNKNOWN`; invalid then stale rule sets are `UNKNOWN`; and a current
+contradictory rule set is
 `UNKNOWN / CONTRADICTORY_NAME_RULES`. Only a current consistent complete
 matching rule set may continue. A structurally equal admitted copy is a
 positive control.
@@ -878,6 +1251,7 @@ normalization, and encoding collision key.
 | `NAMED`, incompatible many-to-one ownership mapping | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` |
 | Proven normalization-equivalent collision | `UNSUPPORTED / NORMALIZATION_COLLISION` |
 | Lossy or colliding encoding round trip | `UNSUPPORTED / ENCODING_COLLISION` |
+| Proven current canonical-key collision | `UNSUPPORTED / CANONICAL_COLLISION`; may coexist diagnostically with case, normalization, or encoding collision |
 | Existing exact lookup with authoritative exact no-collision proof | Continue against exact lookup dependencies |
 | New profile creation without complete collision-key absence proof | `UNKNOWN / NAMESPACE_COMPLETENESS_MISSING` |
 
@@ -939,14 +1313,19 @@ Policy evaluation follows this deterministic order:
    profile kind, and exact-field applicability records. Aggregate the canonical
    dependency bundle using current unsupported before unknown; no other
    mechanism is tried.
-5. Require every dependency for the requested operation. Read never implies
-   write; write never implies readback; readback never implies restoration;
-   profile-file access never implies API support.
-6. A mutation-capability decision requires current support for write, save,
-   activation, exact-readback dependencies, and exact-restoration dependencies
-   for every applicable field. A current explicit unsupported dependency makes
-   it `UNSUPPORTED`; a missing or unknown dependency makes it `UNKNOWN`. No
-   mutation is admitted.
+5. Require every active dependency for the requested operation. Read never
+   implies write; write never implies readback; readback never implies
+   restoration; profile-file access never implies API support.
+6. Before evaluating each save or activation primitive, match its exact
+   mechanism/compound/phase applicability record. `UNKNOWN`, missing-source,
+   foreign, stale, invalid, contradictory, or mismatched applicability makes
+   the compound `UNKNOWN`; `NOT_REQUIRED` omits that primitive and
+   postcondition; `REQUIRED` activates the primitive support check. A
+   mutation-capability decision requires current support for every active
+   write, save, activation, exact-readback, and exact-restoration dependency
+   for every applicable field. A current explicit unsupported active
+   dependency makes it `UNSUPPORTED`; a missing or unknown active dependency
+   makes it `UNKNOWN`. No mutation is admitted.
 7. A fractional operation requiring both exact numerator and denominator is
    supported only when both field reads, writes, readback, and restoration are
    supported through the admitted mechanism. Numerator-only support,
@@ -1033,8 +1412,12 @@ One apply transaction proceeds in this exact logical order:
 12. Apply only the required changes in deterministic order: create/load the
     profile if authorized, set exact numerator, set exact denominator, and set
     only owned limiter bits.
-13. Save the admitted profile.
-14. Request update/activation.
+13. Save the admitted profile only when the exact forward-context
+    applicability record is `REQUIRED`; skip it only when that record is
+    `NOT_REQUIRED`. `UNKNOWN` never reaches mutation admission.
+14. Request update/activation only when the exact forward-context
+    applicability record is `REQUIRED`; skip it only when that record is
+    `NOT_REQUIRED`.
 15. Read back profile existence, stored numerator/denominator, effective cap,
     owned flags, document/revision evidence, and backend generation.
 16. Compare exact requested state and return `VERIFIED`; only then may a
@@ -1044,9 +1427,11 @@ One apply transaction proceeds in this exact logical order:
     restart, or mismatch after possible mutation, run rollback while still
     holding serialization.
 18. Rollback restores the complete captured document or exact fields according
-    to the approved mechanism, restores only owned limiter bits, saves,
-    updates, and performs exact readback. A transaction-created profile is
-    deleted and verified absent.
+    to the approved mechanism, restores only owned limiter bits, evaluates the
+    separate exact-restoration save and activation applicability records,
+    performs only the restoration operations marked `REQUIRED`, and performs
+    exact readback. A transaction-created profile is deleted and verified
+    absent; deletion restoration currently has no save/activation dependency.
 19. Return `FAILED_ROLLED_BACK` only after exact verified restoration;
     otherwise return a durable `DEGRADED`, `CONFLICT`, or
     `UNSUPPORTED_CAPABILITY` result with complete per-field unresolved state,
@@ -1058,9 +1443,10 @@ One apply transaction proceeds in this exact logical order:
     ownership.
 
 A normal restore uses the same serialized capture-conflict, mutation,
-save/update, and exact-readback phases. Repeated restore after verified release
-returns an idempotent verified no-change/released result and performs no
-mutation.
+applicable save/update, and exact-readback phases, using restoration-context
+applicability rather than copying forward-mutation applicability. Repeated
+restore after verified release returns an idempotent verified
+no-change/released result and performs no mutation.
 
 This is the complete logical coordinator ordering across all later slices. It
 does not broaden the first mutation-bearing Stage 5 admission, which is limited
@@ -1252,8 +1638,10 @@ This is the authoritative detailed table referenced by `DECISIONS.md`.
 Corrected planning semantics - context matching, legal observation states,
 decision precedence, failure-only reason ordering, contradiction
 representation, internal fractional dependency expansion, bit-width and exact
-bound conversion, aggregating raw-name classification, identity fail-closed
-behavior, name-rule ownership, named-normalization compatibility, and namespace
+bound conversion including literal negative oracles, mechanism-specific
+save/activation applicability semantics, legally constructible diagnostic
+groups, aggregating raw-name classification, identity fail-closed behavior,
+name-rule ownership, named-normalization compatibility, and namespace
 completeness - are resolved proposed design pending independent review; they
 are not live-fact questions and do not appear as open rows.
 
@@ -1265,8 +1653,9 @@ decisions explicit:
 | `S2-CAP-OPEN-001` | Which RTSS versions are supported? | No versioned capability/restoration matrix is accepted. | Version labels are diagnostic only; no real observation is supported. | Item 12 adapter/manual matrix | No | Yes, for every support claim |
 | `S2-CAP-OPEN-002` | Which exact operations and fields does each API mechanism support? | Current code exposes partial DLL methods and guessed Booleans, not admitted evidence. | Unknown per operation/field; never infer from general API availability. | Item 12 adapters | No | Yes, for affected operations |
 | `S2-CAP-OPEN-003` | Is fractional denominator access API-backed or profile-file-backed? | Existing production paths split mechanisms; `RTSS-008` remains Likely/Open. | No fallback; denominator-dependent operations remain unknown. | Items 8 and 12 | No | Yes, for fractional mutation |
-| `S2-CAP-OPEN-004` | Can write, save, activation, and exact readback be relied on independently? | Item 1 models results but provides no live capability proof. | Require explicit support for each; missing readback rejects mutation. | Items 5 and 12 | No | Yes |
+| `S2-CAP-OPEN-004` | When applicable, can write, save, activation, and exact readback be relied on independently? | Item 1 models results but provides no live capability proof. | Require explicit support for every active primitive; missing readback rejects mutation. | Items 5 and 12 | No | Yes |
 | `S2-CAP-OPEN-005` | Are create, delete, and verified absence supported and reversible? | No accepted versioned disposable-profile evidence. | Existing read may remain eligible; creation/deletion remain unknown. | Items 6 and 12 | No | Yes, for creation/deletion |
+| `S2-CAP-OPEN-007` | For each real mechanism and compound/phase context, is save or activation required, proved not required, or unknown? | No accepted versioned mechanism evidence establishes applicability, and forward/restoration behavior may differ. | Admit `UNKNOWN`; omit a dependency only on factory-admitted exact-context `NOT_REQUIRED`; never infer omission from primitive absence or lack of support. | Items 5, 6, 8, and 12 | No | Yes, for every affected mutation/restoration graph |
 | `S2-NAME-OPEN-001` | Which encoding(s) are lossless for each mechanism? | Current identity uses ASCII; that is not universal RTSS evidence. | Encoding-dependent names are unknown without exact admitted evidence. | Item 12 adapters/manual matrix | No | Yes, for affected names |
 | `S2-NAME-OPEN-002` | What character and encoded-byte component/total limits apply? | No accepted RTSS limit evidence; current parser has no capability limits. | A required unknown limit yields `UNKNOWN`; do not truncate. | Item 12 adapters/manual matrix | No | Yes, for support beyond proven bounds |
 | `S2-NAME-OPEN-003` | Which characters or reserved forms are invalid for DLL lookup and profile files? | Current validation uses Windows filename rules; RTSS equivalence is unproven. | Structural injection/path-confusion rules are fixed; other constructor restrictions remain current identity-model constraints and no universal RTSS rule is claimed. | Item 12 evidence; separate identity migration if broader support is proposed | No | Yes, for names outside proven rules |
@@ -1303,16 +1692,18 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - two planning reviews rejected;
-   second correction completed locally; independent review and later explicit
+2. **Capability and supported-name policy - three planning reviews rejected;
+   third correction completed locally; independent review and later explicit
    acceptance required; implementation unauthorized**
    - future unit 2a: add unique status, support, validity, origin, mechanism,
      primitive-operation, terminal compound-requirement, internal-dependency,
-     postcondition, contradiction, and typed-reason enums plus immutable
-     evaluation context and raw/admitted capability evidence contracts with the
-     closed legal observation-state factory;
-   - future unit 2b: add the closed primitive/derived decision algebra,
-     canonical dependency bundles, stable reason ordering, and pure evaluator;
+     postcondition, dependency-applicability/context, contradiction, and
+     typed-reason enums plus immutable evaluation context and raw/admitted
+     capability and applicability evidence contracts with the closed legal
+     observation-state factory;
+   - future unit 2b: add the closed applicability/primitive/derived decision
+     algebra, conditional canonical dependency bundles, stable reason ordering,
+     and pure evaluator;
    - future unit 2c: add domain-specific integer, numerator, denominator,
      rational, and bit-width range contracts, the unsigned/two's-complement
      formulas, exact discrete configured-bound conversion, and exact
@@ -1326,8 +1717,9 @@ The independently verified and explicitly accepted implementation sequence is:
      character, case, normalization, existing/creation, and exact collision
      outcomes;
    - future unit 2g: add deterministic factory/admission, public-path,
-     direct-construction/replacement, omitted-collider, range, and full
-     truth-table regressions;
+     direct-construction/replacement, applicability, legally co-applicable
+     diagnostic-group, omitted-collider, negative-range, and full truth-table
+     regressions;
    - future unit 2h: reconcile tracked documentation after tests pass;
    - each unit remains contract/policy-only and must be independently
      reviewable; none creates trusted live evidence, a coordinator registry,
@@ -1343,7 +1735,8 @@ The independently verified and explicitly accepted implementation sequence is:
    - retain fail-closed mutation admission until rollback coverage exists.
 5. **Existing-profile exact-cap apply**
    - admit only the exact Stage 5 mutation boundary defined below, together
-     with its save, activation, exact readback, rollback, degraded-state,
+     with exact-context save/activation applicability, every active
+     save/activation primitive, exact readback, rollback, degraded-state,
      ownership-retention, and complete false/exception/mismatch matrix.
 6. **Profile creation and created-profile restoration**
    - separately add authorized profile creation, created-profile deletion,
@@ -1373,8 +1766,11 @@ The independently verified and explicitly accepted implementation sequence is:
 Stage 5 admits exactly one operation: apply an exact cap change to an already
 existing application or Global profile through one already-admitted capability
 mechanism that exposes and supports every exact field and operation required
-for capture, mutation, save, update/activation, readback, rollback, and exact
-restoration verification.
+for capture, mutation, every save or update/activation dependency proved
+`REQUIRED`, readback, rollback, and exact restoration verification. Every
+conditional dependency must have exact-context applicability evidence;
+`UNKNOWN` or missing applicability fails admission, and only admitted
+`NOT_REQUIRED` omits the primitive.
 
 The request may change the exact stored numerator. It may also change the exact
 stored denominator only when the selected capability mechanism treats numerator
@@ -1400,12 +1796,13 @@ before mutation.
 
 A Stage 5 mutation-bearing commit may include only operations for which that
 commit and its prior prerequisites provide exact capture, ordered operation
-recording, save and activation semantics, exact readback, every applicable
-false and exception path, rollback, degraded-state construction, ownership
-retention, and deterministic tests. Stage 5 may be split into smaller commits
-if numerator and denominator handling, save/update activation, or rollback
-cannot remain independently reviewable as one slice. Smaller mutation slices
-are preferred over combining mechanisms.
+recording, mechanism- and phase-specific save and activation applicability and
+semantics, exact readback, every applicable false and exception path, rollback,
+degraded-state construction, ownership retention, and deterministic tests.
+Stage 5 may be split into smaller commits if numerator and denominator
+handling, save/update activation, or rollback cannot remain independently
+reviewable as one slice. Smaller mutation slices are preferred over combining
+mechanisms.
 
 Later focused slices separately own profile creation and created-profile
 deletion restoration; limiter-flag mutation and exact prior-bit ownership;
@@ -1459,8 +1856,8 @@ Stage 2 coordinator implementation is complete only when:
 The planning-review and explicit-acceptance gates are satisfied. Sequence item
 1 is independently approved and complete with no admitted mutation after three
 failed implementation reviews and three focused corrections. The separate
-focused sequence-item-2 planning and design work has received two rejected
-planning reviews. This second documentation-only correction is complete
+focused sequence-item-2 planning and design work has received three rejected
+planning reviews. This third documentation-only correction is complete
 locally, but its commit requires independent read-only review and a later
 explicit acceptance documentation step.
 Sequence item 2 implementation and each later mutation-bearing slice remain
