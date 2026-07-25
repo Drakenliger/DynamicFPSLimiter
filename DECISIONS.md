@@ -104,27 +104,38 @@ accepted.
     dependencies. A current explicit unsupported dependency dominates a
     current unknown dependency; unusable stale or invalid records remain
     `UNKNOWN` while preserving any unsupported claim diagnostically.
-37. Contradictory source evidence has one representation: a factory-admitted
-    typed contradictory observation with no selectable support records. It
-    always evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`; construction does not
-    also choose a competing rejection policy.
-38. Primitive backend operations, compound capability requirements, and
-    verified postconditions are separate closed taxonomies. Compound support is
-    derived from an acyclic, ordered bundle of primitive records and required
-    future postconditions. A coordinated fractional update is an ordered,
-    reversible compound requirement, not an asserted atomic primitive.
+37. A whole admitted capability observation has no unavailable state. Absence
+    is a missing observation; `STALE` and `INVALID` are observation validity;
+    contradiction is one current factory-admitted observation with no
+    selectable records; and temporary unavailability exists only on a current
+    primitive record. Illegal cross-products are rejected by the admission
+    factory. A contradictory observation always evaluates
+    `UNKNOWN / CONTRADICTORY_EVIDENCE`.
+38. Primitive backend operations, terminal compound capability requirements,
+    internal dependency bundles, and future verified postconditions are
+    separate closed taxonomies. Coordinated fractional update is exactly one
+    internal ordered, reversible numerator/denominator write bundle. It is not
+    atomic, is not publicly selectable, and never independently returns a
+    terminal mutation-support decision. Existing fractional mutation includes
+    capture reads, the internal write bundle, save, activation, exact readback,
+    and exact restoration capability.
 39. Integer limit, fractional numerator, fractional denominator, optional
     effective rational representability, and stored-field bit width use
-    immutable domain-specific exact ranges. Missing evidence, explicitly
-    unsupported ranges, invalid observations, open bounds, inclusivity, empty
-    intersections, signedness, overflow, and denominator positivity have
-    distinct deterministic outcomes. Controller target bounds remain policy
-    input and never prove RTSS representability.
-40. Raw supported-name requests have a minimal non-overridable structural
-    safety boundary separate from current identity-model invariants and
-    capability-dependent rules. Backend evidence cannot override injection or
-    path-confusion protections, and unverified Windows/ASCII restrictions are
-    not declared universal RTSS facts.
+    immutable domain-specific exact ranges. Bit-width derivation recognizes
+    only unsigned `[0, 2^w - 1]` and two's-complement signed
+    `[-2^(w-1), 2^(w-1) - 1]` for positive `w`; other representations are
+    `UNKNOWN`. Non-integral configured bounds are converted exactly to discrete
+    stored-field bounds with ceiling/floor rules, never rounding or float
+    conversion. Controller bounds restrict requests but do not derive cap
+    ladders or prove RTSS representability.
+40. Raw supported-name requests use one aggregating structural classifier with
+    a closed reason order and one leading reason. NUL/control/impossible input,
+    path forms, traversal/separators, and ADS/colon are checked before current
+    identity-model shape and representability, which are checked before
+    capability and namespace evidence. Structural invalidity and current-model
+    incompatibility both dominate missing or supporting backend evidence;
+    backend evidence cannot override injection, path-confusion, or accepted
+    ownership-identity boundaries.
 41. Sequence item 2 may inspect any structurally valid raw name, but may return
     `SUPPORTED` only when the exact name is representable by the currently
     accepted `CanonicalProfileIdentity`, `RtssGeneration`, and
@@ -132,24 +143,43 @@ accepted.
     `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, even if backend evidence would
     otherwise support it. Broader support requires a separately planned,
     reviewed, and accepted identity-model migration.
-42. Namespace and collision evidence is immutable, factory-controlled,
+42. Name rules use one separate immutable, factory-controlled
+    `RtssAdmittedNameRuleSet`, parent-bound to the admitted capability
+    observation and its backend/capability generations and scoped to profile
+    kind, mechanism, operation, and name context. Raw caller-authored rules,
+    direct construction, stale/foreign/replaced rules, incomplete coverage,
+    and mismatches cannot prove support. Duplicate or overlapping applicability
+    is admitted only as one typed contradictory rule set and evaluates
+    `UNKNOWN`.
+43. Namespace and collision evidence is immutable, factory-controlled,
     observation-identity-bound, backend/capability-generation-bound, and
     complete by either proved enumeration or authoritative exact-query
     semantics. A public request references that evidence and never supplies a
     peer set. Missing, stale, incomplete, foreign, or generation-mismatched
     namespace evidence is `UNKNOWN`; a proved case, normalization, or encoding
     collision is always `UNSUPPORTED`.
-43. Supported-name policy is evaluated for the exact profile kind, primitive
-    or compound requirement, mechanism, existing-profile or creation context,
-    and admitted capability/namespace observations. Exact original spelling is
-    immutable audit evidence; no truncation, replacement, case change,
-    normalization, basename extraction, suffix insertion, or fallback occurs.
-44. `RtssCapabilityInfo`, caller-created `RtssCapabilityEvidence`, raw reports,
+44. `EXACT_NONE` normalization uses the external exact key unchanged. A known
+    `NAMED` normalization is compatible only when admitted current complete
+    evidence proves an auditable one-to-one mapping among the external exact
+    name, external normalized key, and current canonical ownership key, with no
+    exact, normalized, encoded, case, or canonical collider. Existing lookup
+    and mutation require one matching existing identity; creation requires
+    authoritative absence for every collision key and an unambiguous predicted
+    ownership key. Collision or many-to-one mapping is `UNSUPPORTED`;
+    incomplete proof is `UNKNOWN`.
+45. Supported-name policy is evaluated for the exact profile kind, primitive
+    or compound requirement, mechanism, existing lookup, existing mutation, or
+    creation context,
+    and admitted capability observation, name-rule set, and namespace
+    observation. Exact original spelling is immutable audit evidence; no
+    truncation, replacement, case change, normalization, basename extraction,
+    suffix insertion, or fallback occurs.
+46. `RtssCapabilityInfo`, caller-created `RtssCapabilityEvidence`, raw reports,
     Booleans, version labels, and caller-authored generations remain
     non-authoritative. Sequence item 2 defines immutable shapes and pure
     evaluation only. Item 3 or item 12 will later bind trusted live context;
     item 2 admits no live observation and consumes no item-1 ownership.
-45. Sequence item 2 creates no coordinator registry, performs no capture,
+47. Sequence item 2 creates no coordinator registry, performs no capture,
     query, filesystem access, operation, conflict handling, rollback,
     restoration, or mutation. The detailed unresolved-fact and later-owner
     table in `IMPLEMENTATION_PLAN.md` is authoritative; this file deliberately

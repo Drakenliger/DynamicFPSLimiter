@@ -259,17 +259,19 @@ non-blocking observations:
 
 Neither observation requires a source or test change now, and neither reopens
 sequence item 1. Test restructuring is deferred until a legitimate trusted
-advanced-generation observation seam exists. Future sequence-item-2 planning
-has now defined the matrix below. The planning commit must pass independent
-read-only review and be explicitly accepted before sequence-item-2
-implementation; implementation remains unauthorized.
+advanced-generation observation seam exists. The second corrected
+sequence-item-2 plan defines the matrix below after two rejected planning
+reviews. This correction commit must pass independent read-only review and a
+later acceptance documentation step must explicitly authorize implementation;
+implementation remains unauthorized.
 
 Every corrected item-2 test below must use a public or realistically reachable
 policy path, a test-only factory/admission fixture, an independently specified
 expected status/reason tuple, and a positive control. Tests must not construct
 the decision under test as their oracle. Sequence item 2 implementation remains
-prohibited until this corrected planning commit passes another independent
-read-only review and is explicitly accepted in a later documentation step.
+prohibited until this second corrected planning commit passes another
+independent read-only review and a later acceptance documentation step
+explicitly authorizes implementation.
 
 ### Corrected sequence item 2 context and decision-algebra matrix
 
@@ -294,8 +296,20 @@ read-only review and is explicitly accepted in a later documentation step.
   `UNKNOWN`; stale supported -> `UNKNOWN`; stale unsupported -> `UNKNOWN` with
   stale then reported-unsupported reasons; invalid supported -> `UNKNOWN`;
   invalid unsupported -> `UNKNOWN` with invalid then reported-unsupported
-  reasons; temporarily unavailable -> `UNKNOWN`; missing -> `UNKNOWN`;
-  foreign/backend/capability mismatch -> `UNKNOWN`.
+  reasons; current primitive temporarily unavailable -> `UNKNOWN`; missing ->
+  `UNKNOWN`; foreign/backend/capability mismatch -> `UNKNOWN`.
+- **Whole-observation availability:** absence is the only missing-observation
+  representation and expects `UNKNOWN / CAPABILITY_EVIDENCE_MISSING`.
+  Current, stale, and invalid consistent snapshots are admitted; stale and
+  invalid snapshots expect their exact `UNKNOWN` reasons. A current
+  contradictory snapshot with no selectable records expects
+  `UNKNOWN / CONTRADICTORY_EVIDENCE`. No observation-unavailable fixture,
+  branch, or expected result exists.
+- **Observation factory invariants:** reject contradictory plus stale/invalid,
+  contradictory with selectable records, consistent snapshots with missing or
+  duplicate applicability keys, stale/invalid primitive unavailability, and
+  any attempted observation-availability field. Admit current primitive
+  unavailability only inside a current consistent complete snapshot.
 - **One contradiction policy:** the test admission factory converts
   contradictory direct or derived sources into the typed contradictory
   observation with no selectable records. It evaluates exactly `UNKNOWN /
@@ -306,12 +320,18 @@ read-only review and is explicitly accepted in a later documentation step.
   `UNSUPPORTED`; current unsupported plus stale dependency -> `UNSUPPORTED`
   while retaining the stale reason; all current supported -> `SUPPORTED`.
   Reverse input order produces the identical status and reason tuple.
-- **Stable reasons:** construct inputs containing every reason category and
+- **Stable failure reasons:** construct one legally co-applicable failing input
+  containing every failure category and
   assert request structure; identity; missing/foreign/generation/kind/scope;
-  provenance; availability; invalid then stale; contradiction/derivation;
-  canonical primitive order with unsupported before unknown; range; encoding/
-  length/character; namespace; case; normalization; encoding collision;
-  canonical collision; success. Duplicates collapse without changing order.
+  provenance; invalid then stale; contradiction/derivation; canonical primitive
+  order with unsupported before temporary-unavailable before unknown; range;
+  encoding/length/character; namespace; case; normalization; encoding
+  collision; canonical collision. Duplicates collapse without changing order.
+  `SUPPORTED_REQUIREMENT` is absent from every failing tuple.
+- **Separate success reason:** one otherwise identical fully supporting input
+  expects `SUPPORTED` and exactly `(SUPPORTED_REQUIREMENT,)`; success is never
+  aggregated with failures. Categories that cannot legally coexist use
+  separate single-category tests.
 - **Derived sources:** all direct current supported sources -> supported
   derived record; a current unsupported source -> `UNSUPPORTED`; missing,
   foreign, mismatched, unavailable, stale, invalid, or unknown source ->
@@ -321,43 +341,82 @@ read-only review and is explicitly accepted in a later documentation step.
 ### Corrected sequence item 2 taxonomy and range matrix
 
 - Assert unique, disjoint membership for `RtssPrimitiveOperation`,
-  `RtssCompoundRequirement`, and `RtssRequiredPostcondition`. No compound or
-  postcondition member may appear in the primitive enum.
+  terminal `RtssCompoundRequirement`, internal
+  `RtssInternalDependencyBundle`, and `RtssRequiredPostcondition`. No internal
+  bundle or postcondition is publicly selectable or appears in the primitive
+  or terminal compound enums.
 - For every primitive operation, factory-admit supported, unsupported, unknown,
   stale, and wrong-kind records through the public evaluator.
 - For existing read, existing integer mutation, existing fractional mutation,
-  exact readback, exact restoration, coordinated fractional update, profile
-  creation, deletion restoration, and verified absence, test the complete
-  ordered dependency bundle and remove each dependency one at a time.
-- Assert coordinated fractional update is an ordered reversible compound over
-  numerator/denominator reads and writes, save, and activation; no atomic
-  primitive record can self-confirm it.
+  exact readback, exact restoration, profile creation, deletion restoration,
+  and verified absence, test the complete flattened ordered dependency bundle
+  and remove each dependency one at a time.
+- Assert `COORDINATED_FRACTIONAL_WRITE` is an internal ordered reversible
+  numerator-write/denominator-write expansion, not an atomic primitive or
+  terminal requirement. There is no public evaluator request for it.
+- Existing fractional mutation positive control independently supplies:
+  existence lookup; exact current numerator and denominator reads; both
+  coordinated writes; save; activation; exact pair readback; and exact pair
+  restoration capability. Removing each leaf once yields `UNSUPPORTED` for a
+  current explicitly unsupported leaf and `UNKNOWN` for missing, unknown,
+  stale, invalid, or temporarily unavailable evidence.
+- Independently expect failure for numerator-only support, denominator-only
+  support, missing save, missing activation, missing exact readback, and
+  missing exact restoration. Static capability output must contain no claim
+  that a write, readback, save, activation, rollback, or restoration actually
+  occurred.
 - For exact-value-observed, save-confirmed, activation-confirmed,
   profile-exists, profile-absent, and restored-equals-captured postconditions,
   verify that item 2 returns capability requirements only and never fabricates
   a later runtime success.
 - Exercise integer-limit, fractional-numerator, fractional-denominator,
-  optional exact-rational, and signed/unsigned stored-bit-width domains
-  separately. A range from one domain cannot satisfy another.
+  optional exact-rational, and stored-bit-width domains separately. A range
+  from one domain cannot satisfy another.
+- Bit-width oracle values are explicit: unsigned width 8 is exactly
+  `[0, 255]`; two's-complement signed width 8 is exactly `[-128, 127]`;
+  unsigned width 1 is `[0, 1]`; signed width 1 is `[-1, 0]`. Test both extrema,
+  one-step underflow/overflow, and arbitrarily large positive widths. Unknown,
+  sign-magnitude, ones'-complement, or future representations expect
+  `UNKNOWN / BIT_WIDTH_REPRESENTATION_UNKNOWN`, never a guessed interval.
 - Per domain, cover inclusive lower/upper boundaries, exclusive boundaries,
-  equal inclusive bounds, direct equal-exclusive and reversed contract
-  construction rejection, missing lower/open upper, open lower/missing upper,
-  an intersection that becomes equal-exclusive and therefore empty, other
-  empty intersections, and arbitrarily large exact integers.
-- Cover bit-width exact maximum/minimum, one-value overflow, Boolean rejection,
-  non-positive width, and missing signedness. Parser bit limits must not appear
+  equal inclusive bounds, missing lower/open upper, open lower/missing upper,
+  equal-exclusive configured failure, reversed configured failure, an
+  intersection that becomes discrete-empty, other empty intersections, and
+  arbitrarily large exact integers. Invalid raw backend bounds become typed
+  invalid observation evidence rather than selectable contracts.
+- Cover exact configured-bound conversion without implementation-derived
+  expectations: integer-domain inclusive lower `59.5` -> `60`; exclusive lower
+  `60` -> `61`; inclusive upper `60.5` -> `60`; exclusive upper `60` -> `59`.
+  Use finite `Decimal` and `RationalCap` forms that denote the same exact
+  rationals and require identical converted bounds. Open endpoints remain open.
+- Equal inclusive discrete bounds form one value. Equal configured endpoints
+  with either exclusive are `UNSUPPORTED / EMPTY_CONFIGURED_RANGE`.
+  Non-integral endpoints whose ceiling/floor conversion crosses, and otherwise
+  disjoint discrete intersections, are
+  `UNSUPPORTED / EMPTY_DISCRETE_INTERSECTION`. Reversed configured bounds are
+  `UNSUPPORTED / INVALID_RANGE_REQUEST`.
+- Cover bit-width one-step overflow/underflow, Boolean rejection, non-positive
+  width, and missing/unknown representation. Parser bit limits must not appear
   as backend capability evidence.
 - Denominator zero is construction-invalid; denominator one is a positive
   control. Numerator zero and denominator evidence are independently
   applicable, and one never fills the other's missing range.
 - Missing required range record -> `UNKNOWN / RANGE_EVIDENCE_MISSING`;
   explicit unsupported range -> `UNSUPPORTED / RANGE_UNSUPPORTED`; typed
-  invalid observed range -> `UNKNOWN / INVALID_RANGE_EVIDENCE`; empty valid
-  intersection -> `UNSUPPORTED / EMPTY_RANGE_INTERSECTION`.
+  invalid observed range -> `UNKNOWN / INVALID_RANGE_EVIDENCE`; empty
+  continuous configured range -> `UNSUPPORTED / EMPTY_CONFIGURED_RANGE`; empty
+  converted/intersected stored domain ->
+  `UNSUPPORTED / EMPTY_DISCRETE_INTERSECTION`.
 - If effective rational range is present, compare large exact
-  `RationalCap` values without float conversion and prove rational range never
-  substitutes for exact stored numerator/denominator bounds. Controller target
-  bounds restrict intent but do not create backend support.
+  `RationalCap` values and exact finite `Decimal` endpoints without float
+  conversion. Independently assert exact endpoint comparisons, inclusivity,
+  and reduction; prove rational range never substitutes for exact stored
+  numerator/denominator bounds. Controller target bounds restrict one request
+  but do not create backend support or derive cap-ladder values.
+- Assert range decision provenance contains the original configured endpoints,
+  exact rational conversion, discrete conversion rule/result, admitted
+  observation/generations, exact backend and bit-width operands, and final
+  same-domain intersection.
 
 ### Corrected sequence item 2 raw-name and namespace matrix
 
@@ -369,11 +428,27 @@ read-only review and is explicitly accepted in a later documentation step.
   shape; application shape/empty stem; basename versus full path; case-only;
   and normalization forms. Each row asserts its exact terminal status/reason
   and has a simple representable application-name control.
+- Assert the closed overlap oracle exactly: `C:\game.exe` leads with
+  `DRIVE_QUALIFIED_PATH`; `\\server\share\game.exe` with `UNC_PATH`;
+  `\\?\C:\game.exe` with `DEVICE_PATH`; `..\game.exe` and
+  `folder\..\game.exe` with `FULL_PATH`; `game.exe:stream` with
+  `ALTERNATE_DATA_STREAM`; and `/game.exe` with `ROOTED_PATH`. Each assertion
+  includes the full ordered reason tuple from the plan, not a set assembled by
+  the implementation.
+- Reverse raw-check registration/input order and require the identical leading
+  reason and ordered tuple. Multiple matched reasons are retained across all
+  structural layers, or across the current-model layer when structure passes;
+  capability and namespace reasons are not evaluated after either group fails.
 - Feed a raw name rejected by `CanonicalProfileIdentity` together with admitted
-  backend evidence that otherwise fully supports it. Expect exactly
-  `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, never `SUPPORTED`; also test the
-  representable application name, exact Global name, and construction of
-  compatible `RtssGeneration` and `RtssOwnershipToken` context.
+  backend evidence that otherwise fully supports it. Expect
+  `UNSUPPORTED` led by `IDENTITY_MODEL_INCOMPATIBLE`, never `SUPPORTED` or
+  `UNKNOWN`; also test the representable application name, exact Global name,
+  and construction of compatible `RtssGeneration` and `RtssOwnershipToken`
+  context.
+- For non-ASCII and missing-suffix current-model failures, independently supply
+  missing name rules, stale rules, and current fully supporting rules. Every
+  input has the same current-model `UNSUPPORTED` result and no capability or
+  namespace reason, proving the identity boundary wins before evidence.
 - Prove a case-sensitive external namespace cannot create two distinct owners
   that collapse under current case-folded identity. A complete single-name
   exact lookup may proceed; a proved case-distinct pair is exactly
@@ -400,6 +475,65 @@ read-only review and is explicitly accepted in a later documentation step.
 - Prove exact original text remains unchanged through success and every failure
   path. No `.exe`/`.cfg` insertion, basename extraction, truncation,
   replacement, case-folding, normalization, or encoded substitution occurs.
+
+### Corrected sequence item 2 admitted name-rule trust matrix
+
+- Direct construction and raw caller-authored `RtssRawNameRuleReport` objects
+  cannot produce support. The positive control uses only the deterministic
+  test admission factory and differs only by admission.
+- Assert exact matching for rule-set identity, parent capability-observation
+  identity, backend generation, capability generation, profile kind, namespace
+  scope, mechanism, primitive/terminal operation, and
+  existing-lookup/existing-mutation/creation context. Vary each dimension
+  independently while all others support; expect the exact `UNKNOWN` mismatch
+  reason.
+- Missing rules expect `UNKNOWN / NAME_RULE_EVIDENCE_MISSING`. Invalid then
+  stale rules expect their exact validity reasons. A raw duplicate or
+  overlapping applicability report produces one current contradictory
+  admitted rule set with no selectable rules and expects
+  `UNKNOWN / CONTRADICTORY_NAME_RULES`.
+- Reject factory inputs with missing applicability coverage, selectable rules
+  in a contradictory set, contradictory stale/invalid state, mutable nested
+  collections, foreign source references, or inconsistent parent generations.
+- Attempt direct `dataclasses.replace()` and nested replacement of identity,
+  parent, generations, scope, applicability, content, provenance, validity,
+  and contradiction state. Each changed copy must rerun validation or lose
+  matching trust; an unchanged structurally equal factory copy is accepted
+  without object-identity assertions.
+- Existing lookup rules cannot prove mutation or creation, application rules
+  cannot prove Global, and one mechanism/operation cannot prove another.
+  A current consistent complete exact-scope rule set is the independent
+  positive control.
+
+### Corrected sequence item 2 normalization compatibility matrix
+
+- Define oracle keys explicitly in fixtures: unchanged external exact key,
+  admitted external normalized key, current
+  `CanonicalProfileIdentity.canonical_key`, encoded key, and authoritative
+  namespace identity. Policy code does not generate the expected keys.
+- `EXACT_NONE` with normalized key equal to the exact key, complete current
+  evidence, and no case/encoding/canonical collision may proceed to
+  `SUPPORTED`. Any collider has its exact `UNSUPPORTED` reason.
+- `NAMED` existing exact lookup and existing mutation each have a positive
+  control proving one external exact identity, one normalized identity, one
+  representable current ownership key, unchanged audit spelling, and no other
+  exact/normalized/encoded/case/canonical mapping to that key.
+- `NAMED` creation has a separate positive control with authoritative absence
+  for the external exact, normalized, encoded, case, and canonical keys plus
+  one unambiguous predicted ownership mapping.
+- A named normalization collision expects
+  `UNSUPPORTED / NORMALIZATION_COLLISION`; a many-to-one mapping into the
+  current owner expects `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; incomplete
+  mapping/no-collision proof expects
+  `UNKNOWN / NORMALIZATION_PROOF_INCOMPLETE`; and unknown normalization expects
+  `UNKNOWN / NORMALIZATION_UNKNOWN`.
+- Missing, stale, invalid, foreign, parent-mismatched, backend-mismatched, and
+  capability-mismatched rule or namespace evidence independently expect the
+  exact `UNKNOWN` reason. A Boolean no-collision assertion never substitutes
+  for the complete mapping proof.
+- Existing exact lookup, existing mutation, and creation fixtures are not
+  reused across contexts. Current-model-incompatible names remain
+  `UNSUPPORTED` before every normalization fixture.
 
 ### Planned sequence item 2 capability/name contract tests
 
@@ -445,10 +579,11 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   support returns `SUPPORTED` and the exact selected mechanism.
 - Explicitly unsupported mechanism returns `UNSUPPORTED`; missing mechanism
   evidence returns `UNKNOWN`; neither tries another mechanism.
-- Missing observation, raw-only report, stale evidence, invalid evidence,
-  temporarily unavailable evidence, foreign observation, backend-generation
-  mismatch, and capability-generation mismatch each return deterministic
-  `UNKNOWN` with its own typed reason.
+- Missing observation, raw-only report, stale observation, invalid observation,
+  current temporarily unavailable primitive, foreign observation,
+  backend-generation mismatch, and capability-generation mismatch each return
+  deterministic `UNKNOWN` with its own typed reason. There is no whole-
+  observation unavailable case.
 - The factory-admitted contradictory observation returns `UNKNOWN /
   CONTRADICTORY_EVIDENCE`, regardless of any supporting raw source; duplicate
   identical primitive keys remain construction errors.
@@ -500,10 +635,10 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
 - A character explicitly invalid under admitted mechanism/kind/operation rules
   returns `UNSUPPORTED`; a character with no applicable rule returns
   `UNKNOWN`.
-- Non-ASCII exact names never return `SUPPORTED` under the current canonical
-  identity model. With otherwise complete lossless backend evidence they return
-  exactly `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; absent evidence remains
-  `UNKNOWN`.
+- Non-ASCII exact names never return `SUPPORTED` or `UNKNOWN` under the current
+  canonical identity model. Missing, stale, invalid, or otherwise complete
+  lossless backend evidence all leave the leading result exactly
+  `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`.
 - Non-ASCII with unknown encoding, lossy round trip, mismatched encoded bytes,
   unknown normalization, or missing collision evidence is never supported.
 - Case-sensitive admitted evidence retains case-distinct exact names in the
@@ -516,6 +651,11 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   `UNSUPPORTED / NORMALIZATION_COLLISION`. Unknown normalization returns
   `UNKNOWN / NORMALIZATION_UNKNOWN`; an incompatible normalization mode returns
   `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`; no normalization is performed.
+- A known named normalization with the complete one-to-one proof and no
+  collision has positive controls for existing lookup, existing mutation, and
+  creation. Incomplete proof is exactly
+  `UNKNOWN / NORMALIZATION_PROOF_INCOMPLETE`; many-to-one ownership mapping is
+  exactly `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`.
 - Exact profile-kind mismatch, Global/application rule reuse, or
   executable-name/full-path rule reuse is rejected.
 - An otherwise valid name is `UNSUPPORTED` for a current explicit unsupported

@@ -49,10 +49,15 @@ completed locally from starting HEAD
 `fed6a33c79d7575c33ac5b4f1585fa536880896f`. Independent review of planning
 commit `fd7e3d8aeb57bf7b8cd8acb8bd51448673dc2f1d` returned **Not approved -
 blocking planning findings require correction**. This documentation-only
-correction closes the eight blocking design/test findings and one non-blocking
-cross-reference finding in proposed planning terms. The correction still
-requires another independent read-only review and explicit acceptance.
-Implementation remains unauthorized.
+first correction closed `S2-CAP-PLAN-001`, the original
+`S2-NAME-PLAN-001` defect, and `S2-DOC-OPEN-001`, but independent review of
+correction commit `88efe137be44b8be6f26da9b5982f045e6aa10f0` also returned
+**Not approved - blocking planning findings require correction**. This second
+documentation-only correction closes the remaining seven blocking capability,
+range, name, name-rule, and test-oracle findings plus one non-blocking
+reason-order finding in proposed planning terms. It still requires another
+independent read-only review and a later explicit acceptance documentation
+step. Implementation remains unauthorized.
 The coordinator, mutation, and production integration are not implemented or
 authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
@@ -281,8 +286,9 @@ does not authorize the types or policy to be implemented.
 | `CapturedProfileState`, `RtssApplyRequest`, `RtssReadback`, `RtssCapabilityEvidence`, and `RtssOwnershipToken` have public constructors. | `src/core/rtss_contracts.py:1079`, `:1242`, `:1287`, `:2146`, `:2175` | Treat requests and raw reports as untrusted inputs. Item 1's public constructors enforce structural invariants, not live-backend authenticity. |
 
 The missing sequence-item-2 concepts are: observation identity and provenance;
-freshness/validity; explicit unknown, unavailable, contradictory, and
-unsupported states; per-mechanism and per-operation support; separate
+freshness/validity; explicit unknown, primitive-record unavailability,
+observation contradiction, and unsupported states; per-mechanism and
+per-operation support; separate
 read/write/readback/restoration support; exact-field applicability;
 profile-kind scope; name encoding and exact encoded evidence; length,
 character, case, normalization, and collision evidence; and typed policy
@@ -303,20 +309,21 @@ non-overlapping name:
 | --- | --- |
 | `RtssPolicyDecisionStatus` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`. Only `SUPPORTED` admits the exact requested policy operation. |
 | `RtssCapabilitySupportState` | Unique enum: `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE`. It is one primitive record's observed support state, not provenance or validity. Contradiction is observation-level diagnostic state, not a second meaning of support. |
-| `RtssEvidenceValidity` | Unique enum separating `CURRENT`, `STALE`, and `INVALID`. Missing evidence is represented by absence, not a fabricated current object. |
+| `RtssEvidenceValidity` | Unique enum separating `CURRENT`, `STALE`, and `INVALID` for whole observations and their records. Missing evidence is represented by absence. There is deliberately no observation-level unavailable member. |
 | `RtssEvidenceOrigin` | Unique enum separating `DIRECT` and `DERIVED`. Derived evidence names its complete immutable source observations. Origin never implies support. |
 | `RtssAccessMechanism` | Closed unique identifiers for mechanisms actually modeled. Initial values may correspond to the existing RTSS API and profile-file strategies, but no value implies a supported RTSS version. Enum additions fail closed. |
 | `RtssPrimitiveOperation` | Closed primitive backend operations only: profile-existence lookup; integer-limit read/write; fractional-numerator read/write; fractional-denominator read/write; limiter-flag read/write; save/persist; activate/reload; create profile; delete profile; and verify profile absence. |
-| `RtssCompoundRequirement` | Closed policy bundles: existing read; existing integer mutation; existing fractional mutation; exact readback; exact restoration; coordinated fractional update; profile creation transaction; deletion restoration; and verified absence. |
+| `RtssCompoundRequirement` | Closed publicly selectable policy bundles: existing read; existing integer mutation; existing fractional mutation; exact readback; exact restoration; profile creation transaction; deletion restoration; and verified absence. Coordinated fractional update is deliberately absent. |
+| `RtssInternalDependencyBundle` | Closed non-public dependency expansion used by terminal requirements. `COORDINATED_FRACTIONAL_WRITE` expands to the admitted ordered numerator-write and denominator-write primitives. It is reversible sequencing, not atomicity, and has no evaluator entry point or terminal decision. |
 | `RtssRequiredPostcondition` | Closed required future observations: exact value observed; save confirmed; activation confirmed; profile exists; profile absent; and restored state equals captured state. Item 2 checks whether primitives needed to establish them are supported; runtime truth is recorded only by later sequences. |
 | `RtssMechanismCapability` | One mechanism/primitive/profile-kind record containing support state, validity, exact stored-field applicability using existing `RtssStoredFieldKind`, origin, source references, and any domain-specific exact range. Duplicate keys are forbidden. Contradictory direct or derived sources produce the one typed contradictory observation described below. |
 | `RtssCapabilityObservationIdentity` | Opaque immutable observation identifier, distinct from transaction identity. Equality is structural and auditable. |
 | `RtssRawCapabilityReport` | Public untrusted adapter/request-shaped data. It can never directly produce `SUPPORTED`. |
-| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records, backend generation, capability generation, observation validity/freshness, provenance, source label/version metadata used only diagnostically, and observation diagnostic state `CONSISTENT` or `CONTRADICTORY`. A contradictory observation contains no selectable records and always evaluates `UNKNOWN`. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
+| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
 | `RtssCapabilityEvaluationContext` | Public immutable matching context containing expected observation identity, backend generation, capability generation, profile kind, and exact source/policy scope. It contains no support assertion. Transaction/ownership attribution is absent because item 2 owns neither; item 3 later binds context to the active item-1 transaction when required. |
 | `RtssCapabilityRequirement` | Pure request for one exact mechanism, compound requirement or primitive query, profile kind, exact-field set, and domain-specific configured policy bounds. It contains intent, not proof. |
 | `RtssCapabilityDecision` | Immutable status, exact request, admitted observation identity/generations when present, selected mechanism only on support, effective configured/evidence range intersection, and a non-empty tuple of typed reasons. |
-| `RtssPolicyReason` | Unique diagnostic enum covering request/identity failure; missing/untrusted/foreign/stale/invalid/unavailable/contradictory evidence; observation/backend/capability/profile/scope mismatch; ordered primitive unsupported/unknown states; derivation failure; domain/range failure; and encoding/length/character/canonicalization/collision failure. Free text may supplement but never determine truth. |
+| `RtssPolicyReason` | Unique diagnostic enum covering request/identity failure; missing/untrusted/foreign/stale/invalid/contradictory observations; observation/backend/capability/profile/scope mismatch; ordered primitive unsupported/temporarily-unavailable/unknown states; derivation failure; domain/range failure; and encoding/length/character/canonicalization/collision failure. Free text may supplement but never determine truth. |
 
 The authoritative observation is the factory-controlled snapshot, not
 `RtssCapabilityInfo`, `RtssCapabilityEvidence`, a Boolean, a version label, a
@@ -342,37 +349,59 @@ versioned production observations.
 
 ##### Closed capability decision algebra
 
-The admitted-observation factory uses exactly one contradiction policy:
-contradictory direct records or derivation sources produce a typed
-`CONTRADICTORY` admitted observation containing no selectable records. Such an
-observation always evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`. Construction
-does not alternatively reject the same state. Duplicate identical primitive
-keys are construction errors; a raw report cannot invoke the admission factory
-as a public trust source.
+The admitted-observation factory has no availability input and constructs
+exactly these legal whole-observation states:
 
-Legal consistent primitive records are the Cartesian product of support
-`SUPPORTED | UNSUPPORTED | UNKNOWN | TEMPORARILY_UNAVAILABLE`, validity
-`CURRENT | STALE | INVALID`, and origin `DIRECT | DERIVED`, subject to these
-rules: a derived record names a non-empty complete acyclic source tuple;
-sources match observation identity, generations, kind, mechanism, field and
-scope; and its semantic support is computed rather than caller-selected.
-`TEMPORARILY_UNAVAILABLE` is legal only with `CURRENT`; stale or invalid
-unavailability is represented by the stale/invalid validity plus the last
-reported semantic support for diagnostics.
+1. `CONSISTENT + CURRENT`, with exactly one structurally complete record for
+   every declared applicability key;
+2. `CONSISTENT + STALE`, preserving the same complete last-observed record set
+   for diagnostics;
+3. `CONSISTENT + INVALID`, preserving a complete raw-derived record set plus
+   the typed invalidity diagnostics but exposing no selectable support; or
+4. `CONTRADICTORY + CURRENT`, with a non-empty canonical contradiction-source
+   tuple and no selectable records.
+
+`CONTRADICTORY + STALE`, `CONTRADICTORY + INVALID`, any consistent snapshot
+with missing or duplicate applicability keys, a contradictory snapshot with
+selectable records, and any attempted observation-level unavailable flag are
+construction errors. A whole-observation absence is represented only by
+`None`. The factory uses exactly one contradiction policy: contradictory direct
+records or derivation sources produce the fourth typed state, which always
+evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`; construction does not also reject
+that semantic state. A raw report cannot invoke the admission factory as a
+public trust source.
+
+Within a consistent observation, legal primitive records combine support
+`SUPPORTED | UNSUPPORTED | UNKNOWN | TEMPORARILY_UNAVAILABLE`, their own
+record validity `CURRENT | STALE | INVALID`, and origin `DIRECT | DERIVED`,
+subject to these rules: a derived
+record names a non-empty complete acyclic source tuple; sources match
+observation identity, generations, kind, mechanism, field and scope; and its
+semantic support is computed rather than caller-selected.
+`TEMPORARILY_UNAVAILABLE` is legal only on a `CURRENT` record inside a
+`CURRENT` consistent observation. A stale or invalid record, or any record in
+a stale or invalid observation, preserves the last non-unavailable semantic
+support state and cannot contain `TEMPORARILY_UNAVAILABLE`. Direct and derived
+origin remains diagnostic provenance only; neither bypasses whole-observation
+or record validity or creates support.
 
 Evaluation phases and terminal precedence are closed:
 
 1. Structural request failure returns `UNSUPPORTED`.
-2. Missing/untrusted observation, context mismatch, unusable authenticity or
-   provenance, observation-level unavailability/staleness/invalidity, or a
-   contradictory observation returns `UNKNOWN`.
-3. In a consistent current observation, any required current primitive that is
+2. Missing or untrusted observation, then observation identity, backend
+   generation, capability generation, profile kind, scope, and provenance
+   mismatches return `UNKNOWN` in that order.
+3. An `INVALID` observation returns `UNKNOWN / INVALID_EVIDENCE`; a `STALE`
+   observation returns `UNKNOWN / STALE_EVIDENCE`; a current contradictory
+   observation returns `UNKNOWN / CONTRADICTORY_EVIDENCE`. Observation-level
+   unavailability is not a legal branch.
+4. In a consistent current observation, any required current primitive that is
    explicitly
    `UNSUPPORTED` makes the compound result `UNSUPPORTED`, even when another
    required primitive is `UNKNOWN`, unavailable, stale, or invalid.
-4. Otherwise any missing, `UNKNOWN`, unavailable, stale, or invalid required
+5. Otherwise any missing, `UNKNOWN`, or temporarily unavailable required
    primitive makes the result `UNKNOWN`.
-5. Only complete current supported primitive dependencies, satisfied exact
+6. Only complete current supported primitive dependencies, satisfied exact
    range requirements, and representable identity/name requirements return
    `SUPPORTED`.
 
@@ -391,7 +420,7 @@ and therefore returns `UNSUPPORTED`.
 | Stale unsupported record | `UNKNOWN` | `STALE_EVIDENCE`, then `PRIMITIVE_UNSUPPORTED_REPORTED` |
 | Invalid supported record | `UNKNOWN` | `INVALID_EVIDENCE` |
 | Invalid unsupported record | `UNKNOWN` | `INVALID_EVIDENCE`, then `PRIMITIVE_UNSUPPORTED_REPORTED` |
-| Temporarily unavailable observation/record | `UNKNOWN` | `EVIDENCE_TEMPORARILY_UNAVAILABLE` |
+| Current temporarily unavailable primitive record | `UNKNOWN` | `PRIMITIVE_TEMPORARILY_UNAVAILABLE` |
 | Contradictory admitted observation | `UNKNOWN` | `CONTRADICTORY_EVIDENCE` |
 | Missing admitted observation | `UNKNOWN` | `CAPABILITY_EVIDENCE_MISSING` |
 | Foreign observation identity | `UNKNOWN` | `FOREIGN_OBSERVATION` |
@@ -404,13 +433,16 @@ and therefore returns `UNSUPPORTED`.
 Reasons are deduplicated and sorted independently of input record order by this
 stable category order: request structure; identity representability; missing
 observation; observation identity; backend generation; capability generation;
-profile kind; source/policy scope; provenance/authenticity; availability;
+profile kind; source/policy scope; provenance/authenticity; whole-observation
 validity (`INVALID` before `STALE`); contradiction/derivation; primitive
 dependencies in the canonical dependency-table order below, with
-`UNSUPPORTED` before `UNKNOWN` for the same primitive; range domain and
+`UNSUPPORTED` before `TEMPORARILY_UNAVAILABLE` before `UNKNOWN` for the same
+primitive; range domain and
 intersection; name encoding/length/character; namespace completeness; case;
-normalization; encoding collision; canonical collision; success. Status
-precedence and reason display order are deliberately separate.
+normalization; encoding collision; canonical collision. A failing decision
+never contains `SUPPORTED_REQUIREMENT`; success is tested separately and its
+reason tuple is exactly `(SUPPORTED_REQUIREMENT,)`. Status precedence and
+reason display order are deliberately separate.
 
 The global primitive reason order is: profile-existence lookup; integer read;
 fractional-numerator read; fractional-denominator read; limiter-flag read;
@@ -435,25 +467,52 @@ requirements are policy bundles. Required postconditions describe what a later
 runtime transaction must verify; item 2 evaluates capability to attempt their
 proof but never asserts that a runtime result occurred.
 
-| Compound requirement | Ordered primitive dependencies | Required postconditions |
+| Terminal compound requirement | Ordered dependency expansion | Required future postconditions |
 | --- | --- | --- |
-| Exact readback | requested integer/numerator/denominator/flag reads | exact value observed |
-| Exact restoration | reads and writes for every captured applicable field, save, activate, exact-readback dependencies | restored state equals captured state; save confirmed; activation confirmed |
-| Existing read | existence lookup, requested integer/numerator/denominator/flag reads | profile exists; exact requested value observed |
-| Coordinated fractional update | numerator read, denominator read, ordered numerator/denominator writes, save, activate | exact numerator and denominator observed; save confirmed; activation confirmed |
-| Existing integer mutation | existence lookup, integer read, integer write, save, activate, exact-readback dependencies, exact-restoration dependencies | profile exists; exact value observed; save confirmed; activation confirmed; restored state can equal captured state |
-| Existing fractional mutation | existence lookup, coordinated fractional update, exact-readback dependencies, exact-restoration dependencies | profile exists plus coordinated-update and restoration postconditions |
+| Exact readback | requested integer/numerator/denominator/flag reads | exact requested fields observed |
+| Exact restoration | reads and writes for every captured applicable field; for a fractional pair, `COORDINATED_FRACTIONAL_WRITE`; save; activate; exact-readback expansion | restored state equals captured state; save confirmed; activation confirmed |
+| Existing read | existence lookup; requested integer/numerator/denominator/flag reads | profile exists; exact requested fields observed |
+| Existing integer mutation | existence lookup; capture integer read; integer write; save; activate; exact integer readback; exact integer restoration | profile exists; exact requested value observed; save confirmed; activation confirmed; exact restoration remains possible |
+| Existing fractional mutation | existence lookup; capture numerator read; capture denominator read; `COORDINATED_FRACTIONAL_WRITE`; save; activate; exact numerator-and-denominator readback; exact numerator-and-denominator restoration | profile exists; exact requested pair observed; save confirmed; activation confirmed; exact restoration remains possible |
 | Verified absence | verify absence | profile absent |
-| Deletion restoration | delete, verified-absence dependencies | profile absent |
-| Profile creation transaction | existence lookup, create, required reads/writes, save, activate, exact-readback dependencies, deletion-restoration dependencies | profile exists after create; exact value observed; profile absent after restoration |
+| Deletion restoration | delete; verified-absence expansion | profile absent |
+| Profile creation transaction | existence lookup; create; required capture/read and write expansions; save; activate; exact-readback expansion; deletion-restoration expansion | profile exists after create; exact value observed; profile absent after restoration |
 
-The table is acyclic: a row may expand an earlier named bundle but no bundle
-depends on itself or a later row. `Coordinated fractional update` means an
-ordered reversible sequence with complete numerator/denominator responsibility,
-not atomic primitive support. `SAVE_CONFIRMED`, `ACTIVATION_CONFIRMED`,
-`EXACT_VALUE_OBSERVED`, `PROFILE_EXISTS`, `PROFILE_ABSENT`, and
-`RESTORED_STATE_EQUALS_CAPTURED_STATE` are deterministic policy requirements;
-their actual pass/fail values are runtime results in items 3, 5, and 6.
+`COORDINATED_FRACTIONAL_WRITE` is the sole internal bundle. It expands in a
+mechanism-declared order to exactly one numerator-write primitive and one
+denominator-write primitive for the same observation, generations, profile
+kind, mechanism, field scope, and transaction policy scope. Static capability
+evidence proves only that the two supported primitive writes can be serialized
+in that declared order while retaining responsibility for both fields. It does
+not prove backend atomicity, that either write succeeds, that save or activation
+succeeds, that readback matches, or that restoration occurs. Those are later
+runtime postconditions.
+
+The dependency graph is acyclic: terminal requirements expand only to
+primitives, the one internal bundle, or earlier non-recursive readback,
+restoration, and absence expansions. Exact restoration never depends on the
+mutation requirement that consumes it. The static evaluator flattens and
+deduplicates primitive leaves in canonical phase order while retaining phase
+labels for diagnostics. Removing any required leaf has an independent result:
+a current explicit `UNSUPPORTED` leaf makes the terminal requirement
+`UNSUPPORTED`; a missing, unknown, stale, invalid, or temporarily unavailable
+leaf makes it `UNKNOWN`; only all current supported leaves allow `SUPPORTED`.
+Numerator-only or denominator-only read/write applicability therefore never
+supports existing fractional mutation. Missing save, activation, exact
+readback, or exact restoration likewise prevents support.
+
+The terminal capability result is still not mutation admission. Item 4 must
+later provide the mutation journal, rollback interfaces, degraded-state
+construction, and unresolved-ownership guard before item 5 can consume an
+otherwise supported mutation requirement. Those coordinator/runtime
+prerequisites are not fabricated as item-2 capability records.
+
+`SAVE_CONFIRMED`, `ACTIVATION_CONFIRMED`, `EXACT_VALUE_OBSERVED`,
+`PROFILE_EXISTS`, `PROFILE_ABSENT`, and
+`RESTORED_STATE_EQUALS_CAPTURED_STATE` are deterministic future requirements,
+not capability claims. Their actual pass/fail values are runtime results in
+items 3, 5, and 6. No item-2 record may claim that readback or restoration has
+already succeeded.
 
 ##### Domain-specific exact range contracts
 
@@ -474,29 +533,72 @@ provenance; a bare numeric interval is not capability evidence.
 | Fractional numerator | Plain integer, independently applicable; zero is representable, sign requires explicit mechanism evidence. |
 | Fractional denominator | Positive plain integer, independently applicable; zero is always construction-invalid. |
 | Effective rational FPS | Existing reduced `RationalCap`; compared by exact cross multiplication. It is optional backend representability evidence only, never a controller tuning range and never a substitute for exact stored numerator/denominator support. |
-| Stored-field bit width | Positive plain integer plus explicit signed/unsigned representation and field domain. It derives an exact representable integer interval and is intersected like any other backend bound. |
-| Configured controller bound | Exact `int`, `Decimal`, or `RationalCap` policy input converted without float approximation. It restricts a request but does not prove backend capability. |
+| Stored-field bit width | Positive plain integer plus field domain and exactly one representation: `UNSIGNED`, `TWOS_COMPLEMENT_SIGNED`, or `UNKNOWN`. For width `w > 0`, unsigned derives `[0, 2^w - 1]`; two's complement derives `[-2^(w-1), 2^(w-1) - 1]`. `UNKNOWN` or any future representation cannot derive an interval and evaluates `UNKNOWN / BIT_WIDTH_REPRESENTATION_UNKNOWN`. |
+| Configured controller bound | Exact `int`, finite `Decimal`, or `RationalCap` policy input converted without float approximation. It restricts a request but does not prove backend capability or generate allowed cap values. |
 
-Public request and valid range-contract construction reject Boolean integers,
-non-integral field bounds, denominator zero, non-positive bit width, unknown
-signedness when bit width is asserted, reversed bounds, and equal endpoints
-when either equal endpoint is exclusive. A raw adapter report containing such
-bounds cannot construct a range contract; the admission boundary retains only
-a typed `INVALID_RANGE_EVIDENCE` diagnostic, never selectable bounds.
+Stored integer, numerator, and denominator observations and requested stored
+values accept exact plain integers only; Boolean values and non-integral stored
+values are construction errors. Denominator values are strictly positive.
+There is no rational substitution between a stored field and an effective cap.
+Bit-width intersection occurs only inside the same stored-field domain.
+
+Configured policy endpoints may be non-integral because their conversion to a
+discrete stored-field interval is exact. First convert a finite `Decimal` to
+the exact rational represented by its sign, coefficient, and base-10 exponent;
+an `int` becomes `n/1`; and a `RationalCap` uses its existing reduced numerator
+and positive denominator. No float is accepted or produced. For exact lower
+endpoint `L`, the discrete inclusive lower bound is `ceil(L)` when `L` is
+inclusive and `floor(L) + 1` when `L` is exclusive. For exact upper endpoint
+`U`, the discrete inclusive upper bound is `floor(U)` when `U` is inclusive
+and `ceil(U) - 1` when `U` is exclusive. Open endpoints remain open. The
+converted denominator lower bound is additionally intersected with `1`.
+Conversion provenance retains the original endpoint, inclusivity, exact
+rational value, converted integer, and rule used.
+
+Effective-rational bounds use canonical reduced numerator/denominator pairs
+with a positive denominator and compare only by exact cross multiplication.
+Finite `Decimal` policy bounds use the exact base-10 conversion above.
+Numerator/denominator ranges never substitute for an effective-rational range,
+or vice versa. Sequence item 2 validates one requested stored value or
+configured interval against admitted RTSS evidence; it does not derive or tune
+a controller cap ladder.
+
+Public request construction rejects wrong types, Boolean integers, non-finite
+`Decimal` values, denominator zero, and non-positive bit width. A reversed
+configured range is a reachable structural policy failure:
+`UNSUPPORTED / INVALID_RANGE_REQUEST`; equal configured endpoints with either
+exclusive are `UNSUPPORTED / EMPTY_CONFIGURED_RANGE`. After exact discrete
+conversion or backend/bit-width intersection, lower greater than upper is
+`UNSUPPORTED / EMPTY_DISCRETE_INTERSECTION`. A raw adapter report with reversed
+bounds, an invalid endpoint, or a denominator bound below one cannot construct
+selectable range evidence; admission retains only typed
+`INVALID_RANGE_EVIDENCE`, which evaluates `UNKNOWN`.
+
 Large integers remain arbitrary-precision during policy evaluation. A stored
-field value outside its admitted bit-width interval is `UNSUPPORTED /
-BIT_WIDTH_OVERFLOW`; parser resource limits are separate denial-of-service
-bounds and are never reported as backend support.
+field request one step below or above an admitted or derived interval is
+`UNSUPPORTED / RANGE_UNDERFLOW` or `UNSUPPORTED / RANGE_OVERFLOW`;
+bit-width-derived overflow additionally retains `BIT_WIDTH_OVERFLOW`. Parser
+resource limits are separate denial-of-service bounds and are never reported
+as backend capability.
 
 Intersection takes the exact greater lower endpoint and lesser upper endpoint.
-When equal values come from both inputs, inclusivity is the logical AND of the
-contributing inclusivity flags. Lower greater than upper, or equal with either
-effective endpoint exclusive, is empty and returns `UNSUPPORTED /
-EMPTY_RANGE_INTERSECTION`. An equal inclusive point is valid. Open lower or
-upper endpoints remain open. Numerator and denominator intersections are
-computed independently and both must succeed only when the compound requires
-both. No floating-point approximation, rational-equivalence substitution, or
-cross-domain reuse is permitted.
+When equal exact values come from multiple inputs, inclusivity is the logical
+AND of their flags. Equal inclusive continuous bounds form one point; equal
+exclusive continuous bounds are empty. Discrete intersections operate on the
+already converted inclusive integer endpoints. Open lower or upper endpoints
+remain open. Numerator and denominator intersections are computed
+independently and both must succeed when the terminal compound requires both.
+Missing admitted range evidence is `UNKNOWN / RANGE_EVIDENCE_MISSING`;
+explicitly unsupported range evidence is `UNSUPPORTED / RANGE_UNSUPPORTED`;
+typed invalid observed evidence is `UNKNOWN / INVALID_RANGE_EVIDENCE`.
+
+Every range decision records exact provenance: request domain and original
+configured endpoints, conversion rules and converted endpoints, admitted range
+observation identity and backend/capability generations, mechanism/operation/
+field scope, explicit range support state, bit width and representation when
+used, each intersection operand, and the final exact intersection. No
+floating-point approximation, silent rounding, rational-equivalence
+substitution, or cross-domain reuse is permitted.
 
 #### Planned supported-name policy model
 
@@ -504,8 +606,8 @@ cross-domain reuse is permitted.
 
 - the exact original name and explicit `ProfileKind`;
 - exact requested access mechanism and primitive or compound requirement;
-- context `EXISTING_PROFILE` or `CREATE_PROFILE` (intent only; sequence item 3
-  later verifies existence); and
+- exact name context `EXISTING_LOOKUP`, `EXISTING_MUTATION`, or
+  `CREATE_PROFILE` (intent only; sequence item 3 later verifies existence); and
 - references to the capability evaluation context and required admitted
   name-rule and namespace snapshot identities.
 
@@ -516,8 +618,9 @@ name after minimal structural checks. Matching expectations belong to
 `RtssCapabilityEvaluationContext`; authoritative derivations and peer
 completeness belong only to admitted evidence.
 
-The admitted observation may contain mechanism- and kind-specific immutable
-name-rule evidence:
+Name rules do not live inside the capability observation. The separate
+factory-controlled admitted rule-set contract below contains mechanism- and
+kind-specific immutable evidence:
 
 - encoding identifier and exact encoded representation/round-trip evidence;
 - character and encoded-byte component limits;
@@ -536,26 +639,64 @@ or Unicode normalization guesses.
 
 ##### Raw-name and current-identity boundary
 
-The minimal raw untrusted invariant is independent of
-`CanonicalProfileIdentity`: the value is a string; is non-empty after
-whitespace classification; contains no NUL or control character; is not rooted,
-UNC, drive-qualified, device-path, alternate-data-stream, or dot-segment form;
-contains no path separator; and is one exact namespace component, never a full
-path. These injection and path-confusion protections are structural and no
-capability evidence may override them.
+The raw classifier accepts one string and computes every matching reason
+without rewriting it. A non-string is rejected by request construction. The
+classifier aggregates reasons, deduplicates them, sorts them by the closed
+order below, and uses the first reason as the leading reason. It completes all
+structural checks in layers 1-4 for diagnostics; any match then short-circuits
+before the current-model and evidence layers. If structure passes, it completes
+all current-model checks in layer 5; any match then short-circuits before
+evidence. Capability or namespace evidence is never consulted after a
+structural or current-model failure.
 
-After those checks, policy attempts exact current canonical construction. It
-does not insert `.exe`, strip whitespace or dots, replace characters, change
-case, normalize, or extract a basename. A raw name rejected by the accepted
-constructor may still be diagnosed against capability evidence, but its final
-status can only be `UNKNOWN` or `UNSUPPORTED`; it can never be `SUPPORTED`.
-When otherwise-supporting backend evidence exists, the fixed result is
-`UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`. Broader support requires a
-separate proposed identity migration, independent review, explicit acceptance,
-and corresponding changes to `RtssGeneration` and `RtssOwnershipToken` before
-item 3 can consume the identity. Item-2 implementation is blocked until this
-fail-closed boundary is accepted with the corrected plan; no migration is part
-of item 2.
+The closed layers and within-layer reason order are:
+
+1. impossible scalar/content: `EMPTY_NAME`, `WHITESPACE_ONLY_NAME`,
+   `NUL_IN_NAME`, `CONTROL_CHARACTER`;
+2. path form: `DEVICE_PATH`, `UNC_PATH`, `DRIVE_QUALIFIED_PATH`,
+   `ROOTED_PATH`, `FULL_PATH`;
+3. traversal/component form: `DOT_PATH_SEGMENT`, `PATH_SEPARATOR`;
+4. stream/colon form: `ALTERNATE_DATA_STREAM`, `COLON_PATH_CONFUSION`;
+5. current canonical-model representability, led by
+   `IDENTITY_MODEL_INCOMPATIBLE`, then detail reasons:
+   `EDGE_WHITESPACE`, `TRAILING_DOT`, `TRAILING_SPACE`,
+   `PROFILE_KIND_SHAPE_INCOMPATIBLE`,
+   `NON_ASCII_CURRENT_MODEL`, `MISSING_EXECUTABLE_SUFFIX`,
+   `EMPTY_EXECUTABLE_STEM`, `RESERVED_STEM_CURRENT_MODEL`,
+   `WINDOWS_CHARACTER_CURRENT_MODEL`;
+6. applicable capability name-rule evidence in encoding, character, and length
+   reason order; and
+7. namespace evidence in completeness, case, normalization, encoding-collision,
+   and canonical-collision order.
+
+Path predicates are lexical and platform-independent: device prefixes include
+`\\?\` and `\\.\`; UNC means two leading separators; drive-qualified means an
+ASCII letter plus colon at the beginning or immediately after a recognized
+device prefix; rooted means a leading separator or drive-qualified absolute
+form; full path means any multi-component or rooted path form; dot segment
+means an exact `.` or `..` component separated by either slash; ADS means a
+colon outside the drive designator followed by stream text; and the generic
+colon reason matches every remaining colon. Both slash directions count as
+separators.
+
+Layers 1-4 are structural injection/path-confusion failures and return
+`UNSUPPORTED` with the first aggregated structural reason. Layer 5 contains
+limitations of the accepted `CanonicalProfileIdentity` model rather than
+universal RTSS facts. Names matching it return `UNSUPPORTED` with
+`IDENTITY_MODEL_INCOMPATIBLE` as the leading terminal reason and the ordered
+classifier details after it. Missing, stale, invalid, contradictory, or
+otherwise-supporting name-rule evidence cannot change that result and is not
+evaluated. This includes non-ASCII: all such evidence variants have the same
+terminal result until a separately accepted identity migration exists.
+
+Only after those checks does policy attempt exact current canonical
+construction. It does not insert `.exe`, strip whitespace or dots, replace
+characters, change case, normalize, or extract a basename. A name rejected by
+the accepted constructor cannot proceed to capability or namespace evaluation
+and can never be `SUPPORTED` or `UNKNOWN`. Broader support requires a separate
+proposed identity migration, independent review, explicit acceptance, and
+corresponding changes to `RtssGeneration` and `RtssOwnershipToken` before item
+3 can consume the identity. No migration is part of item 2.
 
 The exhaustive classification of current and required rules is:
 
@@ -574,24 +715,89 @@ The exhaustive classification of current and required rules is:
 | Device path | Reject through separator/colon | Structural invalid | `UNSUPPORTED / DEVICE_PATH` | No | Item 2 device namespaces |
 | `.` or `..` path segment, including embedded segment form | Reject direct dot forms; separators reject embedded forms | Structural invalid | `UNSUPPORTED / DOT_PATH_SEGMENT` | No | Item 2 current/parent segments |
 | Missing `.exe` | Reject | Current identity-model invariant, not universal RTSS truth | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in item 2 | Identity migration/item 12; positive `.exe`, negative missing |
-| Non-ASCII | Reject | Current identity-model invariant; backend encoding capability-dependent beyond current model | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` when backend otherwise supports; otherwise ordered evidence reason | No in item 2 | Migration plus item 12 encoding; lossless-evidence control |
+| Non-ASCII | Reject | Current identity-model invariant; backend encoding capability-dependent beyond current model | always `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, before name-rule evidence | No in item 2 | Migration plus item 12 encoding; missing/stale/supporting-rule controls |
 | Trailing dot | Reject | Current identity-model invariant and Windows-context ambiguity | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in current model | Migration/item 12; trailing-dot test |
 | Trailing space | Reject through edge-whitespace | Current identity-model invariant and Windows-context ambiguity | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in current model | Migration/item 12; trailing-space test |
 | Windows reserved stem | Reject | Current identity-model invariant; capability-dependent RTSS fact is deferred | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in current model | Migration/item 12; every reserved family |
 | Invalid Windows filename characters `< > " \| ? *` | Reject | Current identity-model invariant; actual RTSS character support is capability-dependent | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in current model | Migration/item 12; character matrix |
-| Colon | Reject | Structural invalid because of drive/ADS ambiguity | `UNSUPPORTED / PATH_CONFUSION` | No | Item 2 colon forms |
+| Colon | Reject | Structural invalid because of drive/ADS ambiguity | `UNSUPPORTED / COLON_PATH_CONFUSION` unless a higher path/ADS reason leads | No | Item 2 colon forms |
 | Global profile shape | Only canonical name `Global` constructs directly | Current identity-model invariant | exact `Global` may proceed; other raw shape is `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` | No in current model | Item 2 Global positive and altered-shape negatives |
 | Application profile shape | Basename with non-empty stem and `.exe` | Current identity-model invariant | exact representable shape may proceed | No in current model | Item 2 application positive and empty-stem negatives |
-| Basename versus full path | Basename only; paths reject | Structural invalid for raw request; external namespace fact remains context-dependent | full path `UNSUPPORTED / PATH_FORM_NOT_ALLOWED` | No | Item 2 path controls; identity design/item 12 |
+| Basename versus full path | Basename only; paths reject | Structural invalid for raw request; external namespace fact remains context-dependent | `UNSUPPORTED` with the first applicable path-form reason | No | Item 2 path controls; identity design/item 12 |
 | Case-only spelling | Constructible; equality case-folds | Current ownership invariant plus capability/collision-dependent namespace fact | result from namespace table below | Evidence cannot create distinct current owners | Item 2 case matrix; item 12 live behavior |
-| Unicode normalization | No normalization performed; non-ASCII rejects | Deferred capability fact and current identity-model invariant | never silently normalize; result from namespace table below | No implicit override | Migration/item 12 normalization matrix |
+| Unicode normalization | No normalization performed; non-ASCII rejects | Deferred capability fact and current identity-model invariant | representable ASCII may use the namespace table; non-ASCII remains `IDENTITY_MODEL_INCOMPATIBLE` | No implicit override | Migration/item 12 normalization matrix |
+
+Representative overlaps have these independent expected ordered reasons:
+
+| Raw input | Leading reason | Complete ordered classifier reasons before short-circuit |
+| --- | --- | --- |
+| `C:\game.exe` | `DRIVE_QUALIFIED_PATH` | `DRIVE_QUALIFIED_PATH`, `ROOTED_PATH`, `FULL_PATH`, `PATH_SEPARATOR`, `COLON_PATH_CONFUSION` |
+| `\\server\share\game.exe` | `UNC_PATH` | `UNC_PATH`, `ROOTED_PATH`, `FULL_PATH`, `PATH_SEPARATOR` |
+| `\\?\C:\game.exe` | `DEVICE_PATH` | `DEVICE_PATH`, `UNC_PATH`, `DRIVE_QUALIFIED_PATH`, `ROOTED_PATH`, `FULL_PATH`, `PATH_SEPARATOR`, `COLON_PATH_CONFUSION` |
+| `..\game.exe` | `FULL_PATH` | `FULL_PATH`, `DOT_PATH_SEGMENT`, `PATH_SEPARATOR` |
+| `folder\..\game.exe` | `FULL_PATH` | `FULL_PATH`, `DOT_PATH_SEGMENT`, `PATH_SEPARATOR` |
+| `game.exe:stream` | `ALTERNATE_DATA_STREAM` | `ALTERNATE_DATA_STREAM`, `COLON_PATH_CONFUSION` |
+| `/game.exe` | `ROOTED_PATH` | `ROOTED_PATH`, `FULL_PATH`, `PATH_SEPARATOR` |
+| `é.exe` with missing, stale, or supporting rules | `IDENTITY_MODEL_INCOMPATIBLE` | `IDENTITY_MODEL_INCOMPATIBLE`, `NON_ASCII_CURRENT_MODEL` |
+| `game` with missing or supporting rules | `IDENTITY_MODEL_INCOMPATIBLE` | `IDENTITY_MODEL_INCOMPATIBLE`, `MISSING_EXECUTABLE_SUFFIX` |
+| `game.exe` | none | no classifier failure; continue to capability/name-rule evidence |
+
+##### Factory-controlled admitted name-rule evidence
+
+`RtssAdmittedNameRuleSet` is the sole authoritative name-rule owner. It is a
+separate immutable factory-controlled (`init=False`) object, not a nested
+capability-observation field and not a raw request field. It contains:
+
+- one opaque structural rule-set identity and the exact parent admitted
+  capability-observation identity;
+- exact backend and capability generations;
+- profile-kind and namespace scope;
+- complete applicability keys for mechanism, primitive or terminal compound,
+  and `EXISTING_LOOKUP`, `EXISTING_MUTATION`, or `CREATE_PROFILE`;
+- exact encoding and round-trip rules, character and encoded-byte component/
+  total limits, character admission rules, case/comparison rules, and
+  normalization rules;
+- immutable provenance and source references;
+- validity `CURRENT`, `STALE`, or `INVALID`;
+- diagnostic state `CONSISTENT` or `CONTRADICTORY`; and
+- an explicit complete-applicability manifest.
+
+The deterministic admission factory is the only constructor. Tests feed it
+untrusted `RtssRawNameRuleReport` records; item 3 or item 12 later owns trusted
+admission. Raw reports, caller-created mappings, and values copied from a rule
+set cannot prove support. A consistent rule set contains exactly one rule for
+each declared applicability key and complete coverage for the evaluated key.
+Any duplicate or overlapping applicability report produces one current
+`CONTRADICTORY` admitted rule set with a canonical non-empty conflict tuple and
+no selectable rules. Contradictory stale/invalid combinations, missing
+coverage, or selectable rules inside a contradictory set are construction
+errors.
+
+Every reconstruction path, including `dataclasses.replace()`, must re-enter the
+same invariant validator. An unchanged structurally equal factory copy is
+equivalent; object identity is never required. Changing the rule-set identity,
+parent identity, generations, scope, applicability, rule content, provenance,
+validity, contradiction state, or nested source references either fails
+construction or yields non-matching evidence and cannot retain admission.
+
+The evaluator matches, in order: rule-set identity requested by the public
+request; parent capability-observation identity; backend generation;
+capability generation; profile kind; namespace scope; mechanism; exact
+primitive or terminal compound; and name context. Missing or raw rules are
+`UNKNOWN / NAME_RULE_EVIDENCE_MISSING`; a foreign identity or any parent,
+generation, kind, scope, mechanism, operation, or context mismatch is
+`UNKNOWN` with its exact mismatch reason; invalid then stale rule sets are
+`UNKNOWN`; and a current contradictory rule set is
+`UNKNOWN / CONTRADICTORY_NAME_RULES`. Only a current consistent complete
+matching rule set may continue. A structurally equal admitted copy is a
+positive control.
 
 ##### Factory-controlled namespace and collision evidence
 
 `RtssAdmittedNamespaceObservation` is immutable and factory-controlled
 (`init=False`). It contains namespace snapshot identity, parent capability
 observation identity, backend generation, capability generation, profile kind,
-mechanism, operation and existing/creation scope, namespace identifier,
+  mechanism, operation and exact lookup/mutation/creation scope, namespace identifier,
 comparison mode, normalization mode, encoding context when relevant,
 completeness mode `COMPLETE_ENUMERATION` or `AUTHORITATIVE_EXACT_QUERY`, the
 immutable exact-name enumeration or authoritative exact-query/collision result,
@@ -608,6 +814,45 @@ contains an exact encoding identifier, immutable parameters, encoded bytes,
 round-trip result, and encoded collision key. Unknown enum additions fail
 closed. Namespace scope is an opaque immutable identifier whose equality is
 structural; it is not inferred from a filesystem path.
+
+The normalization compatibility vocabulary is exact:
+
+- the **external exact key** is the unchanged original profile name;
+- the **external normalized key** is the exact key supplied by an admitted
+  named normalization observation, never computed or rewritten by policy;
+- the **current canonical ownership key** is
+  `CanonicalProfileIdentity.canonical_key`, including its accepted ASCII
+  `casefold()` behavior; and
+- the **external identity** is the authoritative namespace identity to which
+  the external exact and normalized keys resolve.
+
+`EXACT_NONE` is compatible only when the admitted normalized key equals the
+external exact key and complete namespace evidence proves no case, encoding,
+or canonical-key collider. `NAMED` is compatible for an existing exact lookup
+or existing mutation only when current, complete evidence proves: the exact
+input resolves to exactly one external identity; its normalized key resolves
+to that same and only identity; that identity maps to exactly one representable
+current canonical ownership key; no other external exact, normalized, encoded,
+case, or canonical key maps to that ownership key; and the unchanged exact
+original remains in the audit record.
+
+For creation, the same rule is prospective: authoritative complete enumeration
+or exact-query semantics must prove the requested external exact key, external
+normalized key, encoded key, case variants, and current canonical ownership key
+are all absent; the predicted created external identity must map to exactly one
+representable current canonical ownership key; and no other key may map to it.
+A known named algorithm and a Boolean "no collision" assertion are
+insufficient without this complete mapping proof.
+
+A proved collider or many-to-one external-to-current mapping is
+`UNSUPPORTED / NORMALIZATION_COLLISION` or
+`UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`, respectively. Incomplete proof is
+`UNKNOWN / NORMALIZATION_PROOF_INCOMPLETE`; `UNKNOWN` normalization is
+`UNKNOWN / NORMALIZATION_UNKNOWN`. Missing, stale, invalid, foreign, or
+generation-mismatched rule/namespace evidence is `UNKNOWN` before the
+compatibility predicate. A current-model-unrepresentable name was already
+short-circuited as `UNSUPPORTED` and can never become supported by a named
+normalization rule.
 
 The public request references the snapshot identity only. It cannot supply,
 filter, or claim a peer set, which closes omitted-collider attacks. Namespace
@@ -627,7 +872,10 @@ normalization, and encoding collision key.
 | Admitted case-distinct pair collapsing under current case-folded identity | `UNSUPPORTED / CASE_COLLISION` |
 | Case-insensitive canonical-key collision | `UNSUPPORTED / CASE_COLLISION` |
 | Unknown normalization behavior | `UNKNOWN / NORMALIZATION_UNKNOWN` |
-| Normalization mode incompatible with current ownership identity | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` |
+| `EXACT_NONE`, complete proof, no collision | Continue evaluation; may become `SUPPORTED` |
+| `NAMED`, complete one-to-one proof, no collision | Continue evaluation; may become `SUPPORTED` |
+| `NAMED`, incomplete proof | `UNKNOWN / NORMALIZATION_PROOF_INCOMPLETE` |
+| `NAMED`, incompatible many-to-one ownership mapping | `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` |
 | Proven normalization-equivalent collision | `UNSUPPORTED / NORMALIZATION_COLLISION` |
 | Lossy or colliding encoding round trip | `UNSUPPORTED / ENCODING_COLLISION` |
 | Existing exact lookup with authoritative exact no-collision proof | Continue against exact lookup dependencies |
@@ -637,8 +885,8 @@ normalization, and encoding collision key.
 
 - `SUPPORTED`, `UNSUPPORTED`, or `UNKNOWN`;
 - the unchanged exact original name and profile kind;
-- the exact requested mechanism, primitive/compound requirement, and
-  existing/creation context;
+- the exact requested mechanism, primitive/compound requirement, and exact
+  lookup/mutation/creation context;
 - the canonical identity and encoded representation only when their evidence
   is admitted and unambiguous;
 - observation identity, backend generation, and capability generation when
@@ -660,23 +908,33 @@ reviewed, and accepted identity-model migration.
 
 The exact name-policy signature is:
 
-`evaluate_supported_name(request, context, admitted_capability_observation, admitted_name_rules, admitted_namespace_observation) -> decision`
+`evaluate_supported_name(request, context, admitted_capability_observation, admitted_name_rule_set, admitted_namespace_observation) -> decision`
+
+The arguments have exact types `RtssSupportedNameRequest`,
+`RtssCapabilityEvaluationContext`,
+`RtssAdmittedCapabilityObservation | None`,
+`RtssAdmittedNameRuleSet | None`, and
+`RtssAdmittedNamespaceObservation | None`. No nested or alternate rule owner is
+accepted.
 
 Capability and name decisions use the same context-matching and stable-reason
 algebra. Caller-authored context and request fields remain intent only.
 
 Policy evaluation follows this deterministic order:
 
-1. Validate the untrusted request structurally without live access or name
-   rewriting. A profile-kind or exact-name/identity mismatch is
-   `UNSUPPORTED`.
+1. Run the complete raw classifier without live access or name rewriting.
+   Aggregate all reasons across structural layers 1-4, or across current-model
+   layer 5 only when structure passes. Structural failure or current
+   canonical-model incompatibility returns `UNSUPPORTED` immediately, before
+   capability, name-rule, or namespace evidence.
 2. If no admitted observation exists, return `UNKNOWN /
    CAPABILITY_EVIDENCE_MISSING`. A raw report or current public capability
    object does not substitute for it.
 3. Match observation identity, backend generation, capability generation,
    profile kind, and policy scope against context. Foreign, mismatched,
-   stale/invalid, unavailable, untrusted, or contradictory evidence is
-   `UNKNOWN` under the closed algebra above.
+   stale/invalid, untrusted, or contradictory evidence is `UNKNOWN` under the
+   closed algebra above. There is no observation-unavailable branch; temporary
+   unavailability is evaluated only on a current selected primitive record.
 4. Select only the exact requested mechanism, primitive/compound requirement,
    profile kind, and exact-field applicability records. Aggregate the canonical
    dependency bundle using current unsupported before unknown; no other
@@ -703,19 +961,25 @@ Policy evaluation follows this deterministic order:
 9. Deletion requests require explicit deletion plus verify-absence primitives.
    Current unsupported absence verification is `UNSUPPORTED`; missing or
    unknown verification is `UNKNOWN`.
-10. Name evaluation requires rules applicable to the exact mechanism,
-    operation, profile kind, and existing/creation context. A name supported
-    for existing lookup is not thereby supported for creation or mutation.
+10. Match the one admitted name-rule set to its requested identity, parent
+    capability observation, backend/capability generations, profile kind,
+    namespace scope, exact mechanism, operation, and exact
+    lookup/mutation/creation context.
+    Missing, stale, invalid, foreign, mismatched, incomplete, replaced, or
+    contradictory rules follow the exact rule-set outcomes above. A name
+    supported for existing lookup is not thereby supported for creation or
+    mutation.
 11. Unknown encoding, required unknown character/byte limit, unknown
     case/normalization rule, or missing collision evidence is `UNKNOWN`.
     Explicitly unsupported encoding, a value above a known maximum, a
     character rejected by admitted rules, or a proven collision is
     `UNSUPPORTED`.
 12. Exact boundary values are accepted only when every other requirement is
-    supported. Under the current identity boundary, non-ASCII never returns
-    `SUPPORTED`: absent backend evidence is `UNKNOWN`, and otherwise-supporting
-    backend evidence produces `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE`.
-    No Unicode support is claimed.
+    supported. Under the current identity boundary, non-ASCII and every other
+    constructor-incompatible name always return
+    `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` before missing, stale, or
+    otherwise-supporting rule evidence is considered. No Unicode support is
+    claimed.
 13. Structurally equal immutable admitted evidence produces the same decision.
     Foreign snapshots, direct construction, replacement, enum aliases, or
     changed nested generations cannot acquire trust.
@@ -985,11 +1249,13 @@ coverage, and pass focused review before disposition.
 ### Authoritative unresolved-decision table
 
 This is the authoritative detailed table referenced by `DECISIONS.md`.
-Corrected planning semantics - context matching, decision precedence, reason
-ordering, contradiction representation, dependency aggregation, range
-intersection, raw-name classification, identity fail-closed behavior, and
-namespace completeness - are resolved proposed design pending independent
-review; they are not live-fact questions and do not appear as open rows.
+Corrected planning semantics - context matching, legal observation states,
+decision precedence, failure-only reason ordering, contradiction
+representation, internal fractional dependency expansion, bit-width and exact
+bound conversion, aggregating raw-name classification, identity fail-closed
+behavior, name-rule ownership, named-normalization compatibility, and namespace
+completeness - are resolved proposed design pending independent review; they
+are not live-fact questions and do not appear as open rows.
 
 The item-2 planning correction leaves only these real-world or later-lifecycle
 decisions explicit:
@@ -1037,22 +1303,25 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - planning completed locally;
-   independent review and explicit acceptance required; implementation
-   unauthorized**
+2. **Capability and supported-name policy - two planning reviews rejected;
+   second correction completed locally; independent review and later explicit
+   acceptance required; implementation unauthorized**
    - future unit 2a: add unique status, support, validity, origin, mechanism,
-     primitive-operation, compound-requirement, postcondition, contradiction,
-     and typed-reason enums plus immutable evaluation context and raw/admitted
-     capability evidence contracts;
+     primitive-operation, terminal compound-requirement, internal-dependency,
+     postcondition, contradiction, and typed-reason enums plus immutable
+     evaluation context and raw/admitted capability evidence contracts with the
+     closed legal observation-state factory;
    - future unit 2b: add the closed primitive/derived decision algebra,
      canonical dependency bundles, stable reason ordering, and pure evaluator;
    - future unit 2c: add domain-specific integer, numerator, denominator,
-     rational, and bit-width range contracts and exact intersection policy;
+     rational, and bit-width range contracts, the unsigned/two's-complement
+     formulas, exact discrete configured-bound conversion, and exact
+     intersection policy;
    - future unit 2d: add the raw supported-name request, structural
      classification, canonical-identity boundary, and exact-name-preserving
      decision contracts;
-   - future unit 2e: add factory-controlled complete namespace/collision and
-     name-rule evidence contracts;
+   - future unit 2e: add the separate parent-bound factory-controlled admitted
+     name-rule set and complete namespace/collision evidence contracts;
    - future unit 2f: add pure supported-name evaluation for encoding, length,
      character, case, normalization, existing/creation, and exact collision
      outcomes;
@@ -1190,8 +1459,10 @@ Stage 2 coordinator implementation is complete only when:
 The planning-review and explicit-acceptance gates are satisfied. Sequence item
 1 is independently approved and complete with no admitted mutation after three
 failed implementation reviews and three focused corrections. The separate
-focused sequence-item-2 planning and design work is complete locally, but its
-commit requires independent read-only review and explicit acceptance.
+focused sequence-item-2 planning and design work has received two rejected
+planning reviews. This second documentation-only correction is complete
+locally, but its commit requires independent read-only review and a later
+explicit acceptance documentation step.
 Sequence item 2 implementation and each later mutation-bearing slice remain
 unauthorized and gated by their applicable review, rollback,
 degraded-state, ownership, and failure-matrix requirements. No mutation is

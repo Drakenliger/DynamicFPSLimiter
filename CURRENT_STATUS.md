@@ -7,10 +7,10 @@
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
 - Current phase: RTSS Stage 2 sequence item 1 complete and independently
-  approved; the first sequence-item-2 planning commit was rejected, its
-  documentation-only correction is complete locally and awaits another
-  independent read-only review and explicit acceptance; implementation remains
-  unauthorized
+  approved; the first sequence-item-2 planning commit and its first corrected
+  planning commit were both rejected; this documentation-only second planning
+  correction is complete locally and awaits another independent read-only
+  review and later explicit acceptance; implementation remains unauthorized
 - Current approved source commit:
   `4011d7e1e29fc2a4bbe901d184c53774b33e7baa`
   (`fix: anchor RTSS evidence generations`)
@@ -386,13 +386,47 @@ from the unchanged production ledger.
 `RELEASE_NOTES.md` remains unchanged because the repository convention records
 implemented contract behavior there, while this change is planning only.
 
-The corrected sequence-item-2 planning is complete locally but has not been
+Independent read-only review of the first corrected planning commit
+`88efe137be44b8be6f26da9b5982f045e6aa10f0` ended **Not approved - blocking
+planning findings require correction**. The review confirmed
+`S2-CAP-PLAN-001`, the original `S2-NAME-PLAN-001` defect, and
+`S2-DOC-OPEN-001` remained corrected. It identified seven blocking findings:
+
+- `S2-CAP-PLAN-002`: observation-level unavailability had no legal typed
+  representation;
+- `S2-CAP-PLAN-003`: coordinated fractional update had contradictory
+  dependency and admission meanings;
+- `S2-RANGE-PLAN-001`: bit-width formulas and cross-domain bound conversion
+  remained incomplete;
+- `S2-NAME-PLAN-002`: overlapping raw-name classes had no deterministic
+  precedence or leading reason;
+- `S2-NAME-PLAN-003`: named normalization had no closed compatibility
+  predicate;
+- `S2-NAME-RULE-PLAN-001`: admitted name-rule evidence had no single
+  construction and trust boundary; and
+- `S2-TEST-PLAN-001`: the affected matrices still could not serve as an
+  independent oracle.
+
+The review also recorded non-blocking `S2-TEST-PLAN-002`: a failing
+reason-order input must not include the success reason.
+
+This second documentation-only planning correction removes observation-level
+unavailability; makes coordinated fractional update one internal ordered,
+reversible dependency bundle; closes signed bit-width and exact discrete-bound
+conversion rules; defines one aggregating raw-name classifier and leading
+reason order; defines exact named-normalization compatibility; introduces one
+factory-controlled, parent-bound admitted name-rule set; and rebuilds the
+affected matrices with independently stated outcomes and separate failure and
+success reason-order tests. These are proposed planning semantics pending
+review, not implemented contracts.
+
+The second corrected sequence-item-2 plan is complete locally but has not been
 independently approved. No source or test file changed. No push or pull request
-exists. The next action is another independent read-only review of the focused
-planning-correction commit followed by explicit acceptance in a later
-documentation step. Sequence item 2 implementation remains unauthorized.
-Sequence item 3 remains unauthorized. Every mutation, production integration,
-push, and pull-request creation remains separately unauthorized.
+exists. The next action is another independent read-only review of this focused
+planning-correction commit followed, only if approved, by a later explicit
+acceptance documentation step. Sequence item 2 implementation remains
+unauthorized. Sequence item 3 remains unauthorized. Every mutation, production
+integration, push, and pull-request creation remains separately unauthorized.
 No RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or
 frame-generation compatibility claim is established.
 
@@ -476,8 +510,10 @@ coordinator:
 The readback, exact stored-field, degraded-state, handoff, and retained-
 ownership prerequisites in sequence item 1 are corrected, independently
 approved, and complete. Capability-driven name policy is sequence item 2: its
-planning and design are complete locally but await independent read-only review
-and explicit acceptance, and implementation is not authorized. Coordinator
+first planning commit and first corrected planning commit were rejected; this
+second planning correction is complete locally but awaits independent read-only
+review and later explicit acceptance, and implementation is not authorized.
+Coordinator
 logic, mutation, production integration, and their later tests remain planned,
 unimplemented, and non-production-reachable. Trusted observation of an
 advanced backend or capability generation remains a later admission/adapter
@@ -529,12 +565,14 @@ beyond the statically reviewed baseline.
 The planning-review and explicit-acceptance gates are satisfied. After three
 failed implementation reviews and three focused corrections, Stage 2 sequence
 item 1 is independently approved and complete. The separate focused
-sequence-item-2 planning and design work is complete locally. The next action
-is independent read-only review of its focused documentation commit.
+sequence-item-2 planning and design work has received two rejected planning
+reviews. The second documentation-only correction is complete locally. The
+next action is independent read-only review of its focused correction commit.
 
-Sequence item 2 implementation remains unauthorized until this planning is
-independently reviewed and explicitly accepted. No sequence-item-2 source
-implementation exists. Coordinator admission, capture, rollback
+Sequence item 2 implementation remains unauthorized until this second
+corrected planning commit is independently reviewed and a later acceptance
+documentation step explicitly authorizes implementation. No sequence-item-2
+source implementation exists. Coordinator admission, capture, rollback
 foundations, every mutation-bearing slice, production integration, push, and
 pull-request creation remain later separately gated work. No mutation is
 admitted before sequence item 5 and its prerequisites, and production
