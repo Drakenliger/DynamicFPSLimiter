@@ -81,20 +81,27 @@ independent review of corrected Stage 2 planning commit
 `677b6b5750ac52953fd1581efbc658adbc171b22`. They define Stage 2 architecture
 and sequencing, not completed implementation or production behavior.
 
-## Proposed sequence-item-2 decisions pending independent review
+## Accepted sequence-item-2 decisions
 
 The following durable design decisions were produced by the local RTSS Stage 2
-sequence-item-2 planning session. They are not accepted implementation
-authority until the planning commit is independently reviewed and explicitly
-accepted. The initial plan and four subsequent correction commits through
+sequence-item-2 planning session. The initial plan and four subsequent
+correction commits through
 `b59187343ce775013dfcdbaf899a819cc53409cf` were each rejected by independent
 review, for five rejected sequence-item-2 planning reviews in total. Decisions
 51-54 are the fifth planning correction; `b591873` is the rejected fourth
-correction. This correction is local, unpublished, unapproved, and pending a
-new independent read-only review. All decisions in this section remain proposed
-and pending review. Sequence-item-2 implementation and sequence item 3 remain
-unauthorized. The exact next safe action is that new review only, not acceptance,
-implementation, publication, pull-request creation, or enhancement-backlog work.
+correction. Independent read-only review of fifth correction
+`c3047fc37248392b74255f36844120fc0f6fef82` ended exactly **Approved — Stage 2
+sequence item 2 planning is complete**, closed all five R4 blockers, and found
+no blocking or non-blocking planning findings. The user explicitly accepted
+that exact reviewed scope in this documentation-only step.
+
+Decisions 34-54 are accepted deterministic planning authority for a later,
+separately instructed focused sequence-item-2 implementation. This acceptance
+step implements none of them. Sequence item 2 is the next separately executable
+implementation item only after publication topology is settled; sequence item
+3 and later work, mutation, live evidence and adapters, compatibility claims,
+enhancement-backlog work, publication, merge, and release remain unauthorized
+unless separately instructed.
 
 34. Capability and supported-name policy is pure, deterministic, immutable,
     mechanism-specific, and fail-closed. Its terminal decision is exactly one

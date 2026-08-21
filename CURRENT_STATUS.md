@@ -6,17 +6,19 @@
 - Upstream reference: `SameSalamander5710/DynamicFPSLimiter`
 - Default branch: `main`
 - Current local branch: `feature/rtss-transaction-coordinator`
-- Current phase: RTSS Stage 2 sequence item 1 complete and independently
-  approved; the initial sequence-item-2 planning commit and four subsequent
-  correction commits through `b59187343ce775013dfcdbaf899a819cc53409cf`
-  each failed independent review, for five rejected planning reviews in total;
-  this documentation-only fifth planning correction is complete locally,
-  unpublished, unapproved, and pending a new independent read-only review;
-  implementation remains unauthorized
-- Fifth planning-correction starting reviewed HEAD:
+- Current phase: RTSS Stage 2 sequence item 1 deterministic contracts are
+  independently approved and complete; sequence-item-2 deterministic planning
+  at `c3047fc37248392b74255f36844120fc0f6fef82` is independently approved,
+  explicitly accepted in this documentation-only step, and complete; no
+  sequence-item-2 source implementation exists
+- Independently approved and explicitly accepted sequence-item-2 planning
+  source commit:
+  `c3047fc37248392b74255f36844120fc0f6fef82`
+  (`docs: resolve RTSS applicability planning conflicts`)
+- Rejected fourth correction and reviewed parent:
   `b59187343ce775013dfcdbaf899a819cc53409cf`
   (`docs: close RTSS applicability contract gaps`)
-- Current approved source commit:
+- Current approved sequence-item-1 source commit:
   `4011d7e1e29fc2a4bbe901d184c53774b33e7baa`
   (`fix: anchor RTSS evidence generations`)
 - Review baseline: `5f89c49a9e18612b4645bb46a3b6a6e875612e04`
@@ -576,6 +578,53 @@ license, generated file, application behavior, or external state.
 RTSS or profile mutation, live Windows or hardware action, push, pull request,
 merge, publication, or later pipeline-stage work occurred.
 
+Independent read-only review of fifth planning-correction commit
+`c3047fc37248392b74255f36844120fc0f6fef82`, whose sole parent is
+`b59187343ce775013dfcdbaf899a819cc53409cf`, ended exactly **Approved — Stage 2
+sequence item 2 planning is complete**. The reviewed commit's subject is
+`docs: resolve RTSS applicability planning conflicts`, its tree is
+`97e0c705e16da878870849e1c0feb4ec1d173504`, and its stable patch ID is
+`a1836c15ff9ff4efdec3cf4b225305e8d553c45a`.
+
+The review found no blocking or non-blocking planning findings and independently
+confirmed closure of:
+
+- `S2-CAP-TRUST-001-R4`;
+- `S2-CAP-PLAN-004-R4`;
+- `S2-CAP-PLAN-005-R4-A`;
+- `S2-TEST-PLAN-003-R4`; and
+- `S2-DOC-STATUS-002-R4`.
+
+With `PYTHONDONTWRITEBYTECODE=1`, the review ran
+`python -m unittest discover -s tests -t . -v`: all 181 tests passed in
+0.315 seconds with zero failures, errors, skips, or warnings. It verified a
+clean worktree and empty index, no ordinary untracked or generated artifacts,
+local `main` and recorded `origin/main` at
+`f8c4d4a2f7c6e1db39f3fd3c037ed98e07c39c95`, branch divergence zero behind
+and 15 ahead, no configured upstream, no remote-tracking branch containing the
+reviewed commit, and no publication or remote interaction.
+
+By authorizing this documentation-only step after that approved review, the
+user explicitly accepts the reviewed sequence-item-2 capability and
+supported-name policy plan and its deterministic test expectations.
+Sequence-item-2 planning is therefore accepted and complete. This acceptance
+does not implement sequence item 2, authorize sequence item 3, admit mutation,
+or establish live or physical compatibility.
+
+This acceptance task changes exactly:
+
+- `CURRENT_STATUS.md`;
+- `REVIEW_FINDINGS.md`;
+- `DECISIONS.md`;
+- `IMPLEMENTATION_PLAN.md`;
+- `TEST_PLAN.md`; and
+- `RELEASE_NOTES.md`.
+
+It changes no source, test, workflow, dependency, configuration, packaging,
+license, generated file, application behavior, or external state. No push or
+pull request exists. The documentation commit recording this acceptance is not
+itself claimed to have received independent review.
+
 The accepted 12-item sequence is unchanged: sequence item 1 is complete and
 independently approved for deterministic contracts only; sequence item 2 is
 capability and supported-name policy; sequence item 3 is coordinator admission
@@ -583,9 +632,13 @@ and capture without mutation; sequence item 4 is rollback foundations without
 mutation; the first mutation remains sequence item 5; profile creation and
 restoration remain sequence item 6; and production adapters plus live
 evidence-backed support claims remain sequence item 12. The fifth correction is
-local, unpublished, unapproved, and pending a new independent read-only review.
-Sequence item 2 implementation, sequence item 3, every later sequence item,
-publication, and enhancement-backlog work remain unauthorized.
+independently approved and explicitly accepted, while remaining local and
+unpublished. A later focused sequence-item-2 implementation session is
+authorized only by separate instruction after publication topology is settled;
+no implementation occurs here. Sequence item 3, every later sequence item,
+enhancement-backlog work, merge, and release remain unauthorized. Mutation
+remains gated until sequence item 5 and its prerequisites, and production
+adapters remain sequence item 12.
 
 ## Current work
 
@@ -593,14 +646,15 @@ RTSS Stage 1 is complete and merged. It provides deterministic identity,
 rational-cap, generation, capability, capture, readback, apply, restoration,
 ownership, evidence, and result contracts with deterministic tests.
 
-RTSS Stage 2 planning, its accepted corrections and review record, and the
-sequence-item-2 initial plan, four rejected correction commits, and local fifth
-planning correction are recorded on `feature/rtss-transaction-coordinator`.
-The first accepted Stage 2 contract/test-only sequence item and its three
-focused review corrections are implemented locally. Sequence item 1 is
-independently approved and complete. No transaction coordinator exists, no
-source implementation for sequence item 2 exists, and no production caller
-uses these contracts.
+RTSS Stage 2 planning, its accepted corrections and review record, the
+sequence-item-2 initial plan and four rejected corrections, the independently
+approved fifth correction, and this explicit acceptance record are maintained
+on `feature/rtss-transaction-coordinator`. The first Stage 2 contract/test-only
+sequence item and its three focused corrections are implemented locally;
+sequence item 1 is independently approved and complete. Sequence-item-2
+planning is accepted and complete, but no transaction coordinator or
+sequence-item-2 source implementation exists and no production caller uses the
+planned contracts.
 
 The initial local Stage 2 planning commit changed exactly:
 
@@ -639,8 +693,9 @@ claimed to have received independent review.
 
 ## Design-review status
 
-**Accepted Stage 2 design; sequence item 1 complete and independently approved
-with non-blocking review findings.**
+**Accepted Stage 2 design; sequence item 1 complete and independently approved;
+sequence-item-2 deterministic planning independently approved, explicitly
+accepted, and complete.**
 
 The Stage 2 design review preserves the Stage 1 contract layer while planning
 the focused prerequisites and extensions required by a deterministic
@@ -668,15 +723,15 @@ coordinator:
 The readback, exact stored-field, degraded-state, handoff, and retained-
 ownership prerequisites in sequence item 1 are corrected, independently
 approved, and complete. Capability-driven name policy is sequence item 2: its
-initial planning commit and four subsequent corrections through `b591873` were
-rejected in five independent planning reviews. This fifth planning correction
-is complete locally but remains unpublished, unapproved, and pending a new
-independent read-only review and later explicit acceptance; implementation is
-not authorized. Coordinator
-logic, mutation, production integration, and their later tests remain planned,
-unimplemented, and non-production-reachable. Trusted observation of an
-advanced backend or capability generation remains a later admission/adapter
-concern and was not implemented in sequence item 1 or this planning update.
+initial plan and four corrections through `b591873` were rejected in five
+independent reviews; fifth correction `c3047fc` is independently approved and
+explicitly accepted. Its deterministic planning is complete. Source
+implementation has not begun. A later focused item-2 implementation session is
+the next implementation activity only after publication topology is settled.
+Sequence item 3 and later work remain unauthorized. Coordinator logic,
+mutation, production integration, and later tests remain unimplemented and
+non-production-reachable. Trusted observation of an advanced backend or
+capability generation remains a later admission/adapter concern.
 
 The tracked ledger identifies `S1-FINAL-005`, `S1-FINAL-006`, and
 `S1-FINAL-007` only as deferred identifiers and does not retain their
@@ -721,29 +776,24 @@ frame-generation compatibility has been established.
 
 ## Next action and gates
 
-The original Stage 2 architecture planning-review and explicit-acceptance gates
-are satisfied. After three failed implementation reviews and three focused
-corrections, Stage 2 sequence item 1 is independently approved and complete.
-The separate sequence-item-2 initial planning commit and four subsequent
-corrections through `b591873` have received five rejected planning reviews. The
-fifth documentation-only correction is complete locally, unpublished,
-unapproved, and pending review. The exact next safe action is a new independent
-read-only review of the fifth correction commit, not acceptance,
-implementation, publication, pull-request creation, or enhancement-backlog
-work.
+The original Stage 2 architecture gates and the sequence-item-1 implementation
+gates are satisfied. The sequence-item-2 initial plan and four corrections
+through `b591873` received five rejected reviews. Fifth correction `c3047fc`
+passed independent review with exact verdict **Approved — Stage 2 sequence item
+2 planning is complete**, all five R4 blockers closed, and no blocking or
+non-blocking findings. The user explicitly accepted that reviewed plan in this
+documentation-only step.
 
-Sequence item 2 implementation remains unauthorized until this fifth corrected
-planning commit passes independent review and a later documentation-only
-acceptance step explicitly authorizes implementation. No sequence-item-2 source
-implementation exists. Sequence item 3 coordinator admission and capture,
-sequence item 4 rollback foundations, every mutation-bearing slice, production
-integration, push, and pull-request creation remain separately unauthorized.
-No mutation is admitted before sequence item 5 and its prerequisites; profile
-creation and restoration remain sequence item 6; and production adapters and
-live evidence-backed support claims remain sequence item 12. Any later
-implementation task must use small, independently reviewable commits, may not
-admit mutation before its complete applicable rollback and degraded-state
-handling exist, and must keep production callers out of the coordinator phase.
+The exact next safe action is a separately authorized, non-rewriting stacked
+publication. No push or pull request is performed here. After publication
+topology is settled, a separately instructed focused sequence-item-2
+implementation session is authorized. No sequence-item-2 implementation exists
+yet. Sequence item 3 coordinator admission/capture, sequence item 4 rollback
+foundations, every mutation-bearing slice, production integration, merge,
+release, and enhancement-backlog work remain separately unauthorized. No
+mutation is admitted before sequence item 5 and its prerequisites; profile
+creation/restoration remains sequence item 6; and production adapters and live
+evidence-backed support claims remain sequence item 12.
 
 ## Physical validation still required
 

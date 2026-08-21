@@ -270,19 +270,37 @@ findings require correction**, exactly five blockers
 (`S2-CAP-TRUST-001-R4`, `S2-CAP-PLAN-004-R4`,
 `S2-CAP-PLAN-005-R4-A`, `S2-TEST-PLAN-003-R4`, and
 `S2-DOC-STATUS-002-R4`), and no non-blocking findings. Thus the initial plan and
-four subsequent corrections through `b591873` have received five rejected
-planning reviews. This fifth corrected plan defines the matrix below. It is
-local, unpublished, unapproved, and pending a new independent read-only review.
-A later acceptance documentation step must explicitly authorize implementation;
-implementation remains unauthorized.
+four subsequent corrections through `b591873` received five rejected planning
+reviews.
+
+### Sequence item 2 planning approval and acceptance record
+
+The fifth corrected plan at reviewed source commit
+`c3047fc37248392b74255f36844120fc0f6fef82` defines the matrix below.
+Independent read-only review, with bytecode creation disabled, ran exactly
+`python -m unittest discover -s tests -t . -v`: 181 tests ran in 0.315 seconds;
+181 passed with zero failures, errors, skips, or warnings. It closed
+`S2-CAP-TRUST-001-R4`, `S2-CAP-PLAN-004-R4`,
+`S2-CAP-PLAN-005-R4-A`, `S2-TEST-PLAN-003-R4`, and
+`S2-DOC-STATUS-002-R4`; no blocking or non-blocking findings remained. The
+review ended exactly **Approved — Stage 2 sequence item 2 planning is
+complete**, and the user explicitly accepted that exact reviewed planning scope
+in this documentation-only step.
+
+The deterministic sequence-item-2 matrix is accepted planning authority, but
+its tests remain planned until sequence-item-2 source implementation is added.
+This acceptance step changes no source or test and performs no live RTSS,
+filesystem, Windows, hardware, GPU, display, or Lossless Scaling validation.
+Focused sequence-item-2 implementation is the next separately executable item
+only after publication topology is settled and a separate instruction is given;
+sequence item 3 and later work remain unauthorized.
 
 Every corrected item-2 test below must use a public or realistically reachable
 policy path, a test-only factory/admission fixture, an independently specified
 expected status/reason tuple, and a positive control. Tests must not construct
-the decision under test as their oracle. Sequence item 2 implementation remains
-prohibited until this fifth corrected planning commit passes another
-independent read-only review and a later acceptance documentation step
-explicitly authorizes implementation.
+the decision under test as their oracle. A later separately instructed focused
+sequence-item-2 implementation must add and pass these tests before its own
+acceptance.
 
 ### Corrected sequence item 2 context and decision-algebra matrix
 
@@ -1436,17 +1454,19 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   file.
 - Tests assert no mutation or external operation appears in the deterministic
   operation log.
-- Documentation/integrity checks prove only the four task-authorized planning
-  files changed, no absolute local path was added, no compatibility claim was
-  added, and no generated/cache/bytecode artifact remains. A literal
-  cross-document status guard requires `CURRENT_STATUS.md`, `DECISIONS.md`,
-  `IMPLEMENTATION_PLAN.md`, and `TEST_PLAN.md` each to state that the initial
-  sequence-item-2 plan plus four corrections through rejected fourth correction
-  `b591873` received five rejected reviews; the fifth correction is local,
-  unpublished, unapproved, and pending a new independent read-only review;
-  sequence-item-2 implementation and sequence item 3 remain unauthorized; and
-  the next action is that review only, not acceptance, implementation,
-  publication, pull-request creation, or enhancement-backlog work.
+- Planning-correction integrity checks proved only the four task-authorized
+  planning files changed, no absolute local path or compatibility claim was
+  added, and no generated/cache/bytecode artifact remained. Documentation-only
+  acceptance integrity checks prove exactly `CURRENT_STATUS.md`,
+  `REVIEW_FINDINGS.md`, `DECISIONS.md`, `IMPLEMENTATION_PLAN.md`, `TEST_PLAN.md`,
+  and `RELEASE_NOTES.md` changed. A whitespace-normalized cross-document status
+  guard requires those six documents to record reviewed source
+  `c3047fc37248392b74255f36844120fc0f6fef82`, the exact approved verdict,
+  explicit user acceptance, completed planning, absent item-2 implementation,
+  and unauthorized sequence item 3 and later work. Status and release documents
+  also record separately authorized non-rewriting stacked publication as the
+  next safe action. No absolute local path, compatibility or performance claim,
+  or generated/cache/bytecode artifact may be added.
 - The complete suite runs with `PYTHONDONTWRITEBYTECODE=1`; item-2
   implementation acceptance requires all existing and new tests to pass.
 

@@ -4,6 +4,32 @@
 
 No fix has been released from the review baseline.
 
+### RTSS Stage 2 - capability and supported-name policy planning
+
+Independent read-only review of fifth-correction source commit
+`c3047fc37248392b74255f36844120fc0f6fef82` ended exactly **Approved — Stage 2
+sequence item 2 planning is complete**, and the user explicitly accepted that
+exact reviewed planning scope in this documentation-only step. All five prior R4
+planning blockers were closed, no blocking or non-blocking findings remained,
+and the review passed all 181 deterministic tests in 0.315 seconds with zero
+failures, errors, skips, or warnings.
+
+The accepted plan defines pure capability, dependency-applicability,
+supported-name, conflict-reduction, and deterministic test expectations. Those
+tests and contracts remain planned until a later focused sequence-item-2 source
+implementation; this acceptance changes documentation only and makes no
+production behavior change. Sequence item 2 is the next separately executable
+implementation item only after publication topology is settled and a separate
+instruction is given. Sequence item 3 and later work remain unauthorized,
+mutation remains gated until item 5 and its prerequisites, and production
+adapters remain item 12. The exact next safe action is separately authorized
+non-rewriting stacked publication.
+
+No live RTSS, filesystem, Windows, RX 7900 XTX, Lossless Scaling, display, VRR,
+frame-generation, compatibility, or performance validation is performed or
+claimed. No push, pull request, merge, publication, production integration, or
+release occurred, and no fix has been released.
+
 ### RTSS Stage 2 - prerequisite contract correction
 
 The first accepted Stage 2 sequence item adds deterministic closed read-only
@@ -61,8 +87,10 @@ or reopens sequence item 1.
 
 No transaction coordinator, mutation, production wiring, live RTSS behavior,
 profile write, capability/name policy, dependency, or external-system behavior
-changes in this prerequisite slice. Sequence item 2 planning and design review
-are authorized next, but sequence item 2 implementation remains unauthorized.
+changes in this prerequisite slice. At completion of that prerequisite slice,
+sequence-item-2 planning and design review were the next authorized activity.
+The subsequently approved and explicitly accepted planning result is recorded
+above; neither documentation-only step includes sequence-item-2 implementation.
 No production integration, push, pull request, live validation, release, or
 RTSS, Windows, RX 7900 XTX, Lossless Scaling, display, VRR, or frame-generation
 compatibility claim exists.

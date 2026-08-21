@@ -78,17 +78,22 @@ blocking planning findings require correction**. It found exactly five blockers
 and no non-blocking findings: `S2-CAP-TRUST-001-R4`,
 `S2-CAP-PLAN-004-R4`, `S2-CAP-PLAN-005-R4-A`,
 `S2-TEST-PLAN-003-R4`, and `S2-DOC-STATUS-002-R4`. Thus the initial plan and
-four corrections through `b591873` have received five rejected reviews. This
-fifth documentation-only correction addresses only those blockers. It is local,
-unpublished, unapproved, and pending a new independent read-only review plus a
-later explicit acceptance documentation step. Implementation remains
-unauthorized.
-The exact next safe action is a new independent read-only review of this fifth
-correction only, not acceptance, implementation, publication, pull-request
-creation, or enhancement-backlog work. Sequence item 3 and every later item
-remain unauthorized.
-The coordinator, mutation, and production integration are not implemented or
-authorized. The branch has not been pushed and no Stage 2 pull request exists.
+four corrections through `b591873` have received five rejected reviews. The
+fifth documentation-only correction at reviewed source commit
+`c3047fc37248392b74255f36844120fc0f6fef82` addressed only those blockers.
+Independent read-only review ended exactly **Approved — Stage 2 sequence item 2
+planning is complete**: all five R4 blockers were closed, no blocking or
+non-blocking findings remained, and all 181 deterministic tests passed in 0.315
+seconds with zero failures, errors, skips, or warnings. The user explicitly
+accepted that exact reviewed planning scope in the subsequent documentation-only
+acceptance step. Sequence-item-2 planning is therefore accepted and complete;
+this acceptance task implements none of it.
+Sequence item 2 is the next separately executable implementation item, only
+after publication topology is settled and a separate focused implementation
+instruction is given. Sequence item 3 and every later item remain unauthorized.
+Coordinator admission (sequence item 3), mutation, and production integration
+are not implemented or authorized. The branch has not been pushed and no Stage
+2 pull request exists.
 
 Stage 2 implements a deterministic coordinator and its required contract
 prerequisites. It does not wire `DFL_v5.py`, `rtss_functions.py`,
@@ -297,8 +302,11 @@ attribution.
 
 ### Capability and supported-name policy
 
-This section is the concrete sequence-item-2 design. It is planning only and
-does not authorize the types or policy to be implemented.
+This section is the accepted concrete sequence-item-2 design. It remains
+planning only; this documentation-only acceptance implements none of its types
+or policy. It authorizes only a later separately instructed focused
+sequence-item-2 implementation and does not authorize sequence item 3 or later
+work.
 
 #### Existing architecture assessment
 
@@ -2196,11 +2204,11 @@ save/activation applicability semantics, the parent-only evaluator boundary,
 canonical applicability keys and literal duplicate/overlap predicates,
 legally constructible diagnostic groups, aggregating raw-name classification,
 identity fail-closed behavior, exact-scope name-rule ownership,
-named-normalization compatibility, and namespace completeness - are resolved
-proposed design pending independent review; they are not live-fact questions
-and do not appear as open rows.
+named-normalization compatibility, and namespace completeness - are accepted
+deterministic sequence-item-2 design; they are not live-fact questions and do
+not appear as open rows.
 
-The item-2 planning correction leaves only these real-world or later-lifecycle
+The accepted item-2 plan leaves only these real-world or later-lifecycle
 decisions explicit:
 
 | ID | Question | Current evidence | Fail-closed interim rule | Owner / phase | Blocks item-2 implementation? | Blocks later mutation or production support? |
@@ -2247,9 +2255,9 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - five planning reviews rejected;
-   fifth correction completed locally; independent review and later explicit
-   acceptance required; implementation unauthorized**
+2. **Capability and supported-name policy - planning complete and explicitly
+   accepted after independent approval of the fifth correction; next separately
+   executable item; not implemented by this acceptance task**
    - future unit 2a: add unique status, support, validity, origin, mechanism,
      primitive-operation, terminal compound-requirement, internal-dependency,
      postcondition, dependency-applicability/context, field-set-relation,
@@ -2281,9 +2289,10 @@ The independently verified and explicitly accepted implementation sequence is:
      negative-range, and full truth-table regressions; every combined expected
      source/diagnostic tuple is literal rather than reducer-derived;
    - future unit 2h: reconcile tracked documentation after tests pass;
-   - each unit remains contract/policy-only and must be independently
-     reviewable; none creates trusted live evidence, a coordinator registry,
-     capture, mutation, or adapter integration.
+   - these are the accepted focused implementation slices, eligible only for a
+     later separately instructed session; each unit remains contract/policy-only
+     and must be independently reviewable; none creates trusted live evidence,
+     a coordinator registry, capture, mutation, or adapter integration.
 3. **Coordinator admission and capture**
    - add process-local serialization, generation and transaction admission,
      exact state capture, and verified no-change flow;
@@ -2417,16 +2426,20 @@ The original Stage 2 planning-review and explicit-acceptance gates are
 satisfied. Sequence item 1 is independently approved and complete with no
 admitted mutation after three failed implementation reviews and three focused
 corrections. The separate sequence-item-2 initial planning commit and four
-corrections through rejected fourth correction `b591873` have received five
-rejected planning reviews. This fifth documentation-only correction is complete
-locally, unpublished, unapproved, and pending a new independent read-only review
-and a later explicit acceptance documentation step.
-Sequence item 2 implementation and each later mutation-bearing slice remain
-unauthorized and gated by their applicable review, rollback,
-degraded-state, ownership, and failure-matrix requirements. No mutation is
-admitted before item 5 and its prerequisites, and production integration
-remains item 12. The accepted 12-item focused sequence above is unchanged.
-Push and pull-request creation require separate explicit approval.
+corrections through rejected fourth correction `b591873` received five rejected
+planning reviews. Independent read-only review of fifth correction
+`c3047fc37248392b74255f36844120fc0f6fef82` ended exactly **Approved — Stage 2
+sequence item 2 planning is complete**, and the user explicitly accepted that
+exact reviewed scope in this documentation-only step. Sequence-item-2 planning
+is complete; its focused implementation is absent and is the next separately
+executable item only after publication topology is settled and a separate
+instruction is given. The exact next safe action is separately authorized
+non-rewriting stacked publication. Sequence item 3 and every later slice remain
+unauthorized and gated by their applicable review, rollback, degraded-state,
+ownership, and failure-matrix requirements. No mutation is admitted before item
+5 and its prerequisites, production integration remains item 12, and the
+accepted 12-item focused sequence above is unchanged. Push and pull-request
+creation require separate explicit approval.
 
 ### Rollback considerations
 
@@ -2490,12 +2503,18 @@ generation-aware, reversible RTSS boundary.
   prerequisite contract/test sequence item was corrected locally a third time
   after three implementation reviews failed, passes all 181 deterministic
   tests, and is independently approved and complete. Sequence item 2's initial
-  plan and four corrections through rejected fourth correction `b591873` have
-  received five rejected reviews. Its fifth planning correction is complete
-  locally, unpublished, unapproved, and pending a new independent read-only
-  review and later explicit acceptance; implementation remains unauthorized.
-  No coordinator or mutation exists, no production caller uses the contracts,
-  and production integration remains item 12.
+  plan and four corrections through rejected fourth correction `b591873`
+  received five rejected reviews. Independent read-only review of fifth
+  correction `c3047fc37248392b74255f36844120fc0f6fef82` ended exactly
+  **Approved — Stage 2 sequence item 2 planning is complete**, and the user
+  explicitly accepted that reviewed scope in this documentation-only step.
+  Planning is complete; focused item-2 implementation is absent and is the next
+  separately executable item only after publication topology is settled and a
+  separate instruction is given. Sequence item 3 and later work remain
+  unauthorized. No coordinator or mutation exists, no production caller uses
+  the contracts, mutation remains gated until item 5 and its prerequisites,
+  and production integration remains item 12. Publication and pull-request
+  creation require separate explicit approval.
 - **Additional Stage 2 prerequisites from the independent PR review:**
   1. Restrict `RtssReadback` to valid read-only outcomes and failure steps.
   2. Add an exhaustive readback outcome/failure-step matrix.

@@ -793,11 +793,57 @@ The review confirmed:
   advanced-generation observation seam exists. No source or test correction is
   required now, and the finding does not reopen sequence item 1.
 
-RTSS Stage 2 sequence item 1 is therefore independently approved and complete
-as deterministic contract work only. Sequence item 2 planning and design
-review are authorized next; sequence item 2 implementation remains
-unauthorized. This supplemental approval record does not alter or close any
-entry in the original production ledger.
+RTSS Stage 2 sequence item 1 was therefore independently approved and complete
+as deterministic contract work only. At that approval point, sequence-item-2
+planning and design review were authorized next, while sequence-item-2
+implementation remained unauthorized. This supplemental approval record did
+not alter or close any entry in the original production ledger.
+
+## RTSS Stage 2 sequence-item-2 fifth-correction approval and acceptance
+
+Independent read-only review of fifth planning-correction commit
+`c3047fc37248392b74255f36844120fc0f6fef82`, with sole parent
+`b59187343ce775013dfcdbaf899a819cc53409cf`, ended exactly **Approved — Stage 2
+sequence item 2 planning is complete**. It found no blocking or non-blocking
+planning findings.
+
+### Fifth-correction R4 findings - corrected and independently confirmed
+
+- `S2-CAP-TRUST-001-R4` is closed: one structural complete-parent
+  reconstruction model governs original, copied, reconstructed, replaced, and
+  caller-authored equal values without an origin or object-identity distinction.
+- `S2-CAP-PLAN-004-R4` is closed: raw duplicate applicability keys have exactly
+  one current contradictory-parent admission outcome with empty selectable
+  records and deterministic public `UNKNOWN`.
+- `S2-CAP-PLAN-005-R4-A` is closed: retain-all conflict reduction, complete
+  unordered-pair enumeration, canonical source ordering, and literal combined
+  applicability and name-rule tuples are input- and detector-order invariant.
+- `S2-TEST-PLAN-003-R4` is closed: real admission fixtures use only
+  `NUMERATOR` and `DENOMINATOR`; mathematically unreachable partial intersection
+  is isolated as a pure predicate oracle with a future enum-expansion guard.
+- `S2-DOC-STATUS-002-R4` is closed: all four planning/status documents
+  accurately recorded the five rejected reviews through fourth correction
+  `b591873` and the fifth-correction review gate.
+
+The review ran
+`python -m unittest discover -s tests -t . -v` with bytecode creation disabled:
+181 tests passed in 0.315 seconds with zero failures, errors, skips, or warnings.
+It confirmed the accepted sequence-item-1 contracts, earlier planning
+corrections, 12-item sequence, documentation scope, and repository integrity
+were preserved. No new non-blocking finding was recorded.
+
+The user explicitly accepted the reviewed sequence-item-2 capability and
+supported-name policy plan in the subsequent documentation-only acceptance
+step. Sequence-item-2 deterministic planning is accepted and complete; its
+source implementation remains absent. Sequence item 3 and later work remain
+separately unauthorized.
+
+This supplemental record does not alter, renumber, close, or replace any entry
+in the original 50-row production ledger. The ledger remains 50 rows with 50
+unique identifiers in its original order, and all nine original production
+RTSS findings remain `Open`. Planning acceptance establishes no production
+behavior, RTSS-version support, mutation, live validation, or compatibility
+claim.
 
 ## Active finding ledger
 
