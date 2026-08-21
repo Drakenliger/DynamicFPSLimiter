@@ -263,38 +263,63 @@ advanced-generation observation seam exists. The second corrected
 sequence-item-2 plan was rejected by a third planning review for
 `S2-CAP-PLAN-003-R2`, `S2-TEST-PLAN-002-R2`, and
 `S2-TEST-PLAN-001-R2`. The third corrected plan was rejected by a fourth
-planning review for `S2-CAP-PLAN-004-R3` and `S2-CAP-PLAN-005-R3`. This fourth
-corrected plan defines the matrix below after four rejected planning reviews.
-This correction commit must pass independent read-only review and a
-later acceptance documentation step must explicitly authorize implementation;
+planning review for `S2-CAP-PLAN-004-R3` and `S2-CAP-PLAN-005-R3`. The fourth
+corrected commit `b59187343ce775013dfcdbaf899a819cc53409cf` was rejected by a
+fifth planning review with exact verdict **Not approved — blocking planning
+findings require correction**, exactly five blockers
+(`S2-CAP-TRUST-001-R4`, `S2-CAP-PLAN-004-R4`,
+`S2-CAP-PLAN-005-R4-A`, `S2-TEST-PLAN-003-R4`, and
+`S2-DOC-STATUS-002-R4`), and no non-blocking findings. Thus the initial plan and
+four subsequent corrections through `b591873` have received five rejected
+planning reviews. This fifth corrected plan defines the matrix below. It is
+local, unpublished, unapproved, and pending a new independent read-only review.
+A later acceptance documentation step must explicitly authorize implementation;
 implementation remains unauthorized.
 
 Every corrected item-2 test below must use a public or realistically reachable
 policy path, a test-only factory/admission fixture, an independently specified
 expected status/reason tuple, and a positive control. Tests must not construct
 the decision under test as their oracle. Sequence item 2 implementation remains
-prohibited until this fourth corrected planning commit passes another
+prohibited until this fifth corrected planning commit passes another
 independent read-only review and a later acceptance documentation step
 explicitly authorizes implementation.
 
 ### Corrected sequence item 2 context and decision-algebra matrix
 
-- **Matching context:** current admitted observation plus a structurally equal
+- **Matching context:** a current admitted parent plus a structurally equal
   `RtssCapabilityEvaluationContext` copy returns the positive-control
-  `SUPPORTED`; object identity is never asserted.
+  `SUPPORTED`; object identity is never asserted. The context is intent only
+  and carries no evidence authority.
 - **Context mismatch:** independently test foreign observation identity,
   backend-generation mismatch, capability-generation mismatch, profile-kind
   mismatch, and source/policy-scope mismatch. Each uses otherwise fully
   supporting admitted evidence and expects exact `UNKNOWN` status and the
   designated leading reason.
-- **Replacement attacks:** nested `dataclasses.replace()` of context,
-  observation identity, primitive source, backend generation, or capability
-  generation cannot retain trust; unchanged nested structural copies remain
-  accepted.
-- **Caller-authored context:** a perfectly matching public context with absent,
-  raw, caller-created, directly constructed, or untrusted observation evidence
-  returns `UNKNOWN`, never `SUPPORTED`. The positive control differs only by
-  test-factory admission.
+- **One parent-factory reconstruction boundary:** the test admission factory
+  consumes an expected immutable parent header, a declared complete manifest,
+  provenance/source constraints, and untrusted value candidates. It validates
+  every field and reconstructs fresh canonical children and one complete
+  parent; it never retains or trusts a submitted child instance. Production
+  authenticity remains item 3/item 12 work.
+- **Copy and reconstruction:** original, shallow-copy, deep-copy, exact-value
+  reconstruction, unchanged `dataclasses.replace()`, fully populated exact
+  `object.__new__`, copied-provenance, and caller-authored equal-value child
+  candidates have one result when submitted through that same boundary. If all
+  values match, admission is `CONSISTENT` with `()` diagnostics and the exact
+  positive fixture returns `SUPPORTED / (SUPPORTED_REQUIREMENT,)`. Equality
+  alone does not bypass admission; no token, marker, registry, or undocumented
+  object-identity distinction exists.
+- **Changed replacements:** changing a bound child field creates a new
+  untrusted value candidate. Against the unchanged parent header and manifest,
+  each isolated change produces the literal mismatch diagnostic specified in
+  the applicability or name-rule authority table below. An unchanged nested
+  replacement is equivalent only after the same reconstruction boundary.
+- **Caller-authored context and evidence:** a perfectly matching public context
+  with absent evidence returns `UNKNOWN / (CAPABILITY_EVIDENCE_MISSING,)`.
+  Raw or standalone child evidence is not a parent and is rejected by the
+  evaluator type boundary. A caller-authored equal child submitted through the
+  parent factory is not distinguished by origin and receives the same result as
+  every other equal candidate.
 - **Primitive truth table:** exact tests cover current supported ->
   `SUPPORTED`; current unsupported -> `UNSUPPORTED`; current unknown ->
   `UNKNOWN`; stale supported -> `UNKNOWN`; stale unsupported -> `UNKNOWN` with
@@ -303,21 +328,25 @@ explicitly authorizes implementation.
   reasons; current primitive temporarily unavailable -> `UNKNOWN`; missing ->
   `UNKNOWN`; foreign/backend/capability mismatch -> `UNKNOWN`.
 - **Whole-observation availability:** absence is the only missing-observation
-  representation and expects `UNKNOWN / CAPABILITY_EVIDENCE_MISSING`.
+  representation and expects `UNKNOWN / (CAPABILITY_EVIDENCE_MISSING,)`.
   Current, stale, and invalid consistent snapshots are admitted; stale and
   invalid snapshots expect their exact `UNKNOWN` reasons. A current
   contradictory snapshot with no selectable records expects
-  `UNKNOWN / CONTRADICTORY_EVIDENCE`. No observation-unavailable fixture,
+  `UNKNOWN / (CONTRADICTORY_EVIDENCE,)`. No observation-unavailable fixture,
   branch, or expected result exists.
 - **Observation factory invariants:** reject contradictory plus stale/invalid,
   contradictory with selectable records, consistent snapshots with missing or
-  duplicate applicability keys, stale/invalid primitive unavailability, and
-  any attempted observation-availability field. Admit current primitive
-  unavailability only inside a current consistent complete snapshot.
+  incomplete applicability manifests, stale/invalid primitive unavailability,
+  and any attempted observation-availability field. A separate unreachable
+  private invariant rejects an attempt to force already-duplicate or overlapping
+  applicability material into an object labelled `CONSISTENT`. The public raw
+  admission factory never uses that guard as the outcome for raw duplicates; it
+  constructs the current contradictory parent described below. Admit current
+  primitive unavailability only inside a current consistent complete snapshot.
 - **One contradiction policy:** the test admission factory converts
   contradictory direct or derived sources into the typed contradictory
   observation with no selectable records. It evaluates exactly `UNKNOWN /
-  CONTRADICTORY_EVIDENCE`; tests do not also expect constructor rejection for
+  (CONTRADICTORY_EVIDENCE,)`; tests do not also expect constructor rejection for
   that semantic state. Duplicate identical primitive keys remain separate
   structural construction errors.
 - **Mixed dependencies:** current unsupported plus current unknown ->
@@ -574,24 +603,40 @@ co-applicable above receives an explicit literal one-element tuple test.
   restoration activation is `REQUIRED` with supported activation. Reverse
   each pair and vary integer/fractional contexts. No evaluator copies a
   forward record into restoration or vice versa.
-- **Applicability trust and public path:** the public
+- **Applicability authority and public path:** applicability children are
+  immutable value inputs and never independent support proof. The sole
+  authority boundary is reconstruction of the complete parent by the admission
+  factory. The public
   `evaluate_capability(requirement, context, admitted_observation)` signature
-  accepts only the complete admitted parent and has no standalone-child
-  overload. Child invariants and substitutions are checked by the test
-  admission factory. Any semantic child conflict produces one current
-  contradictory parent with exact ordered factory-only admission diagnostics
-  and no selectable records. Calling the evaluator with that parent expects
-  exactly `UNKNOWN` and `(CONTRADICTORY_EVIDENCE,)`; it never expects a child
-  mismatch reason. Raw/direct children, raw enums, Booleans, caller-authored
-  children, and modified replacements never reach the evaluator as trusted
-  children.
-- **Applicability structural controls:** a valid factory-created child in a
-  consistent complete parent is the direct evaluator positive control and
-  expects `(SUPPORTED_REQUIREMENT,)` when every other dependency supports. A
-  structurally equal immutable copy is accepted without object-identity
-  assertions. A copy with any bound field replaced is resubmitted to admission
-  and becomes a contradictory parent; prior admission does not retain
-  authority. A missing raw source is admitted only as the exact keyed `UNKNOWN`
+  accepts only `None` or the complete parent and has no standalone-child
+  overload. Passing a child in the parent position must raise `TypeError` and
+  produce no `RtssCapabilityDecision`; no child-admission diagnostic is exposed
+  as a public reason.
+- **Parent entry validation:** original and exact shallow/deep copies of an
+  admitted complete parent undergo the same total parent-invariant validation
+  before selection and return the same decision. A completely populated
+  field-for-field parent reconstruction, caller-authored equal parent, copied
+  equal provenance/source values, fully populated equal `object.__new__`, or
+  unchanged `dataclasses.replace(parent)` cannot be distinguished by origin and
+  has the same result after reconstruction. An incomplete parent created with
+  `object.__new__` raises `TypeError` before a decision. A top-level binding
+  changed without changing its nested children reconstructs a contradictory
+  parent; a fully consistently changed parent remains structurally valid and
+  fails the unchanged evaluator context with its literal public mismatch.
+- **Child reconstruction:** the factory treats a valid original child, shallow
+  copy, deep copy, exact reconstruction, unchanged replacement, copied exact
+  provenance/source tuple, fully populated exact constructor-bypass candidate,
+  and caller-authored equal-value child identically. It reconstructs a fresh
+  canonical child, admits a consistent complete parent with `()` diagnostics,
+  and the otherwise-supporting positive fixture returns exactly `SUPPORTED /
+  (SUPPORTED_REQUIREMENT,)`.
+- **Child failures:** an incomplete constructor-bypass candidate, raw enum,
+  Boolean, or wrong child type produces one current contradictory parent with
+  no selectable records and exact factory tuple
+  `(APPLICABILITY_EVIDENCE_UNTRUSTED,)`; the public result is exactly `UNKNOWN /
+  (CONTRADICTORY_EVIDENCE,)`. A changed bound value is diagnosed only from its
+  structural mismatch, never from whether the candidate originated in another
+  object. A missing raw source is reconstructed as the exact keyed `UNKNOWN`
   record with `APPLICABILITY_EVIDENCE_MISSING` provenance. Every declared
   save/activation slot has exact records; no record covers two mechanisms,
   compounds, phases, primitives, profile kinds, or field scopes.
@@ -607,35 +652,61 @@ co-applicable above receives an explicit literal one-element tuple test.
   | Profile creation integer forward | `(PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_UNKNOWN,)` | `(PROFILE_CREATION_INTEGER_SAVE_APPLICABILITY_EVIDENCE_MISSING,)` | `(PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_UNKNOWN,)` | `(PROFILE_CREATION_INTEGER_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING,)` |
   | Profile creation fractional forward | `(PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_UNKNOWN,)` | `(PROFILE_CREATION_FRACTIONAL_SAVE_APPLICABILITY_EVIDENCE_MISSING,)` | `(PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_UNKNOWN,)` | `(PROFILE_CREATION_FRACTIONAL_ACTIVATION_APPLICABILITY_EVIDENCE_MISSING,)` |
 
-- Applicability mismatch tests use baseline child
+- Applicability authority tests use baseline value candidate
   `A=(O1,B1,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
-  FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST,(NUMERATOR,DENOMINATOR))`.
-  `O2`, `B2`, `C2`, `M2`, `GLOBAL`, `EXACT_RESTORATION`,
-  `FRACTIONAL_EXACT_RESTORATION`, `ACTIVATE_RELOAD`, and `(NUMERATOR,)`
-  are distinct valid values in the corresponding dimensions. Each row changes
-  only the named input. "Contradictory" means construction succeeds as one
-  current admitted contradictory parent with no selectable records; the public
-  evaluator may be called and must return exactly `UNKNOWN` with
-  `(CONTRADICTORY_EVIDENCE,)`.
+  FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST,(NUMERATOR,DENOMINATOR),
+  REQUIRED,P1,(S1,))`, where the final three components are applicability,
+  provenance, and canonical source references. The fixed factory header and
+  manifest expect those literal values. `O2`, `B2`, `C2`, `M2`, `GLOBAL`,
+  `EXACT_RESTORATION`, `FRACTIONAL_EXACT_RESTORATION`, `ACTIVATE_RELOAD`,
+  `(NUMERATOR,)`, `P2`, and `(S2,)` are distinct valid values in their
+  corresponding dimensions. Unless a row says otherwise, contradictory means
+  one current admitted contradictory parent with no selectable records, and
+  every such row has the literal public result `UNKNOWN /
+  (CONTRADICTORY_EVIDENCE,)`.
 
-  | Case and exact substitution | Detecting boundary | Construction / ordered admission diagnostics | Public evaluator |
+  | Candidate and path through the one parent factory | Admission result | Exact ordered factory diagnostics | Exact public evaluator result |
   | --- | --- | --- | --- |
-  | Valid factory child `A` | admission factory | consistent parent / `()` | called; positive control `(SUPPORTED_REQUIREMENT,)` |
-  | Structurally equal immutable copy of `A` | admission factory | consistent parent / `()` | called; same positive control |
-  | Child from admitted parent `O2` substituted into `O1` manifest | admission factory | contradictory / `(FOREIGN_APPLICABILITY_EVIDENCE,)` | called; parent-level contradictory result |
-  | `parent_observation_identity=O2` by replacement | admission factory | contradictory / `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,)` | called; parent-level contradictory result |
-  | `backend_generation=B2` | admission factory | contradictory / `(APPLICABILITY_BACKEND_GENERATION_MISMATCH,)` | called; parent-level contradictory result |
-  | `capability_generation=C2` | admission factory | contradictory / `(APPLICABILITY_CAPABILITY_GENERATION_MISMATCH,)` | called; parent-level contradictory result |
-  | `mechanism=M2` | admission factory | contradictory / `(APPLICABILITY_MECHANISM_MISMATCH,)` | called; parent-level contradictory result |
-  | `profile_kind=GLOBAL` | admission factory | contradictory / `(APPLICABILITY_PROFILE_KIND_MISMATCH,)` | called; parent-level contradictory result |
-  | `terminal_compound_requirement=EXACT_RESTORATION` | admission factory | contradictory / `(APPLICABILITY_COMPOUND_MISMATCH,)` | called; parent-level contradictory result |
-  | `dependency_phase_context=FRACTIONAL_EXACT_RESTORATION` | admission factory | contradictory / `(APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH,)` | called; parent-level contradictory result |
-  | `canonical_exact_field_set=(NUMERATOR,)` | admission factory | contradictory / `(APPLICABILITY_FIELD_SET_MISMATCH,)` | called; parent-level contradictory result |
-  | `primitive_dependency=ACTIVATE_RELOAD` | admission factory | contradictory / `(APPLICABILITY_PRIMITIVE_MISMATCH,)` | called; parent-level contradictory result |
-  | `dataclasses.replace(A, mechanism=M2)` | admission factory | contradictory / `(APPLICABILITY_MECHANISM_MISMATCH,)` | called; parent-level contradictory result |
-  | raw `RtssDependencyApplicability.REQUIRED` in place of `A` | admission factory | contradictory / `(APPLICABILITY_EVIDENCE_UNTRUSTED,)` | called; parent-level contradictory result |
-  | Boolean `True` in place of `A` | admission factory | contradictory / `(APPLICABILITY_EVIDENCE_UNTRUSTED,)` | called; parent-level contradictory result |
-  | caller-authored child shaped like `A` | admission factory | contradictory / `(APPLICABILITY_EVIDENCE_UNTRUSTED,)` | called; parent-level contradictory result |
+  | Original complete parent `P` returned by the factory | current consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.copy(P)` | current consistent parent after entry validation | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.deepcopy(P)` | current consistent parent after entry validation | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Exact field-for-field, caller-authored equal, or fully populated equal `object.__new__` reconstruction of `P` | current consistent parent after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `P` with independently copied but equal provenance/source values | current consistent parent after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Incomplete `object.__new__` reconstruction of `P` | parent boundary raises `TypeError` | no diagnostic tuple; `TypeError` precedes reconstruction | no `RtssCapabilityDecision` and no reason tuple |
+  | Unchanged `dataclasses.replace(P)` | current consistent parent after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `dataclasses.replace(P, observation_identity=O2)` while nested children remain bound to `O1` | current contradictory parent after entry reconstruction | `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | Whole `P` consistently replaced to `O2`, including every nested parent binding | current consistent parent after entry reconstruction | `()` | `UNKNOWN / (FOREIGN_OBSERVATION,)` against the unchanged `O1` context |
+  | Original candidate `A` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.copy(A)` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.deepcopy(A)` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Exact field-for-field value reconstruction of `A` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Unchanged `dataclasses.replace(A)` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Caller-authored child with every value equal to `A` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `A` with independently shallow/deep-copied but equal `P1` and `(S1,)` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Fully populated exact `object.__new__` or equivalent reconstruction of `A` | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Incomplete `object.__new__` candidate, raw enum, Boolean, or wrong child type | contradictory parent | `(APPLICABILITY_EVIDENCE_UNTRUSTED,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | Canonical child from an `O2` parent, differing only as structurally shown by `parent_observation_identity=O2` | contradictory parent | `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | Same `O2` candidate with both `parent_observation_identity=O2` and source `(S2,)` | contradictory parent | `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH, APPLICABILITY_SOURCE_REFERENCE_MISMATCH)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, parent_observation_identity=O2)` | contradictory parent | `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, backend_generation=B2)` | contradictory parent | `(APPLICABILITY_BACKEND_GENERATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, capability_generation=C2)` | contradictory parent | `(APPLICABILITY_CAPABILITY_GENERATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, mechanism=M2)` | contradictory parent | `(APPLICABILITY_MECHANISM_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, profile_kind=GLOBAL)` | contradictory parent | `(APPLICABILITY_PROFILE_KIND_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, terminal_compound_requirement=EXACT_RESTORATION)` | contradictory parent | `(APPLICABILITY_COMPOUND_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, dependency_phase_context=FRACTIONAL_EXACT_RESTORATION)` | contradictory parent | `(APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, canonical_exact_field_set=(NUMERATOR,))` | contradictory parent | `(APPLICABILITY_FIELD_SET_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, primitive_dependency=ACTIVATE_RELOAD)` | contradictory parent | `(APPLICABILITY_PRIMITIVE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, applicability=NOT_REQUIRED)` as a distinct legal payload in the same slot | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` for the otherwise-complete fixture; the changed payload is evaluated, not treated as origin failure |
+  | `dataclasses.replace(A, provenance=P2)` | contradictory parent | `(APPLICABILITY_PROVENANCE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | `dataclasses.replace(A, source_references=(S2,))` | contradictory parent | `(APPLICABILITY_SOURCE_REFERENCE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+  | Standalone canonical child passed as `admitted_observation` | parent boundary raises `TypeError` | no diagnostic tuple; parent factory is not a child overload | no `RtssCapabilityDecision` and no reason tuple |
+  | Exact complete-parent positive control reconstructed from `A` and all other supporting records | consistent parent | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+
+  There is deliberately no copied-authority-material case: this model has no
+  authority field, marker, token, registry, or origin flag. A proposed such
+  field is a wrong input shape and follows the untrusted-input row. Equal copied
+  provenance is ordinary data; changed provenance or sources use only the two
+  literal structural mismatch rows above.
 
 ### Corrected sequence item 2 applicability duplicate/overlap matrix
 
@@ -645,11 +716,12 @@ terminal_compound, phase_context, primitive, canonical_exact_field_set)`.
 The baseline base key is
 `K=(O1,B1,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
 FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST)`. `N` is `NUMERATOR` and `D` is
-`DENOMINATOR`. To exercise the general partial-intersection predicate, `X` is a
-third exact member in an isolated closed-field-set oracle fixture; it is not
-accepted as a production `RtssStoredFieldKind` and creates no production
-capability. The same canonical set-comparison routine is exercised before the
-concrete field taxonomy is selected. `GLOBAL`, `EXACT_RESTORATION`,
+`DENOMINATOR`. The admitted production universe is exactly `(N,D)`, so its only
+non-empty field sets are `{N}`, `{D}`, and `{N,D}`. A non-empty unequal partial
+intersection is mathematically unreachable at the real boundary. The separately
+named pure relation-classifier oracle uses abstract `frozenset({0,1})` and
+`frozenset({1,2})`; those integers are predicate tokens only and are never raw
+children, `RtssStoredFieldKind` values, or admitted evidence. `GLOBAL`, `EXACT_RESTORATION`,
 `FRACTIONAL_EXACT_RESTORATION`, and `ACTIVATE_RELOAD` differ from `K` only in
 the dimension named by the row.
 
@@ -663,24 +735,171 @@ returns `SUPPORTED / (SUPPORTED_REQUIREMENT,)`.
 
 | Case | Exact candidate keys or raw scope | Construction | Exact ordered admission diagnostics | Evaluator |
 | --- | --- | --- | --- | --- |
-| 1 exact duplicate | `K+(N,D)` and `K+(N,D)` | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | contradictory-parent result |
-| 2 equal field set in different order | `K+(N,D)` and raw `K+(D,N)` | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | contradictory-parent result |
-| 3 strict subset | `K+(N)` and `K+(N,D)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | contradictory-parent result |
-| 4 strict superset | `K+(N,D)` and `K+(D)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | contradictory-parent result |
-| 5 partial non-empty intersection | predicate-oracle keys `K+(N,D)` and `K+(D,X)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | contradictory-parent result |
-| 6 disjoint field sets | `K+(N)` and `K+(D)` | consistent | `()` | either exact-key positive control |
-| 7 same fields, different mechanism | `K+(N,D)` and `K[mechanism=M2]+(N,D)` | consistent | `()` | either exact-key positive control |
-| 8 same fields, different profile kind | `K+(N,D)` and `K[profile_kind=GLOBAL]+(N,D)` | consistent | `()` | either exact-key positive control |
-| 9 same fields, different compound | `K+(N,D)` and valid restoration key `K[compound=EXACT_RESTORATION,phase=FRACTIONAL_EXACT_RESTORATION]+(N,D)` | consistent | `()` | either exact-key positive control |
-| 10 same fields, different phase | `K+(N,D)` and `K[phase=FRACTIONAL_EXACT_RESTORATION]+(N,D)` | consistent | `()` | either exact-key positive control |
-| 11 same fields, different primitive | `K+(N,D)` and `K[primitive=ACTIVATE_RELOAD]+(N,D)` | consistent | `()` | either exact-key positive control |
-| 12 illegal missing primitive | `K[primitive=None]+(N,D)` | contradictory | `(APPLICABILITY_PRIMITIVE_MISSING,)` | contradictory-parent result |
-| 13 illegal missing compound | `K[compound=None]+(N,D)` | contradictory | `(APPLICABILITY_COMPOUND_MISSING,)` | contradictory-parent result |
-| 14 wildcard primitive | `K[primitive=ALL_PRIMITIVES]+(N,D)` | contradictory | `(APPLICABILITY_PRIMITIVE_SCOPE_NOT_EXACT,)` | contradictory-parent result |
-| 15 wildcard field scope | `K+(ALL_FIELDS)` | contradictory | `(APPLICABILITY_FIELD_SCOPE_NOT_EXACT,)` | contradictory-parent result |
-| 16 reverse input order | case 3 supplied as `K+(N,D)`, then `K+(N)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | identical contradiction sources and parent result |
-| 17 valid coexistence | `K+(N)` and `K+(D)` supplied in both orders | consistent | `()` | identical positive controls |
-| 18 evaluator boundary control | case 1 contradictory parent passed directly; no child argument | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | exactly `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+| Raw exact duplicate | `K+(N,D)@SA`, then `K+(N,D)@SB` | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | contradictory-parent result |
+| Reversed raw duplicate input | the same occurrences in order `@SB`, then `@SA` | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | identical canonical source tuple and contradictory-parent result |
+| Equal field set in different raw member order | `K+(N,D)@SA` and raw `K+(D,N)@SB` | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | contradictory-parent result |
+| Strict subset | `K+(N)` and `K+(N,D)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | contradictory-parent result |
+| Strict superset | `K+(N,D)` and `K+(D)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | contradictory-parent result |
+| Isolated pure partial-intersection oracle | abstract `frozenset({0,1})` and `frozenset({1,2})` | no parent construction; pure classifier only | no factory diagnostic tuple | exactly `PARTIAL_INTERSECTION` in either argument order; no evaluator call |
+| Disjoint field sets | `K+(N)` and `K+(D)` | consistent | `()` | either exact-key positive control |
+| Same fields, different mechanism | `K+(N,D)` and `K[mechanism=M2]+(N,D)` | consistent | `()` | either exact-key positive control |
+| Same fields, different profile kind | `K+(N,D)` and `K[profile_kind=GLOBAL]+(N,D)` | consistent | `()` | either exact-key positive control |
+| Same fields, different compound | `K+(N,D)` and valid restoration key `K[compound=EXACT_RESTORATION,phase=FRACTIONAL_EXACT_RESTORATION]+(N,D)` | consistent | `()` | either exact-key positive control |
+| Same fields, different phase | `K+(N,D)` and `K[phase=FRACTIONAL_EXACT_RESTORATION]+(N,D)` | consistent | `()` | either exact-key positive control |
+| Same fields, different primitive | `K+(N,D)` and `K[primitive=ACTIVATE_RELOAD]+(N,D)` | consistent | `()` | either exact-key positive control |
+| Illegal missing primitive | `K[primitive=None]+(N,D)` | contradictory | `(APPLICABILITY_PRIMITIVE_MISSING,)` | contradictory-parent result |
+| Illegal missing compound | `K[compound=None]+(N,D)` | contradictory | `(APPLICABILITY_COMPOUND_MISSING,)` | contradictory-parent result |
+| Wildcard primitive | `K[primitive=ALL_PRIMITIVES]+(N,D)` | contradictory | `(APPLICABILITY_PRIMITIVE_SCOPE_NOT_EXACT,)` | contradictory-parent result |
+| Wildcard field scope | `K+(ALL_FIELDS)` | contradictory | `(APPLICABILITY_FIELD_SCOPE_NOT_EXACT,)` | contradictory-parent result |
+| Reversed subset input order | `K+(N,D)`, then `K+(N)` | contradictory | `(APPLICABILITY_FIELD_SET_OVERLAP,)` | identical contradiction sources and parent result |
+| Valid coexistence | `K+(N)` and `K+(D)` supplied in both orders | consistent | `()` | identical positive controls |
+| Evaluator boundary control | raw-duplicate contradictory parent passed directly; no child argument | contradictory | `(APPLICABILITY_EXACT_DUPLICATE,)` | exactly `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` |
+
+The duplicate oracle uses independently authored immutable fixture values
+`P0=("fixture-provenance","r4")`, `SA=("fixture-source","A")`, and
+`SB=("fixture-source","B")`. Let `DUP_A` and `DUP_B` be the complete canonical
+occurrence identities for `K+(N,D)@SA` and `K+(N,D)@SB`, respectively, authored
+directly in the fixture rather than returned by the production normalizer. In
+both raw orders, the complete expected contradiction-source tuple is literally
+
+```text
+((APPLICABILITY_EXACT_DUPLICATE, DUP_A, DUP_B, EQUAL),)
+```
+
+and the complete unique factory-diagnostic tuple is literally
+`(APPLICABILITY_EXACT_DUPLICATE,)`. The resulting parent is current and
+contradictory, has `primitive_records=()` and `applicability_records=()`, and
+evaluates exactly `UNKNOWN / (CONTRADICTORY_EVIDENCE,)`; no competing rejection
+assertion exists.
+
+The mandatory combined-conflict fixture independently fixes every raw and
+canonical value. Its expected parent header is
+
+```text
+K1=(O1,B1,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
+    FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST)
+```
+
+and its mismatched but value-shaped base is
+
+```text
+K2=(O2,B2,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
+    FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST)
+```
+
+`O1 != O2`, `B1 != B2`, and every other same-named value is exactly equal. The
+declared test manifest contains the exact slots `K1+(N)` and `K1+(N,D)`. Thus
+`C` and the two duplicate candidates each match a declared field slot before
+binding checks; the intentionally overlapping slots cannot form a consistent
+parent and are reduced semantically. An empty field tuple is structurally
+non-comparable and `FIELD_SET_EMPTY` is mutually exclusive with a manifest
+field-set mismatch. A missing primitive is likewise mutually exclusive with a
+primitive mismatch.
+
+The fixture-local raw scalar representation is a closed literal pair
+`(tag,payload)` with ranks `CANONICAL=0`, `MISSING=1`,
+`NON_EXACT_SCOPE=2`, and `UNTRUSTED=3`; a sentinel has payload `()`. These ranks
+are fixture data, not calls to the production normalizer. In addition to `P0`,
+define `SC=("fixture-source","C")` and `SD=("fixture-source","D")`, with
+canonical order `SA < SB < SC < SD`. The four raw audit tuples are written
+literally as:
+
+```text
+RAW_A=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(N,D)),(0,REQUIRED),(0,P0),(0,(SA,)))
+RAW_B=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(D,N)),(0,REQUIRED),(0,P0),(0,(SB,)))
+RAW_C=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(N,)),(0,REQUIRED),(0,P0),(0,(SC,)))
+RAW_BAD=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+         (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+         (1,()),(0,()),(0,REQUIRED),(0,P0),(0,(SD,)))
+```
+
+Accordingly `A=K2+(N,D)@SA`, raw `B=K2+(D,N)@SB`, `C=K2+(N)@SC`, and
+`BAD=K2[primitive=MISSING]+()@SD`. Their complete expected canonical occurrence
+identities are independently authored as:
+
+```text
+RN=(0,K2+(N),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+     APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+    P0,(SC,),RAW_C,0)
+RNDA=(0,K2+(N,D),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+      P0,(SA,),RAW_A,0)
+RNDB=(0,K2+(N,D),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+      P0,(SB,),RAW_B,0)
+RBAD=(1,(),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH,
+       APPLICABILITY_FIELD_SET_EMPTY,
+       APPLICABILITY_PRIMITIVE_MISSING),
+      P0,(SD,),RAW_BAD,0)
+```
+
+The complete expected contradiction-source tuple is exactly and literally:
+
+```text
+(
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RN),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RNDA),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RNDB),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RBAD),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RN),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RNDA),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RNDB),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RBAD),
+    (APPLICABILITY_EXACT_DUPLICATE, RNDA, RNDB, EQUAL),
+    (APPLICABILITY_FIELD_SET_OVERLAP, RN, RNDA, STRICT_SUBSET),
+    (APPLICABILITY_FIELD_SET_OVERLAP, RN, RNDB, STRICT_SUBSET),
+    (APPLICABILITY_FIELD_SET_EMPTY, RBAD),
+    (APPLICABILITY_PRIMITIVE_MISSING, RBAD),
+)
+```
+
+The complete expected unique factory-diagnostic tuple is exactly and literally:
+
+```text
+(
+    APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+    APPLICABILITY_BACKEND_GENERATION_MISMATCH,
+    APPLICABILITY_EXACT_DUPLICATE,
+    APPLICABILITY_FIELD_SET_OVERLAP,
+    APPLICABILITY_FIELD_SET_EMPTY,
+    APPLICABILITY_PRIMITIVE_MISSING,
+)
+```
+
+For every one of the 24 raw permutations of `(A,B,C,BAD)` and the independently
+simulated detector schedules binding-then-pair, pair-then-binding,
+reverse-detector, and interleaved, assert that exact source tuple and diagnostic
+tuple. Also assert the exact parent fields
+`header=K1`, `declared_manifest=(K1+(N),K1+(N,D))`, `provenance=P0`,
+`validity=CURRENT`, `diagnostic_state=CONTRADICTORY`, the literal source and
+diagnostic tuples above, `primitive_records=()`, and
+`applicability_records=()`, followed by public result exactly
+`UNKNOWN / (CONTRADICTORY_EVIDENCE,)`. The expected identities and tuples are
+test constants; the test must not call the production normalizer, occurrence
+sorter, conflict reducer, or diagnostic projector to build them.
+
+The real-boundary relation cases above assert equal, strict subset, strict
+superset, and disjoint using only `N` and `D`. The pure abstract-set oracle is
+the only current partial-intersection test. An enum-expansion guard asserts that
+the admitted `RtssStoredFieldKind` universe is exactly `(N,D)` and that real
+partial intersection is unreachable. If the enum ever has at least three unique
+legal members, the guard fails with literal message
+`add an explicit legal real-boundary partial-intersection fixture` until a named
+new-member raw fixture passes through the actual parent factory and expects
+`(APPLICABILITY_FIELD_SET_OVERLAP,)`, the current contradictory parent with
+empty selectable records, and exactly
+`UNKNOWN / (CONTRADICTORY_EVIDENCE,)`. No production field is synthesized.
 
 Additional exact-scope cases assert `K+()` produces
 `(APPLICABILITY_FIELD_SET_EMPTY,)`; raw `K+(N,N)` produces
@@ -836,46 +1055,171 @@ diagnostics are asserted in canonical order under all input permutations.
 
 ### Corrected sequence item 2 admitted name-rule trust matrix
 
-- Direct construction and raw caller-authored `RtssRawNameRuleReport` objects
-  cannot produce support. The positive control uses only the deterministic
-  test admission factory and differs only by admission.
-- Assert exact matching for rule-set identity, parent capability-observation
-  identity, backend generation, capability generation, profile kind, namespace
-  scope, mechanism, primitive/terminal operation, and
-  existing-lookup/existing-mutation/creation context. Vary each dimension
-  independently while all others support; expect the exact `UNKNOWN` mismatch
-  reason.
+- Name-rule children use the same parent-factory reconstruction model as
+  applicability children. `RtssRawNameRuleReport` values, canonical child
+  values extracted from an earlier set, copies, replacements, reconstructions,
+  and caller-authored values are all untrusted factory inputs. The factory
+  validates the fixed rule-set header and complete manifest, reconstructs fresh
+  canonical children, and is the only route to a complete
+  `RtssAdmittedNameRuleSet` supplied to `evaluate_supported_name`.
+- The evaluator accepts only the complete rule-set parent. Passing a raw or
+  canonical child as `admitted_name_rule_set` raises `TypeError`, produces no
+  name decision, and does not emit a factory diagnostic as a public reason.
+  Direct child construction therefore cannot directly produce support, while a
+  caller-authored equal child submitted through the parent factory is
+  intentionally equivalent to every other equal value candidate.
 - Missing rules expect `UNKNOWN / NAME_RULE_EVIDENCE_MISSING`. Invalid then
   stale rules expect their exact validity reasons. Equal complete canonical
   keys or a prohibited non-exact scope produce one current contradictory
   admitted rule set with no selectable rules and expect
-  `UNKNOWN / CONTRADICTORY_NAME_RULES`.
+  `UNKNOWN / (CONTRADICTORY_NAME_RULES,)`.
 - Name-rule applicability uses the literal key
   `(rule_set_identity,parent_observation_identity,backend_generation,
   capability_generation,profile_kind,namespace_scope,mechanism,
   tagged_subject_kind,exact_subject,name_context)`. Baseline
   `R=(R1,O1,B1,C1,APPLICATION,NAMESPACE1,M1,PRIMITIVE,
-  SAVE_PERSIST,EXISTING_MUTATION)` is exact. Two `R` reports, including
-  content-equal copies, produce the current contradictory rule set with ordered
-  factory diagnostic `(NAME_RULE_EXACT_DUPLICATE,)` and public result exactly
-  `UNKNOWN / (CONTRADICTORY_NAME_RULES,)`. `R` plus a key differing in any one
-  exact dimension succeeds as a consistent set with `()` diagnostics. A
+  SAVE_PERSIST,EXISTING_MUTATION,RULE_CONTENT1,P1,(S1,))` is exact, where the
+  final three components are rule content, provenance, and canonical source
+  references. Two `R` reports in one factory input, including content-equal
+  copies, produce the current contradictory rule set with ordered factory
+  diagnostic `(NAME_RULE_EXACT_DUPLICATE,)` and public result exactly `UNKNOWN /
+  (CONTRADICTORY_NAME_RULES,)`. In a separate manifest that declares both keys,
+  `R` plus a key differing in any one exact dimension succeeds as a consistent
+  set with `()` diagnostics. A
   wildcard/prefix/range/all-subject/all-context applicability scope or an
   untagged primitive/compound subject produces the contradictory rule set with
   `(NAME_RULE_SCOPE_NOT_EXACT,)`; rule-content character ranges remain governed
   by the existing aggregate exact-key rule and are not applicability wildcards.
+  `RULE_CONTENT2` is a distinct valid legal payload that still supports the
+  exact positive-control name; changing to it proves that legal payload changes
+  are evaluated on their new semantics rather than diagnosed by origin.
   Reversing either duplicate/conflict input or two legal distinct-key inputs
   preserves the same canonically ordered conflict tuple, diagnostics, and
   evaluator result. No first-wins, last-wins, or silent deduplication is tested
   or permitted.
-- Reject factory inputs with missing applicability coverage, selectable rules
-  in a contradictory set, contradictory stale/invalid state, mutable nested
-  collections, foreign source references, or inconsistent parent generations.
-- Attempt direct `dataclasses.replace()` and nested replacement of identity,
-  parent, generations, scope, applicability, content, provenance, validity,
-  and contradiction state. Each changed copy must rerun validation or lose
-  matching trust; an unchanged structurally equal factory copy is accepted
-  without object-identity assertions.
+- A separate name-rule reducer-order fixture uses expected header
+  `H1=(R1,O1,B1,C1,APPLICATION,NAMESPACE1,M1,PRIMITIVE,SAVE_PERSIST,
+  EXISTING_MUTATION)` and mismatched key
+  `H2=(R1,O2,B1,C1,APPLICATION,NAMESPACE1,M1,PRIMITIVE,SAVE_PERSIST,
+  EXISTING_MUTATION)`. Define literal sources
+  `SRA=("fixture-name-source","A")`,
+  `SRB=("fixture-name-source","B")`, and
+  `SRC=("fixture-name-source","C")`, ordered `SRA < SRB < SRC`. `RA` and `RB`
+  have equal complete key `H2`, legal `RULE_CONTENT1`, `P0`, and sources `SRA`
+  and `SRB`; `RC` has the same value fields except its tagged subject scope is
+  the literal `NON_EXACT_SCOPE` tag and source `SRC`, so it is non-comparable.
+  Using the same independently authored raw tag ranks as the applicability
+  fixture, define these exact occurrence identities, without a production
+  normalizer:
+
+  ```text
+  NRA=(0,H2,(NAME_RULE_PARENT_OBSERVATION_MISMATCH,),
+       P0,(SRA,),RAW_NRA,0)
+  NRB=(0,H2,(NAME_RULE_PARENT_OBSERVATION_MISMATCH,),
+       P0,(SRB,),RAW_NRB,0)
+  NRC=(1,(),
+       (NAME_RULE_PARENT_OBSERVATION_MISMATCH,NAME_RULE_SCOPE_NOT_EXACT),
+       P0,(SRC,),RAW_NRC,0)
+  ```
+
+  The raw tuples are also literal and list, in order, rule-set identity, parent
+  identity, backend generation, capability generation, profile kind, namespace
+  scope, mechanism, tagged subject kind, exact subject, name context, rule
+  content, provenance, and source references:
+
+  ```text
+  RAW_NRA=((0,R1),(0,O2),(0,B1),(0,C1),(0,APPLICATION),(0,NAMESPACE1),
+           (0,M1),(0,PRIMITIVE),(0,SAVE_PERSIST),(0,EXISTING_MUTATION),
+           (0,RULE_CONTENT1),(0,P0),(0,(SRA,)))
+  RAW_NRB=((0,R1),(0,O2),(0,B1),(0,C1),(0,APPLICATION),(0,NAMESPACE1),
+           (0,M1),(0,PRIMITIVE),(0,SAVE_PERSIST),(0,EXISTING_MUTATION),
+           (0,RULE_CONTENT1),(0,P0),(0,(SRB,)))
+  RAW_NRC=((0,R1),(0,O2),(0,B1),(0,C1),(0,APPLICATION),(0,NAMESPACE1),
+           (0,M1),(2,()),(0,SAVE_PERSIST),(0,EXISTING_MUTATION),
+           (0,RULE_CONTENT1),(0,P0),(0,(SRC,)))
+  ```
+
+  The independently written complete expected source and diagnostic tuples are
+  exactly:
+
+  ```text
+  (
+      (NAME_RULE_PARENT_OBSERVATION_MISMATCH, NRA),
+      (NAME_RULE_PARENT_OBSERVATION_MISMATCH, NRB),
+      (NAME_RULE_PARENT_OBSERVATION_MISMATCH, NRC),
+      (NAME_RULE_EXACT_DUPLICATE, NRA, NRB),
+      (NAME_RULE_SCOPE_NOT_EXACT, NRC),
+  )
+
+  (
+      NAME_RULE_PARENT_OBSERVATION_MISMATCH,
+      NAME_RULE_EXACT_DUPLICATE,
+      NAME_RULE_SCOPE_NOT_EXACT,
+  )
+  ```
+
+  Assert both tuples for all six permutations of `(RA,RB,RC)` and
+  binding-first, duplicate-first, scope-first, reverse, and interleaved detector
+  schedules. Every case asserts the exact parent fields `header=H1`,
+  `declared_manifest=(H1,)`, `provenance=P0`,
+  `source_references=(SRA,SRB,SRC)`, `validity=CURRENT`,
+  `diagnostic_state=CONTRADICTORY`, the literal stored source and diagnostic
+  tuples above, and `rules=()`. That current contradictory rule-set parent
+  evaluates exactly
+  `UNKNOWN / (CONTRADICTORY_NAME_RULES,)`. The oracle never calls the production
+  occurrence normalizer, sorter, reducer, or diagnostic projector.
+- The literal authority and copy oracle, with every other capability/name input
+  supporting, is:
+
+  | Candidate and path through the one name-rule parent factory | Admission result | Exact ordered factory diagnostics | Exact public evaluator result |
+  | --- | --- | --- | --- |
+  | Original complete rule-set parent `Q` returned by the factory | current consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.copy(Q)` | current consistent rule set after entry validation | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.deepcopy(Q)` | current consistent rule set after entry validation | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Exact field-for-field, caller-authored equal, or fully populated equal `object.__new__` reconstruction of `Q` | current consistent rule set after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `Q` with independently copied but equal provenance/source values | current consistent rule set after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Incomplete `object.__new__` reconstruction of `Q` | parent boundary raises `TypeError` | no diagnostic tuple; `TypeError` precedes reconstruction | no name decision and no reason tuple |
+  | Unchanged `dataclasses.replace(Q)` | current consistent rule set after entry reconstruction | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `dataclasses.replace(Q, rule_set_identity=R2)` while nested rules remain bound to `R1` | current contradictory rule set after entry reconstruction | `(NAME_RULE_SET_IDENTITY_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | Whole `Q` consistently replaced to `R2`, including every nested rule binding | current consistent rule set after entry reconstruction | `()` | `UNKNOWN / (FOREIGN_NAME_RULE_SET,)` against the unchanged `R1` request |
+  | Original candidate `R` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.copy(R)` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `copy.deepcopy(R)` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Exact field-for-field reconstruction of `R` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Unchanged `dataclasses.replace(R)` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Caller-authored child with every value equal to `R` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | `R` with independently copied but equal `P1` and `(S1,)` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Fully populated exact `object.__new__` or equivalent reconstruction of `R` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+  | Incomplete constructor-bypass candidate or wrong child type | contradictory rule set | `(NAME_RULE_EVIDENCE_UNTRUSTED,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, rule_set_identity=R2)` against the fixed `R1` header | contradictory rule set | `(NAME_RULE_SET_IDENTITY_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, parent_observation_identity=O2)` | contradictory rule set | `(NAME_RULE_PARENT_OBSERVATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, backend_generation=B2)` | contradictory rule set | `(NAME_RULE_BACKEND_GENERATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, capability_generation=C2)` | contradictory rule set | `(NAME_RULE_CAPABILITY_GENERATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, profile_kind=GLOBAL)` | contradictory rule set | `(NAME_RULE_PROFILE_KIND_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, namespace_scope=NAMESPACE2)` | contradictory rule set | `(NAME_RULE_NAMESPACE_SCOPE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, mechanism=M2)` | contradictory rule set | `(NAME_RULE_MECHANISM_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, tagged_subject_kind=TERMINAL_COMPOUND)` | contradictory rule set | `(NAME_RULE_SUBJECT_KIND_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, exact_subject=ACTIVATE_RELOAD)` | contradictory rule set | `(NAME_RULE_OPERATION_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, name_context=CREATE_PROFILE)` | contradictory rule set | `(NAME_RULE_CONTEXT_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, rule_content=RULE_CONTENT2)` | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` because this distinct legal payload supports the exact target |
+  | `dataclasses.replace(R, provenance=P2)` | contradictory rule set | `(NAME_RULE_PROVENANCE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | `dataclasses.replace(R, source_references=(S2,))` | contradictory rule set | `(NAME_RULE_SOURCE_REFERENCE_MISMATCH,)` | `UNKNOWN / (CONTRADICTORY_NAME_RULES,)` |
+  | Standalone raw or canonical `R` child passed as `admitted_name_rule_set` | parent boundary raises `TypeError` | no diagnostic tuple; parent factory is not a child overload | no name decision and no reason tuple |
+  | Exact complete-rule-set positive control reconstructed from `R` and its manifest | consistent rule set | `()` | `SUPPORTED / (SUPPORTED_REQUIREMENT,)` |
+
+- Original, shallow-copy, deep-copy, and exact complete-parent reconstruction
+  of the admitted rule set have the same result after total parent validation,
+  as does unchanged `dataclasses.replace(rule_set)`. An incomplete complete-
+  parent `object.__new__` bypass raises `TypeError` before evaluation. A changed
+  whole parent follows the two explicit structural-inconsistency versus
+  fully-consistent-foreign rows above; unchanged replacement coverage also
+  applies to child value `R` through the real parent boundary.
+- There is no copyable name-rule authority material. Exact copied provenance is
+  ordinary equal data; invented authority fields are wrong input shape. Reject
+  missing applicability coverage, selectable rules in a contradictory set,
+  contradictory stale/invalid state, mutable nested collections, foreign source
+  references, or inconsistent parent generations through their literal
+  structural rules rather than object origin.
 - Existing lookup rules cannot prove mutation or creation, application rules
   cannot prove Global, and one mechanism/operation cannot prove another.
   A current consistent complete exact-scope rule set is the independent
@@ -926,18 +1270,35 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   records, duplicate source identities, mutable collections, empty diagnostic
   codes, and inconsistent profile kinds.
 - Prove raw reports, `RtssCapabilityInfo`, caller-created
-  `RtssCapabilityEvidence`, version labels, and Boolean flags cannot directly
-  create a supported admitted observation, authoritative dependency-
-  applicability record, or `SUPPORTED` decision.
-- Prove admitted observations are factory-controlled: direct construction,
-  `object.__new__` followed by ordinary initialization, public factory search,
-  `dataclasses.replace()`, nested replacement, and copied future-generation
-  attempts cannot acquire trust.
-- Accept structurally equal immutable admitted-observation copies as the same
-  logical evidence where the factory contract permits copying; reject any
-  changed observation identity, content, validity, provenance, source,
-  backend generation, capability generation, mechanism applicability, or
-  nested applicability source.
+  `RtssCapabilityEvidence`, version labels, Boolean flags, and standalone child
+  values cannot directly create a supported complete parent or `SUPPORTED`
+  decision. This is a parent-boundary rule, not a claim that two exactly equal
+  value candidates have different authority.
+- Run the literal applicability and name-rule authority tables above through
+  their real parent factories. Original, shallow copy, deep copy, exact value
+  reconstruction, unchanged child `dataclasses.replace()`, caller-authored
+  equal value, exact copied provenance/source material, and fully populated
+  exact `object.__new__` candidates must each independently produce the stated
+  consistent-parent `()` diagnostics and exact positive result. Do not derive
+  one expected tuple from another candidate or from a production helper.
+- Run every changed bound-field replacement separately with the unchanged
+  parent header and manifest. Assert its literal one-element mismatch tuple,
+  contradictory parent with no selectable records, and exact parent-level
+  `UNKNOWN` result. The two explicitly combined applicability parent/source
+  mismatches assert their literal two-element tuple in declaration order.
+- Assert incomplete `object.__new__` child candidates use the literal untrusted
+  factory diagnostic and contradictory-parent result. Unchanged complete-parent
+  `dataclasses.replace()` candidates must traverse entry reconstruction and
+  produce the exact positive result; header-only changed and fully consistently
+  changed parents produce their two literal rows above. Incomplete complete-
+  parent bypasses and standalone applicability or name-rule children passed in
+  the complete-parent position raise `TypeError` and produce no decision or
+  public reason tuple.
+- Assert no authority/provenance token, marker, registry, copied-origin flag, or
+  object-identity test exists. Exact copied provenance is ordinary immutable
+  data; changed provenance and source references use their named structural
+  mismatch diagnostics. A prior factory origin never changes the expected
+  result of a completely equal candidate submitted through the same boundary.
 - Bind every derived capability record to complete immutable source records.
   Missing, foreign, or generation-mismatched sources evaluate unknown; cyclic
   or contradictory sources create the sole typed contradictory observation.
@@ -973,7 +1334,8 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
 - Supported write/readback with `REQUIRED` save or activation but without the
   matching primitive rejects mutation with the exact deterministic primitive
   reason. `NOT_REQUIRED` is the only state that omits that primitive;
-  `UNKNOWN`, missing, foreign, or mismatched applicability returns `UNKNOWN`.
+  `UNKNOWN`, missing, or binding/provenance/source-mismatched applicability
+  returns `UNKNOWN`.
   Missing exact restoration rejects mutation independently.
 - For save and activation separately, cover required/supported,
   required/unsupported, required/missing, proved not required,
@@ -1074,9 +1436,17 @@ game, profile file, Dear PyGui, PDH, LHM, or live adapter.
   file.
 - Tests assert no mutation or external operation appears in the deterministic
   operation log.
-- Documentation/integrity checks prove only the approved planning/implementation
+- Documentation/integrity checks prove only the four task-authorized planning
   files changed, no absolute local path was added, no compatibility claim was
-  added, and no generated/cache/bytecode artifact remains.
+  added, and no generated/cache/bytecode artifact remains. A literal
+  cross-document status guard requires `CURRENT_STATUS.md`, `DECISIONS.md`,
+  `IMPLEMENTATION_PLAN.md`, and `TEST_PLAN.md` each to state that the initial
+  sequence-item-2 plan plus four corrections through rejected fourth correction
+  `b591873` received five rejected reviews; the fifth correction is local,
+  unpublished, unapproved, and pending a new independent read-only review;
+  sequence-item-2 implementation and sequence item 3 remain unauthorized; and
+  the next action is that review only, not acceptance, implementation,
+  publication, pull-request creation, or enhancement-backlog work.
 - The complete suite runs with `PYTHONDONTWRITEBYTECODE=1`; item-2
   implementation acceptance requires all existing and new tests to pass.
 

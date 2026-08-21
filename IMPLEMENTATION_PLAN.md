@@ -72,9 +72,21 @@ two remaining applicability-contract blockers: child mismatch diagnostics had
 no legal public evaluator path (`S2-CAP-PLAN-004-R3`), and applicability plus
 equivalent name-rule overlap had no literal predicate
 (`S2-CAP-PLAN-005-R3`). This fourth documentation-only correction closes only
-those ambiguities. It still requires another independent read-only review and
-a later explicit acceptance documentation step. Implementation remains
+those ambiguities. Independent review of fourth corrected commit
+`b59187343ce775013dfcdbaf899a819cc53409cf` ended exactly **Not approved —
+blocking planning findings require correction**. It found exactly five blockers
+and no non-blocking findings: `S2-CAP-TRUST-001-R4`,
+`S2-CAP-PLAN-004-R4`, `S2-CAP-PLAN-005-R4-A`,
+`S2-TEST-PLAN-003-R4`, and `S2-DOC-STATUS-002-R4`. Thus the initial plan and
+four corrections through `b591873` have received five rejected reviews. This
+fifth documentation-only correction addresses only those blockers. It is local,
+unpublished, unapproved, and pending a new independent read-only review plus a
+later explicit acceptance documentation step. Implementation remains
 unauthorized.
+The exact next safe action is a new independent read-only review of this fifth
+correction only, not acceptance, implementation, publication, pull-request
+creation, or enhancement-backlog work. Sequence item 3 and every later item
+remain unauthorized.
 The coordinator, mutation, and production integration are not implemented or
 authorized. The branch has not been pushed and no Stage 2 pull request exists.
 
@@ -336,37 +348,65 @@ non-overlapping name:
 | `RtssInternalDependencyBundle` | Closed non-public dependency expansion used by terminal requirements. `COORDINATED_FRACTIONAL_WRITE` expands to the admitted ordered numerator-write and denominator-write primitives. It is reversible sequencing, not atomicity, and has no evaluator entry point or terminal decision. |
 | `RtssRequiredPostcondition` | Closed required future observations: exact value observed; save confirmed; activation confirmed; profile exists; profile absent; and restored state equals captured state. Item 2 checks whether primitives needed to establish them are supported; runtime truth is recorded only by later sequences. |
 | `RtssMechanismCapability` | One mechanism/primitive/profile-kind record containing support state, validity, exact stored-field applicability using existing `RtssStoredFieldKind`, origin, source references, and any domain-specific exact range. Duplicate keys are forbidden. Contradictory direct or derived sources produce the one typed contradictory observation described below. |
-| `RtssMechanismDependencyApplicability` | Factory-controlled immutable child record keyed by parent observation identity, backend generation, capability generation, exact mechanism, profile kind, terminal compound requirement, dependency context, exactly one of save/persist or activate/reload, and a non-empty canonical exact field set. It contains `RtssDependencyApplicability`, immutable provenance, and canonical source references. |
-| `RtssApplicabilityAdmissionDiagnostic` | Factory-only unique enum, separate from public evaluator reasons. It records untrusted or foreign input; parent, backend-generation, capability-generation, mechanism, profile-kind, compound, phase-context, field-set, or primitive mismatch; exact duplicate; non-empty field overlap; empty field set; missing compound/primitive; and wildcard-like or otherwise non-exact primitive/field scope. |
+| `RtssRawMechanismDependencyApplicabilityCandidate` | Public immutable untrusted value input carrying the proposed applicability fields, provenance, and source references. Original, copied, reconstructed, replaced, and caller-authored forms are indistinguishable when all values are equal; this type is never an evaluator argument. |
+| `RtssMechanismDependencyApplicability` | Fresh canonical internal child reconstructed only inside the complete parent boundary, keyed by parent observation identity, backend generation, capability generation, exact mechanism, profile kind, terminal compound requirement, dependency context, exactly one of save/persist or activate/reload, and a non-empty canonical exact field set. It contains `RtssDependencyApplicability`, immutable provenance, and canonical source references and is never independent support proof. |
+| `RtssApplicabilityAdmissionDiagnostic` | Factory-only unique enum, separate from public evaluator reasons. It records untrusted input shape; parent, backend-generation, capability-generation, mechanism, profile-kind, compound, phase-context, field-set, primitive, provenance, or source-reference mismatch; exact duplicate; non-empty field overlap; empty field set; missing compound/primitive; and wildcard-like or otherwise non-exact primitive/field scope. |
+| `RtssApplicabilityFieldSetRelation` | Factory-only unique enum with exactly `EQUAL`, `STRICT_SUBSET`, `STRICT_SUPERSET`, `PARTIAL_INTERSECTION`, and `DISJOINT`. Its pure classifier partitions two non-empty immutable sets; it does not admit a child or prove support. |
+| `RtssApplicabilityContradictionSource` | Factory-only immutable discriminated source. A per-record source is exactly `(diagnostic, occurrence_identity)`; a pair source is exactly `(diagnostic, first_occurrence_identity, second_occurrence_identity, field_set_relation)`. Occurrence identity is structural and canonical as defined below; it never contains a Python object identity or caller input position. |
 | `RtssCapabilityObservationIdentity` | Opaque immutable observation identifier, distinct from transaction identity. Equality is structural and auditable. |
 | `RtssRawCapabilityReport` | Public untrusted adapter/request-shaped data. It can never directly produce `SUPPORTED`. |
-| `RtssAdmittedCapabilityObservation` | Factory-controlled (`init=False`) snapshot containing observation identity, complete immutable primitive records and dependency-applicability records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Direct construction and `dataclasses.replace()` must not create or advance trusted evidence. |
+| `RtssAdmittedCapabilityObservation` | Immutable complete parent value reconstructed by the parent-admission boundary, containing observation identity, complete immutable primitive and dependency-applicability records, backend generation, capability generation, observation validity, provenance, source label/version metadata used only diagnostically, and diagnostic state `CONSISTENT` or `CONTRADICTORY`. Legal states are exactly current/stale/invalid consistent snapshots with structurally complete records, or a current contradictory snapshot with contradiction sources and no selectable records. There is no unavailable observation. Constructor history is not an authority marker; every evaluator entry is revalidated and reconstructed. |
 | `RtssCapabilityEvaluationContext` | Public immutable matching context containing expected observation identity, backend generation, capability generation, profile kind, and exact source/policy scope. It contains no support assertion. Transaction/ownership attribution is absent because item 2 owns neither; item 3 later binds context to the active item-1 transaction when required. |
 | `RtssCapabilityRequirement` | Pure request for one exact mechanism, compound requirement or primitive query, profile kind, exact-field set, and domain-specific configured policy bounds. It contains intent, not proof. |
 | `RtssCapabilityDecision` | Immutable status, exact request, admitted observation identity/generations when present, selected mechanism only on support, effective configured/evidence range intersection, and a non-empty tuple of typed reasons. |
 | `RtssPolicyReason` | Unique diagnostic enum covering request/identity failure; missing/untrusted/foreign/stale/invalid/contradictory observations; observation/backend/capability/profile/scope mismatch; ordered primitive unsupported/temporarily-unavailable/unknown states; derivation failure; domain/range failure; and encoding/length/character/canonicalization/collision failure. Free text may supplement but never determine truth. |
 
-The authoritative observation is the factory-controlled snapshot, not
-`RtssCapabilityInfo`, `RtssCapabilityEvidence`, a Boolean, a version label, a
-caller-authored generation, or an internally consistent caller-created graph.
-Sequence item 2 defines the immutable shape and pure evaluator but intentionally
-does not create a production path for trusting a current or advanced snapshot.
-Sequence item 3 later owns admission against the active transaction/capture
-context; sequence item 12 owns production adapter observation. Deterministic
-item-2 tests use a test-only admitted-observation fixture that is not exported
-as a production trust source.
+Within sequence item 2, conditional support authority is carried only by a
+complete parent that survives the parent-factory reconstruction boundary. No
+child instance, constructor history, marker, registry, Python object identity,
+`RtssCapabilityInfo`, `RtssCapabilityEvidence`, Boolean, version label, or
+caller-authored generation carries authority. The factory consumes an expected
+immutable parent header, a declared complete manifest, exact provenance/source
+constraints, and untrusted raw, copied, reconstructed, previously canonical, or
+caller-authored child value candidates. It validates every field, collects all
+admission conflicts, and reconstructs fresh canonical children and one complete
+parent; it never retains a submitted child instance.
+
+The public evaluator accepts exactly `None` or one complete
+`RtssAdmittedCapabilityObservation`. Its first step applies the same total
+parent invariant check and reconstruction, then evaluates only the fresh result.
+A standalone child or incomplete/wrong-shape complete parent raises `TypeError`
+before any `RtssCapabilityDecision` or public reason tuple exists. Original,
+shallow-copy, deep-copy, exact field-for-field reconstruction, fully populated
+equal `object.__new__` reconstruction, caller-authored equal complete value, and
+unchanged `dataclasses.replace(parent)` are structurally equal parent candidates
+and have the same result after entry reconstruction. A header-only changed
+parent replacement whose nested children retain old bindings reconstructs the
+typed contradictory parent. A completely and consistently changed parent can
+remain a valid parent value, but the unchanged public context then yields its
+literal foreign/context mismatch rather than support. Whole-parent copies differ
+from child copies only because the whole parent is the evaluator argument;
+neither origin nor copied provenance is authority.
+
+Sequence item 2 intentionally creates only a conditional pure policy result,
+not live authenticity. Sequence item 3 later owns admission against the active
+transaction/capture context; sequence item 12 owns production adapter
+observation. Deterministic item-2 tests use a test-only parent factory that is
+not exported as a production trust source.
 
 The exact pure design signature is:
 
 `evaluate_capability(requirement, context, admitted_observation) -> decision`
 
-`context` is matching context, never support evidence. Structural equality of
-immutable contexts and admitted evidence is sufficient; object identity is not
-required. A caller-authored context paired with missing, raw, directly
-constructed, replaced, foreign, or otherwise untrusted evidence cannot produce
-`SUPPORTED`. Item 2 admits no live observation. Item 3 will bind an admitted
-current observation to coordinator transaction context and item 12 will create
-versioned production observations.
+`context` is matching intent, never support evidence. Structural equality of
+immutable contexts and complete parent values is sufficient; object identity is
+not required. Missing evidence, a standalone raw/child value, an incomplete
+parent, or a complete parent that fails binding or context checks cannot produce
+`SUPPORTED`. A caller-authored value that is completely equal cannot receive a
+different result merely because of origin; it must pass the same reconstruction
+boundary. Item 2 admits no live observation. Item 3 will bind a current
+observation to coordinator transaction context and item 12 will create versioned
+production observations.
 
 ##### Mechanism-specific save and activation applicability
 
@@ -382,12 +422,16 @@ absence, success, failure, or a Boolean. The sole applicability state is
 - `UNKNOWN`: the factory-admitted evidence does not establish whether the
   primitive belongs to this exact dependency graph.
 
-Every factory-admitted mechanism manifest contains exactly one immutable
-`RtssMechanismDependencyApplicability` record for each declared complete
-applicability key. A compound/context/primitive may declare multiple
-field-specific keys only when their canonical field sets are disjoint. A
-missing raw source does not let a caller omit a declared exact key: the factory
-materializes that key as `UNKNOWN` with canonical
+The declared manifest supplied to the factory is untrusted expected-slot input,
+not an already-admitted record collection. It may contain proposed slots that
+overlap; raw/canonical occurrence pairs, not the manifest declarations
+themselves, emit duplicate or overlap contradiction sources. A reconstructed
+`CONSISTENT` mechanism manifest contains exactly one immutable
+`RtssMechanismDependencyApplicability` record for each declared complete key,
+and a compound/context/primitive may contain multiple field-specific records
+only when their canonical field sets are disjoint. A missing raw source does not
+let a caller omit a declared exact key: the factory materializes that key as
+`UNKNOWN` with canonical
 `APPLICABILITY_EVIDENCE_MISSING` provenance. This distinguishes an observed
 `UNKNOWN` applicability assertion from absent source evidence while preserving
 one applicability state enum and a structurally complete admitted manifest.
@@ -404,16 +448,26 @@ Each applicability record is bound to:
 - exactly one conditional primitive: save/persist or activate/reload.
 
 The record is immutable, structurally comparable, provenance-bearing, and
-governed by the parent observation's freshness and validity. A structurally
-equal immutable copy of a factory-admitted child is equivalent; object identity
-is not required. Every copied-with-replacement or reconstructed child is
-untrusted input to the factory and is revalidated. Originating from an admitted
-object does not preserve authority after any bound field or nested source is
-changed. Direct/raw construction, caller-authored enums or Booleans, changed
-nested source references, `dataclasses.replace()`, a foreign parent, generation
-mismatch, mechanism mismatch, profile-kind mismatch, compound mismatch, context
-mismatch, field-set mismatch, or primitive mismatch can never become a
-selectable child in a consistent admitted observation.
+governed by the parent observation's freshness and validity. Every child is an
+untrusted value candidate until the complete parent factory validates it and
+reconstructs a fresh canonical child. Original, shallow-copy, deep-copy, exact
+reconstruction, unchanged `dataclasses.replace(child)`, fully populated equal
+`object.__new__`, caller-authored equal value, and exactly copied provenance or
+source references therefore admit identically. Object identity and prior factory
+origin are never inspected. Each changed replacement is revalidated against the
+fixed header and manifest: parent, generation, mechanism, profile-kind,
+compound, phase-context, field-set, primitive, provenance, and source changes
+produce only their named structural mismatch diagnostics and the contradictory
+parent. An incomplete constructor bypass, raw enum, Boolean, or wrong child type
+uses `APPLICABILITY_EVIDENCE_UNTRUSTED`. A standalone child never reaches the
+evaluator as support evidence.
+
+`RtssDependencyApplicability` itself is the child's legal policy payload rather
+than a header/manifest binding. Replacing `REQUIRED` with a different legal enum
+value in an otherwise exact candidate constructs a consistent parent and the
+evaluator applies that new `REQUIRED`, `NOT_REQUIRED`, or `UNKNOWN` semantic. A
+wrong-kind or Boolean payload is untrusted shape. Payload changes are never
+diagnosed from origin.
 
 The canonical applicability key is literally:
 
@@ -444,16 +498,30 @@ production adapter may expand broad source information into independently
 validated exact records before admission; that is item 12 work, not item 2.
 
 The base key is the first eight components, excluding
-`canonical_exact_field_set`. Two complete canonical keys that are equal are an
-exact duplicate. For two records with different base keys there is no
-applicability overlap. For the same base key, equal field sets are an exact
-duplicate; unequal field sets with a non-empty intersection overlap and
-contradict; and disjoint field sets may coexist as distinct field-specific
-records. Thus strict subsets, strict supersets, and partial non-empty
-intersections contradict, while disjoint field-specific evidence is legal.
-Primitive and compound are separate exact dimensions: neither implicitly
-supplies or covers the other, and a primitive report never applies to every
-compound that references that primitive.
+`canonical_exact_field_set`. For two records whose complete base keys differ,
+field-set relation is not evaluated and there is no applicability overlap. For
+equal base keys, let `A` and `B` be the two non-empty exact field sets. The pure
+relation classifier applies these mutually exclusive predicates in this exact
+order:
+
+1. `A == B` is `EQUAL` and produces an exact duplicate;
+2. `A < B`, meaning `A` is a proper subset of `B`, is `STRICT_SUBSET` and
+   produces field-set overlap;
+3. `A > B`, meaning `A` is a proper superset of `B`, is `STRICT_SUPERSET` and
+   produces field-set overlap;
+4. `bool(A & B) and not (A <= B) and not (B <= A)` is
+   `PARTIAL_INTERSECTION` and produces field-set overlap; and
+5. `not (A & B)` is `DISJOINT` and is the only equal-base relation that lets
+   unequal field-specific records coexist.
+
+Pair orientation is canonical before this classifier runs, so reversing caller
+input never flips `STRICT_SUBSET` and `STRICT_SUPERSET` in a recorded source.
+An `EQUAL` pair emits only the exact-duplicate source, not a second overlap
+source. Duplicate occurrences are nevertheless retained and each remains
+eligible for comparison with every third occurrence. Primitive and compound
+are separate exact dimensions: neither implicitly supplies or covers the
+other, and a primitive report never applies to every compound that references
+that primitive.
 
 The admission factory uses one policy for all semantic applicability conflicts.
 It produces the already-defined current `CONTRADICTORY` parent observation,
@@ -463,7 +531,6 @@ names are:
 
 ```text
 APPLICABILITY_EVIDENCE_UNTRUSTED
-FOREIGN_APPLICABILITY_EVIDENCE
 APPLICABILITY_PARENT_OBSERVATION_MISMATCH
 APPLICABILITY_BACKEND_GENERATION_MISMATCH
 APPLICABILITY_CAPABILITY_GENERATION_MISMATCH
@@ -473,6 +540,8 @@ APPLICABILITY_COMPOUND_MISMATCH
 APPLICABILITY_REQUIREMENT_CONTEXT_MISMATCH
 APPLICABILITY_FIELD_SET_MISMATCH
 APPLICABILITY_PRIMITIVE_MISMATCH
+APPLICABILITY_PROVENANCE_MISMATCH
+APPLICABILITY_SOURCE_REFERENCE_MISMATCH
 APPLICABILITY_EXACT_DUPLICATE
 APPLICABILITY_FIELD_SET_OVERLAP
 APPLICABILITY_FIELD_SET_EMPTY
@@ -483,34 +552,294 @@ APPLICABILITY_PRIMITIVE_SCOPE_NOT_EXACT
 APPLICABILITY_FIELD_SCOPE_NOT_EXACT
 ```
 
-An otherwise admitted child taken from a different admitted parent produces
-`FOREIGN_APPLICABILITY_EVIDENCE`; replacing only its parent identity produces
-`APPLICABILITY_PARENT_OBSERVATION_MISMATCH`. Backend generation, capability
-generation, mechanism, profile kind, compound, phase, field set, and primitive
-substitutions are likewise detected at this factory boundary and produce their
-correspondingly named diagnostics. Raw enums, Booleans, directly constructed
-children, and caller-authored children produce
-`APPLICABILITY_EVIDENCE_UNTRUSTED`. Duplicate, overlap, empty, missing, and
-broad-scope and repeated-field-member cases use their literal diagnostics
-above. In every case
-construction succeeds as one admitted contradictory parent, so the public
-evaluator may be called with that parent and returns exactly terminal
-`UNKNOWN`, public reason tuple `(CONTRADICTORY_EVIDENCE,)`. Admission
-diagnostics remain attached to contradiction sources for factory tests and
-audit; they are never re-emitted as public evaluator reasons.
+A child copied from a parent whose values differ is diagnosed only by those
+values. For example, an `O2` child submitted against the fixed `O1` header
+produces `(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,)`; if its source reference
+also differs, the literal tuple is
+`(APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+APPLICABILITY_SOURCE_REFERENCE_MISMATCH)`. An exactly equal reconstruction from
+any origin produces neither diagnostic. Backend generation, capability
+generation, mechanism, profile kind, compound, phase, field set, primitive,
+provenance, and source substitutions likewise produce their correspondingly
+named diagnostics. Incomplete or wrong-type values produce
+`APPLICABILITY_EVIDENCE_UNTRUSTED`; raw/caller-authored values that are complete
+and equal are not untrusted merely because of origin. Duplicate, overlap, empty,
+missing, broad-scope, and repeated-field-member cases use their literal
+diagnostics above. Each non-empty diagnostic/source reduction constructs one
+admitted contradictory parent, so the public evaluator may be called with that
+parent and returns exactly terminal `UNKNOWN`, public reason tuple
+`(CONTRADICTORY_EVIDENCE,)`. Admission diagnostics remain attached to
+contradiction sources for factory tests and audit; they are never re-emitted as
+public evaluator reasons.
 
-Candidate keys are compared after canonicalization. Enum dimensions use
-declaration order; structural identities and generations use their canonical
-immutable value tuples; field tuples use `RtssStoredFieldKind` declaration
-order. Conflict pairs are stored with the lesser key first. Contradiction
-sources are sorted by admission-diagnostic declaration order, first canonical
-key, second canonical key, then canonical provenance/source-reference tuple.
-Duplicate detection, overlap detection, diagnostics, and tests therefore have
-the same result under every raw input permutation. No first-wins, last-wins,
-set-order choice, or silent deduplication exists. Illegal contradictory
-stale/invalid parent combinations remain construction errors because they are
-invalid parent-state cross-products, not an alternative child-conflict policy.
-A raw report cannot invoke the admission factory as a production trust source.
+Raw duplicate applicability keys have one construction policy. Supplying any
+two raw occurrences that normalize to the same complete key to the actual
+parent-admission factory always succeeds as one `CURRENT + CONTRADICTORY`
+parent. The parent has `primitive_records=()` and
+`applicability_records=()`, its unique factory diagnostic tuple is exactly
+`(APPLICABILITY_EXACT_DUPLICATE,)` when no other conflict exists, and its public
+evaluation is exactly `UNKNOWN / (CONTRADICTORY_EVIDENCE,)`. Reversing those
+raw occurrences changes none of those values. There is no competing public
+factory-rejection result.
+
+For the isolated duplicate regression, let `R1 < R2` be two canonical
+occurrence identities with the same complete key and distinct literal source
+references. Its complete expected source tuple is exactly
+`((APPLICABILITY_EXACT_DUPLICATE,R1,R2,EQUAL),)`; its complete expected unique
+diagnostic tuple is exactly `(APPLICABILITY_EXACT_DUPLICATE,)`. Neither expected
+tuple is constructed with the production reducer.
+
+The factory performs one retain-all, order-independent reduction:
+
+1. It first retains every raw occurrence in an immutable envelope. It never
+   deletes a duplicate, overwrites an earlier occurrence, selects a winner, or
+   uses raw iteration order as identity.
+2. It independently evaluates every applicable per-record shape, structural,
+   provenance/source, and binding check without fail-fast behavior. It
+   emits at most one source for a particular `(diagnostic, occurrence)` while
+   retaining every different diagnostic on that occurrence.
+3. It separately normalizes a comparable complete key only when all eight base
+   components and a non-empty, unique tuple of legal `RtssStoredFieldKind`
+   members can be represented without erasing an error. Reordered legal field
+   members canonicalize by enum declaration order. Empty fields, repeated field
+   members, missing or wildcard-like base members, and wrong-kind base members
+   cannot produce a comparable key. In particular, repeated raw fields are not
+   collapsed into a set merely to make the occurrence comparable.
+4. A provenance/source or parent/generation/mechanism/profile/compound/context/
+   field/primitive binding mismatch does not remove an otherwise comparable
+   value-shaped key from pair analysis. A complete equal value is not untrusted.
+   Every occurrence diagnosed `APPLICABILITY_EVIDENCE_UNTRUSTED` has an
+   incomplete or wrong-type shape, produces no comparable key, retains all of
+   its per-record sources, and participates in no pair.
+5. After all occurrences are normalized, the factory enumerates every
+   unordered pair of comparable occurrences. It orients the lesser occurrence
+   first and applies the complete base-key and field-relation predicates above.
+   Detection of a duplicate never removes either occurrence before its pairs
+   with later records are evaluated.
+6. Detector outputs are accumulated as a structural set of
+   `RtssApplicabilityContradictionSource` values. Every independently defined
+   record and pair source is retained. Only a repeated emission of the same
+   structural source, such as the same detector run in another pass order, is
+   deduplicated.
+7. The parent factory-diagnostic tuple is the unique projection of diagnostic
+   enums from the complete source set. Repeated enum values are collapsed only
+   in this projection; their distinct record and pair sources remain present.
+8. The reducer materializes the parent only after every detector has completed.
+   No detector consumes, filters, or mutates another detector's candidates or
+   sources. Input order and detector pass order therefore cannot change which
+   sources are discovered or retained.
+
+Canonical ordering is literal. Enum values use declaration index; structural
+identities and generations use their immutable canonical value tuples; field
+tuples are lexicographic by `RtssStoredFieldKind` declaration index, with a
+proper prefix before its extension. Each raw scalar in the audit envelope is a
+literal `(tag,payload)` pair with ordered tag ranks `CANONICAL=0`, `MISSING=1`,
+`NON_EXACT_SCOPE=2`, and `UNTRUSTED=3`; every sentinel payload is `()`. A
+canonical tagged raw record lists parent, backend generation, capability
+generation, mechanism, profile kind, compound, phase, primitive, raw field
+tuple, applicability payload, provenance, and source-reference tuple in that
+exact order. It never uses `repr()`, a hash, object identity, or input position.
+The occurrence sort key is exactly:
+
+```text
+(
+    complete_key_rank,                 # 0 complete, 1 no complete key
+    complete_canonical_key_or_empty,
+    per_record_diagnostic_rank_tuple,
+    canonical_provenance_tuple,
+    canonical_source_reference_tuple,
+    canonical_tagged_raw_value_tuple,
+    ordinal_within_structurally_equal_occurrences,
+)
+```
+
+The ordinal is the zero-based multiplicity ordinal after structural sorting;
+physically swapping completely equal occurrences cannot change the resulting
+`0..n-1` occurrence identities. Pair occurrences are stored lesser first. The
+source-arity rank is exactly `0` for a one-occurrence source and `1` for a pair.
+In the source sort key, an actual second occurrence is tagged
+`(0,second_occurrence_sort_key)` and the literal no-second sentinel is
+`NO_SECOND=(1,())`; an actual applicability relation is tagged
+`(0,relation_declaration_index)` and the literal no-relation sentinel is
+`NO_RELATION=(1,())`. A contradiction source therefore sorts by exactly
+`(diagnostic declaration index, source-arity rank, first occurrence sort key,
+tagged second occurrence or NO_SECOND, tagged relation or NO_RELATION)`.
+Diagnostic category precedence is therefore explicitly the declaration order
+listed above: shape/trust and binding/provenance/source, exact duplicate, field
+overlap, then structural/scope. Neither a set's iteration order nor a detector's
+pass order is observable.
+
+For any non-empty reduced source tuple, the factory creates exactly one parent
+with the requested observation identity and generations, validity `CURRENT`,
+diagnostic state `CONTRADICTORY`, the complete canonical source tuple, the
+stable unique diagnostic projection, `primitive_records=()`, and
+`applicability_records=()`. The evaluator receives only that parent and returns
+exactly `UNKNOWN / (CONTRADICTORY_EVIDENCE,)`.
+
+The mandatory combined-conflict oracle uses four raw occurrences. Its expected
+parent binding is the literal value
+
+```text
+K1=(O1,B1,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
+    FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST)
+```
+
+Let `N` be `NUMERATOR`, `D` be `DENOMINATOR`, and define the mismatched but
+otherwise valid base key:
+
+```text
+K2=(O2,B2,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
+    FRACTIONAL_FORWARD_MUTATION,SAVE_PERSIST)
+```
+
+`O1 != O2`, `B1 != B2`, and every other same-named value is exactly equal. The
+factory call's literal declared manifest contains the two expected slots
+`(K1+(N),K1+(N,D))`. Both are legal value-shaped slots, so `C` avoids a
+field-set mismatch and `A`/`B` avoid it independently; their overlap is the
+semantic conflict being reduced, not a pre-factory rejection. Empty fields are
+non-comparable and `APPLICABILITY_FIELD_SET_EMPTY` is mutually exclusive with
+`APPLICABILITY_FIELD_SET_MISMATCH`; missing primitive is likewise mutually
+exclusive with `APPLICABILITY_PRIMITIVE_MISMATCH`.
+
+The fixture values are independently literal:
+
+```text
+P0=("fixture-provenance","r4")
+SA=("fixture-source","A")
+SB=("fixture-source","B")
+SC=("fixture-source","C")
+SD=("fixture-source","D")
+```
+
+Canonical tuple comparison gives `SA < SB < SC < SD`. Using the fixed raw tag
+ranks above, the complete raw audit values are:
+
+```text
+RAW_A=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(N,D)),(0,REQUIRED),(0,P0),(0,(SA,)))
+RAW_B=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(D,N)),(0,REQUIRED),(0,P0),(0,(SB,)))
+RAW_C=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+       (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+       (0,SAVE_PERSIST),(0,(N,)),(0,REQUIRED),(0,P0),(0,(SC,)))
+RAW_BAD=((0,O2),(0,B2),(0,C1),(0,M1),(0,APPLICATION),
+         (0,EXISTING_FRACTIONAL_MUTATION),(0,FRACTIONAL_FORWARD_MUTATION),
+         (1,()),(0,()),(0,REQUIRED),(0,P0),(0,(SD,)))
+```
+
+The raw occurrences are `A=K2+(N,D)@SA`, `B=K2+(D,N)@SB`,
+`C=K2+(N)@SC`, and
+`BAD=(O2,B2,C1,M1,APPLICATION,EXISTING_FRACTIONAL_MUTATION,
+FRACTIONAL_FORWARD_MUTATION,primitive=None,fields=())@SD`. `A` and `B`
+normalize to the duplicate occurrences `RNDA` and `RNDB`; `C` becomes `RN`
+and is a strict subset of each; `BAD` becomes no-complete-key occurrence
+`RBAD`. Every occurrence has parent and backend-generation mismatches. `RBAD`
+also has empty-field and missing-primitive diagnostics and participates in no
+pair. All four use the literal valid canonical provenance tuple `P0`; the `SA`
+through `SD` tuples are their only source-reference difference. With diagnostic
+names standing for their fixed declaration indices, the four occurrence
+identities are independently fixed as:
+
+```text
+RN=(0,K2+(N),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+     APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+    P0,(SC,),RAW_C,0)
+RNDA=(0,K2+(N,D),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+      P0,(SA,),RAW_A,0)
+RNDB=(0,K2+(N,D),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH),
+      P0,(SB,),RAW_B,0)
+RBAD=(1,(),
+      (APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+       APPLICABILITY_BACKEND_GENERATION_MISMATCH,
+       APPLICABILITY_FIELD_SET_EMPTY,
+       APPLICABILITY_PRIMITIVE_MISSING),
+      P0,(SD,),RAW_BAD,0)
+```
+
+These are literal fixture values, not values obtained by calling the production
+occurrence normalizer.
+
+The complete expected contradiction-source tuple is written independently and
+literally as:
+
+```text
+(
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RN),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RNDA),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RNDB),
+    (APPLICABILITY_PARENT_OBSERVATION_MISMATCH, RBAD),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RN),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RNDA),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RNDB),
+    (APPLICABILITY_BACKEND_GENERATION_MISMATCH, RBAD),
+    (APPLICABILITY_EXACT_DUPLICATE, RNDA, RNDB, EQUAL),
+    (APPLICABILITY_FIELD_SET_OVERLAP, RN, RNDA, STRICT_SUBSET),
+    (APPLICABILITY_FIELD_SET_OVERLAP, RN, RNDB, STRICT_SUBSET),
+    (APPLICABILITY_FIELD_SET_EMPTY, RBAD),
+    (APPLICABILITY_PRIMITIVE_MISSING, RBAD),
+)
+```
+
+Its complete expected unique diagnostic tuple is independently and literally:
+
+```text
+(
+    APPLICABILITY_PARENT_OBSERVATION_MISMATCH,
+    APPLICABILITY_BACKEND_GENERATION_MISMATCH,
+    APPLICABILITY_EXACT_DUPLICATE,
+    APPLICABILITY_FIELD_SET_OVERLAP,
+    APPLICABILITY_FIELD_SET_EMPTY,
+    APPLICABILITY_PRIMITIVE_MISSING,
+)
+```
+
+The fixture's exact reconstructed parent fields are
+`header=K1`, `declared_manifest=(K1+(N),K1+(N,D))`, `provenance=P0`,
+`validity=CURRENT`, `diagnostic_state=CONTRADICTORY`, the literal complete
+source and unique diagnostic tuples above, `primitive_records=()`, and
+`applicability_records=()`. No malformed raw occurrence, supporting primitive,
+or selectable applicability child survives into those record tuples.
+
+All 24 raw-input permutations and simulated binding-first, pair-first,
+reverse-detector, and interleaved detector streams must produce those exact
+tuples, the exact contradictory-parent contents above, and the exact public
+result. Tests write the expected tuples literally and must not invoke the
+production normalizer, sorter, or reducer to construct the oracle.
+
+The current admitted field universe is exactly
+`(RtssStoredFieldKind.NUMERATOR, RtssStoredFieldKind.DENOMINATOR)`. Its only
+non-empty sets are `{N}`, `{D}`, and `{N,D}`. Equal, strict-subset,
+strict-superset, and disjoint relations are reachable through the real factory:
+`{N}` versus `{N,D}` is strict subset, `{N,D}` versus `{D}` is strict
+superset after canonical pair orientation, and `{N}` versus `{D}` is disjoint.
+A non-empty unequal partial intersection is mathematically unreachable with
+two legal members: every such intersecting pair is a singleton and `{N,D}` and
+therefore a subset/superset pair.
+
+The pure relation classifier still receives an isolated mathematical oracle:
+`frozenset({0,1})` versus `frozenset({1,2})` returns exactly
+`PARTIAL_INTERSECTION` in either argument order. The integers are abstract
+predicate tokens, never `RtssStoredFieldKind` values, raw children, admitted
+evidence, or production capability. A real-boundary enum-expansion guard
+asserts that the current admitted universe has two members and marks partial
+intersection unreachable. If the admitted enum ever has at least three legal
+members, that guard fails with the literal requirement to add a reviewed,
+named, legal third-member raw fixture through the actual admission factory. The
+future fixture must produce `APPLICABILITY_FIELD_SET_OVERLAP`, the current
+contradictory parent with empty selectable records, and public
+`UNKNOWN / (CONTRADICTORY_EVIDENCE,)` before the enum expansion can pass.
+
+Illegal contradictory stale/invalid parent combinations remain construction
+errors because they are invalid parent-state cross-products, not an alternative
+child-conflict policy. A raw report cannot invoke the admission factory as a
+production trust source.
 
 The required context matrix is:
 
@@ -559,7 +888,7 @@ only when separately admitted records prove those facts.
 For each conditional dependency, the evaluator applies this exact algorithm:
 
 1. Validate the complete parent observation. A current contradictory parent
-   returns `UNKNOWN / CONTRADICTORY_EVIDENCE` before child selection. The
+   returns `UNKNOWN / (CONTRADICTORY_EVIDENCE,)` before child selection. The
    evaluator never accepts or validates a standalone child.
 2. In a consistent parent, select the already factory-validated exact-key
    applicability record before consulting the primitive support record. If the
@@ -604,14 +933,21 @@ errors. Missing raw primitive or applicability source is normalized rather
 than omitted: the factory creates the exact keyed `UNKNOWN` primitive record
 with `PRIMITIVE_EVIDENCE_MISSING` provenance or the exact keyed `UNKNOWN`
 applicability record with `APPLICABILITY_EVIDENCE_MISSING` provenance.
-Duplicate complete keys, or equal-base-key field sets with a non-empty
-intersection under the literal predicate above, instead create the typed
-current contradictory observation. A whole-observation absence is represented
-only by `None`. The factory uses exactly one contradiction policy:
-contradictory direct, derived, or applicability sources produce the fourth
-typed state, which always evaluates `UNKNOWN / CONTRADICTORY_EVIDENCE`;
-construction does not also reject that semantic state. A raw report cannot
-invoke the admission factory as a public trust source.
+
+Raw duplicate applicability keys, or equal-base-key field sets with any
+non-empty unequal relation other than `DISJOINT`, always take the semantic
+raw-admission path defined above and create the typed current contradictory
+observation. Separately, the private post-reduction invariant constructor must
+reject an attempted `CONSISTENT` object that is forcibly supplied duplicate or
+overlapping applicability records. That private guard is unreachable from the
+raw admission factory, is not a second expected outcome for the same input, and
+must not be tested as a competing factory-rejection result. A whole-observation
+absence is represented only by `None`. The factory uses exactly one public
+contradiction policy: contradictory direct, derived, or applicability sources
+produce the fourth typed state, which always evaluates
+`UNKNOWN / (CONTRADICTORY_EVIDENCE,)`; public raw construction does not also reject
+that semantic state. A raw report cannot invoke the admission factory as a
+public trust source.
 
 Within a consistent observation, legal primitive records combine support
 `SUPPORTED | UNSUPPORTED | UNKNOWN | TEMPORARILY_UNAVAILABLE`, their own
@@ -637,7 +973,7 @@ Evaluation phases and terminal precedence are closed:
    then return `UNKNOWN`.
 3. An `INVALID` observation returns `UNKNOWN / INVALID_EVIDENCE`; a `STALE`
    observation returns `UNKNOWN / STALE_EVIDENCE`; a current contradictory
-   observation returns `UNKNOWN / CONTRADICTORY_EVIDENCE`. Observation-level
+   observation returns `UNKNOWN / (CONTRADICTORY_EVIDENCE,)`. Observation-level
    unavailability is not a legal branch.
 4. In a consistent current observation, evaluate every exact conditional
    save/activation applicability slot. An `UNKNOWN` or missing-source slot
@@ -1217,11 +1553,13 @@ Representative overlaps have these independent expected ordered reasons:
 | `game` with missing or supporting rules | `IDENTITY_MODEL_INCOMPATIBLE` | `IDENTITY_MODEL_INCOMPATIBLE`, `MISSING_EXECUTABLE_SUFFIX` |
 | `game.exe` | none | no classifier failure; continue to capability/name-rule evidence |
 
-##### Factory-controlled admitted name-rule evidence
+##### Parent-reconstructed admitted name-rule evidence
 
-`RtssAdmittedNameRuleSet` is the sole authoritative name-rule owner. It is a
-separate immutable factory-controlled (`init=False`) object, not a nested
-capability-observation field and not a raw request field. It contains:
+`RtssAdmittedNameRuleSet` is the sole complete name-rule parent accepted by the
+public name evaluator. It is a separate immutable value, not a nested
+capability-observation field and not a raw request field. Constructor origin is
+not authority; the parent factory and evaluator entry reconstruct it under the
+same total invariants. It contains:
 
 - one opaque structural rule-set identity and the exact parent admitted
   capability-observation identity;
@@ -1237,11 +1575,48 @@ capability-observation field and not a raw request field. It contains:
 - diagnostic state `CONSISTENT` or `CONTRADICTORY`; and
 - an explicit complete-applicability manifest.
 
-The deterministic admission factory is the only constructor. Tests feed it
-untrusted `RtssRawNameRuleReport` records; item 3 or item 12 later owns trusted
-admission. Raw reports, caller-created mappings, and values copied from a rule
-set cannot prove support. A consistent rule set contains exactly one rule for
-each declared applicability key and complete coverage for the evaluated key.
+The deterministic admission factory consumes an expected immutable rule-set
+header, its exact complete manifest, provenance/source constraints, and
+untrusted raw, copied, reconstructed, previously canonical, or caller-authored
+rule values. It validates every field and reconstructs fresh canonical rules and
+one complete parent; it never retains a submitted child instance. Tests feed it
+`RtssRawNameRuleReport` value candidates; item 3 or item 12 later owns trusted
+live admission. Raw reports and standalone children cannot prove support, but
+completely equal candidates passed through this boundary cannot differ merely
+by origin. A consistent rule set contains exactly one rule for each declared
+applicability key and complete coverage for the evaluated key.
+
+The factory-only `RtssNameRuleAdmissionDiagnostic` declaration order is
+literal, unique, and separate from public reasons:
+
+```text
+NAME_RULE_EVIDENCE_UNTRUSTED
+NAME_RULE_SET_IDENTITY_MISMATCH
+NAME_RULE_PARENT_OBSERVATION_MISMATCH
+NAME_RULE_BACKEND_GENERATION_MISMATCH
+NAME_RULE_CAPABILITY_GENERATION_MISMATCH
+NAME_RULE_PROFILE_KIND_MISMATCH
+NAME_RULE_NAMESPACE_SCOPE_MISMATCH
+NAME_RULE_MECHANISM_MISMATCH
+NAME_RULE_SUBJECT_KIND_MISMATCH
+NAME_RULE_OPERATION_MISMATCH
+NAME_RULE_CONTEXT_MISMATCH
+NAME_RULE_PROVENANCE_MISMATCH
+NAME_RULE_SOURCE_REFERENCE_MISMATCH
+NAME_RULE_EXACT_DUPLICATE
+NAME_RULE_SCOPE_NOT_EXACT
+```
+
+This gives name-rule sources the same explicit category precedence as
+applicability sources: shape/trust and binding/provenance first, exact duplicate
+next, then structural/scope. Repeated enum values are deduplicated only in the
+parent diagnostic projection; their distinct occurrence sources remain.
+`RtssNameRuleContradictionSource` uses the literal discriminated forms
+`(diagnostic,occurrence_identity)` for a record source and
+`(diagnostic,first_occurrence_identity,second_occurrence_identity)` for an exact-
+duplicate pair. It reuses the applicability occurrence key and source ordering;
+the stored source remains that three-tuple, while only its canonical sort key
+uses `NO_RELATION=(1,())` because name keys have no field-set dimension.
 Name-rule applicability has one literal complete canonical key:
 
 ```text
@@ -1278,24 +1653,52 @@ whether content-equal or content-conflicting, produces
 `NAME_RULE_EXACT_DUPLICATE`; there is no first/last-wins merge or silent
 deduplication. Different complete keys do not overlap and may coexist.
 Canonical key comparison uses the same structural-value and enum-declaration
-ordering as capability admission. Duplicate conflict pairs and diagnostics are
-sorted by diagnostic declaration order, lesser key, greater key, then
-provenance/source reference, so reverse input order is invariant.
+ordering as capability admission. Duplicate conflict sources and unique
+diagnostics use the exact occurrence and source sort keys defined above, so
+reverse input order is invariant.
 
-Any duplicate or non-exact applicability report produces one current
+Name-rule admission reuses the applicability reducer's retain-all mechanics,
+not merely its final sort. The factory retains every raw occurrence, collects
+all per-record shape/scope, provenance/source, and binding sources without early
+exit, normalizes every comparable exact key without deleting duplicates,
+enumerates every unordered pair, unions all detector outputs structurally, and
+only then sorts sources and projects a stable unique diagnostic tuple. Its
+occurrence and source sort keys, multiplicity ordinals, repeated-source
+deduplication, and detector-order invariance are exactly the rules defined for
+applicability above. The restricted name-rule pair relation is only equal
+complete keys, which emits `NAME_RULE_EXACT_DUPLICATE`, or different complete
+keys, which emits no pair conflict; name rules have no field-set overlap
+relation. A malformed non-exact-scope occurrence retains its per-record source
+but participates in no pair if a complete exact key cannot be formed. Finding
+a duplicate never removes either occurrence before all remaining pairs are
+enumerated.
+
+Any duplicate or non-exact name-rule applicability report produces one current
 `CONTRADICTORY` admitted rule set with a canonical non-empty conflict tuple and
 no selectable rules. Its public result is exactly `UNKNOWN /
-CONTRADICTORY_NAME_RULES`; the factory-only duplicate/scope diagnostic is not a
+(CONTRADICTORY_NAME_RULES,)`; the factory-only duplicate/scope diagnostic is not a
 public evaluator reason. Contradictory stale/invalid combinations, missing
 coverage, or selectable rules inside a contradictory set are construction
 errors.
 
-Every reconstruction path, including `dataclasses.replace()`, must re-enter the
-same invariant validator. An unchanged structurally equal factory copy is
-equivalent; object identity is never required. Changing the rule-set identity,
-parent identity, generations, scope, applicability, rule content, provenance,
-validity, contradiction state, or nested source references either fails
-construction or yields non-matching evidence and cannot retain admission.
+The public evaluator accepts exactly `None` or a complete
+`RtssAdmittedNameRuleSet` and begins by applying the same total parent
+reconstruction. Original, shallow/deep copies, exact reconstruction, fully
+populated equal `object.__new__`, caller-authored equal complete values, and
+unchanged `dataclasses.replace(rule_set)` therefore have the same result after
+entry validation. An incomplete/wrong-shape parent or standalone rule raises
+`TypeError` before a decision. A header-only changed parent whose rules retain
+the old binding reconstructs a contradictory rule set; a fully and consistently
+changed parent remains structurally valid but receives the corresponding public
+foreign/context mismatch against the unchanged request. Child originals,
+copies, exact reconstructions, unchanged replacements, exact copied provenance,
+and caller-authored equal values are all untrusted inputs with the same positive
+result only after the parent factory reconstructs them. Changing rule-set
+identity, parent identity, generations, scope/applicability, provenance, or
+nested source references yields its one literal factory mismatch and the current
+contradictory parent. A distinct well-formed rule-content payload is admitted as
+new semantics and evaluated on that content; it is not an origin mismatch. No
+origin or object-identity distinction exists.
 
 The evaluator matches, in order: rule-set identity requested by the public
 request; parent capability-observation identity; backend generation;
@@ -1306,9 +1709,9 @@ co-applicable foreign-identity, parent, generation, kind, scope, mechanism,
 operation, and context mismatches are aggregated in that order before
 returning `UNKNOWN`; invalid then stale rule sets are `UNKNOWN`; and a current
 contradictory rule set is
-`UNKNOWN / CONTRADICTORY_NAME_RULES`. Only a current consistent complete
+`UNKNOWN / (CONTRADICTORY_NAME_RULES,)`. Only a current consistent complete
 matching rule set may continue. A structurally equal admitted copy is a
-positive control.
+positive control only after the same parent reconstruction.
 
 ##### Factory-controlled namespace and collision evidence
 
@@ -1462,8 +1865,9 @@ Policy evaluation follows this deterministic order:
    implies write; write never implies readback; readback never implies
    restoration; profile-file access never implies API support.
 6. Before evaluating each save or activation primitive, match its exact
-   mechanism/compound/phase applicability record. `UNKNOWN`, missing-source,
-   foreign, stale, invalid, contradictory, or mismatched applicability makes
+    mechanism/compound/phase applicability record. `UNKNOWN`, missing-source,
+    stale, invalid, contradictory, or binding/provenance/source-mismatched
+    applicability makes
    the compound `UNKNOWN`; `NOT_REQUIRED` omits that primitive and
    postcondition; `REQUIRED` activates the primitive support check. A
    mutation-capability decision requires current support for every active
@@ -1489,8 +1893,9 @@ Policy evaluation follows this deterministic order:
     capability observation, backend/capability generations, profile kind,
     namespace scope, exact mechanism, operation, and exact
     lookup/mutation/creation context.
-    Missing, stale, invalid, foreign, mismatched, incomplete, replaced, or
-    contradictory rules follow the exact rule-set outcomes above. A name
+    Missing, stale, invalid, foreign, binding-changed, incomplete, or
+    contradictory rules follow the exact rule-set outcomes above. An unchanged
+    equal replacement first passes the same reconstruction boundary. A name
     supported for existing lookup is not thereby supported for creation or
     mutation.
 11. Unknown encoding, required unknown character/byte limit, unknown
@@ -1504,9 +1909,12 @@ Policy evaluation follows this deterministic order:
     `UNSUPPORTED / IDENTITY_MODEL_INCOMPATIBLE` before missing, stale, or
     otherwise-supporting rule evidence is considered. No Unicode support is
     claimed.
-13. Structurally equal immutable admitted evidence produces the same decision.
-    Foreign snapshots, direct construction, replacement, enum aliases, or
-    changed nested generations cannot acquire trust.
+13. Structurally equal immutable complete-parent values produce the same
+    conditional pure decision after parent reconstruction. Standalone raw or
+    child values cannot directly support; wrong-shape values, foreign complete
+    parents, enum aliases, and changed nested bindings fail their literal
+    boundary checks. Origin and unchanged replacement never change an equal
+    candidate's result.
 
 These decisions occur before capture or mutation. They do not return
 `RtssApplyResult`, create ownership, or classify operation, conflict, rollback,
@@ -1839,18 +2247,19 @@ The independently verified and explicitly accepted implementation sequence is:
    - completed without transaction coordination, mutation, or production
      integration; independent review approved the third correction with
      non-blocking test-quality observations.
-2. **Capability and supported-name policy - four planning reviews rejected;
-   fourth correction completed locally; independent review and later explicit
+2. **Capability and supported-name policy - five planning reviews rejected;
+   fifth correction completed locally; independent review and later explicit
    acceptance required; implementation unauthorized**
    - future unit 2a: add unique status, support, validity, origin, mechanism,
      primitive-operation, terminal compound-requirement, internal-dependency,
-     postcondition, dependency-applicability/context, contradiction, and
-     typed-reason enums plus immutable evaluation context and raw/admitted
-     capability and applicability evidence contracts with the closed legal
-     observation-state factory;
-   - future unit 2b: add the closed applicability/primitive/derived decision
-     algebra, conditional canonical dependency bundles, stable reason ordering,
-     and pure evaluator;
+     postcondition, dependency-applicability/context, field-set-relation,
+     contradiction-source, and typed-reason enums/contracts plus immutable
+     evaluation context and raw/admitted capability and applicability evidence
+     contracts with the closed legal observation-state factory;
+   - future unit 2b: add raw occurrence normalization, the retain-all
+     applicability and name-rule conflict-source reducers, the closed
+     applicability/primitive/derived decision algebra, conditional canonical
+     dependency bundles, stable reason ordering, and pure evaluator;
    - future unit 2c: add domain-specific integer, numerator, denominator,
      rational, and bit-width range contracts, the unsigned/two's-complement
      formulas, exact discrete configured-bound conversion, and exact
@@ -1863,10 +2272,14 @@ The independently verified and explicitly accepted implementation sequence is:
    - future unit 2f: add pure supported-name evaluation for encoding, length,
      character, case, normalization, existing/creation, and exact collision
      outcomes;
-   - future unit 2g: add deterministic factory/admission, public-path,
-     direct-construction/replacement, applicability, legally co-applicable
-     diagnostic-group, omitted-collider, negative-range, and full truth-table
-     regressions;
+   - future unit 2g: add deterministic factory/admission, public raw-duplicate
+     and contradictory-parent, direct-construction/replacement, all 24
+     four-record combined-conflict permutations, alternate detector-order,
+     legal two-field relation, pure partial-intersection predicate,
+     field-enum-expansion guard, name-rule reducer reuse, public-path,
+     applicability, legally co-applicable diagnostic-group, omitted-collider,
+     negative-range, and full truth-table regressions; every combined expected
+     source/diagnostic tuple is literal rather than reducer-derived;
    - future unit 2h: reconcile tracked documentation after tests pass;
    - each unit remains contract/policy-only and must be independently
      reviewable; none creates trusted live evidence, a coordinator registry,
@@ -2000,13 +2413,14 @@ Stage 2 coordinator implementation is complete only when:
 - an independent read-only review accepts the contract changes, coordinator
   ordering, test matrices, and production-integration boundary.
 
-The planning-review and explicit-acceptance gates are satisfied. Sequence item
-1 is independently approved and complete with no admitted mutation after three
-failed implementation reviews and three focused corrections. The separate
-focused sequence-item-2 planning and design work has received three rejected
-planning reviews. This third documentation-only correction is complete
-locally, but its commit requires independent read-only review and a later
-explicit acceptance documentation step.
+The original Stage 2 planning-review and explicit-acceptance gates are
+satisfied. Sequence item 1 is independently approved and complete with no
+admitted mutation after three failed implementation reviews and three focused
+corrections. The separate sequence-item-2 initial planning commit and four
+corrections through rejected fourth correction `b591873` have received five
+rejected planning reviews. This fifth documentation-only correction is complete
+locally, unpublished, unapproved, and pending a new independent read-only review
+and a later explicit acceptance documentation step.
 Sequence item 2 implementation and each later mutation-bearing slice remain
 unauthorized and gated by their applicable review, rollback,
 degraded-state, ownership, and failure-matrix requirements. No mutation is
@@ -2075,9 +2489,11 @@ generation-aware, reversible RTSS boundary.
   `d10feead8a3707ee52a54f80e4e53c14945309d0` records that gate. The focused
   prerequisite contract/test sequence item was corrected locally a third time
   after three implementation reviews failed, passes all 181 deterministic
-  tests, and is independently approved and complete. Sequence item 2 planning
-  and design are complete locally but require independent read-only review and
-  explicit acceptance; implementation remains unauthorized.
+  tests, and is independently approved and complete. Sequence item 2's initial
+  plan and four corrections through rejected fourth correction `b591873` have
+  received five rejected reviews. Its fifth planning correction is complete
+  locally, unpublished, unapproved, and pending a new independent read-only
+  review and later explicit acceptance; implementation remains unauthorized.
   No coordinator or mutation exists, no production caller uses the contracts,
   and production integration remains item 12.
 - **Additional Stage 2 prerequisites from the independent PR review:**
