@@ -359,7 +359,7 @@ and integration evidence remains outstanding.
 | P0 | GUI-001 | High / Confirmed | Autopilot retains the previous profile cap model | Profiles/Autopilot | `fix/profile-autopilot-idle` | Transactional profile switch | Game A -> B trace | Open |
 | P1 | GUI-002 | High / Confirmed | Idle state and prior active cap are shared across profiles | Profiles/idle | `fix/profile-autopilot-idle` | Per-generation idle | Idle A -> B -> input | Open |
 | P1 | GUI-003 | Medium / Confirmed design; runtime-dependent effects | Autopilot process identity is inconsistent, unnormalized, and case-sensitive | Profiles/Autopilot | `fix/profile-autopilot-idle` | Canonical identity | Game/LS/desktop identity matrix | Open |
-| P1 | GUI-004 | Medium / Confirmed | Idle calculation fails on long-uptime systems | Win32/idle | `fix/profile-autopilot-idle` | Tick-wrap arithmetic | Long-uptime Windows simulation/smoke | Open |
+| P1 | GUI-004 | Medium / Confirmed | Idle calculation fails on long-uptime systems; corrected in src/core/idle_timer.py | Win32/idle | `fix/profile-autopilot-idle` | Tick-wrap arithmetic | Long-uptime Windows simulation/smoke | Validation |
 | P1 | GUI-005 | Medium / Confirmed | Required Win32 return and argument types are undeclared | Win32 | `fix/profile-autopilot-idle` | Win32 ABI tests | 64-bit handle/process run | Open |
 | P3 | GUI-006 | Low / Confirmed | Quick Load can fail before Quick Save | Profiles/GUI | `fix/profile-autopilot-idle` | Config defaults | First-run Quick Load | Open |
 | P1 | SEC-001 | High / Possible | Elevated process trusts a potentially writable application tree | Security/packaging | `hardening/config-packaging-logging` | Install-integrity policy | ACL/install-layout audit | Open |
