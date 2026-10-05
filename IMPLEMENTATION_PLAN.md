@@ -5,6 +5,16 @@ The sequence below is accepted for work after the review baseline
 and draft pull request. Branch names describe scope; they do not imply work has
 started.
 
+## Authorized local CTRL-001 exception — 6 October 2026
+
+Afrim explicitly authorized the focused selector fix from `main` at `f8c4d4a`
+despite the historical sequence below. The one-step decrease correction and
+regressions are implemented locally; all 97 deterministic tests pass. Changes
+passed independent Antigravity review and were selected for the local
+`codex/tour-2-codex` branch. No broader controller, RTSS,
+lifecycle, threshold, or delay work is included. Physical acceptance remains
+pending. Rollback is to revert this selector correction and its regressions.
+
 ## Current RTSS Stage 1 gate
 
 RTSS Stage 1 contracts and deterministic tests were published in commit
@@ -61,9 +71,9 @@ changing production policy.
 
 - **Status:** Initial pure contracts, fake adapters, cap-list validation
   scaffolding, legacy decrease characterization, discovery, and import
-  isolation are implemented. `CTRL-001` remains defective by design,
-  `CTRL-005` remains unwired, CI is absent, and later production adapters remain
-  outstanding.
+  isolation were implemented in the harness. The local exception above corrects
+  `CTRL-001`; `CTRL-005` remains unwired, CI is absent, and later production
+  adapters remain outstanding.
 - **Included findings:** `TEST-001`, `TEST-002`, and test-first coverage for
   `CTRL-001` and `CTRL-005`.
 - **Expected areas:** test layout and runner; cap-list/controller boundaries;

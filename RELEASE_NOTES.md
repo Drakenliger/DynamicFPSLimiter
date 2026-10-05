@@ -15,6 +15,17 @@ arithmetic, preventing fictitious ~49.7 day idle durations and non-zero `BOOL` t
 Import isolation and non-Windows compatibility are preserved. Physical Windows long-uptime
 validation remains pending.
 
+### CTRL-001 — reviewed correction for draft publication
+
+Requested decreases now select the immediately preceding ascending-ladder cap
+when the current cap is present above minimum and measured FPS is at or above
+it. Previously this path selected nothing. Collapse, absent-current fallback,
+exact Decimal representation, and existing RTSS application/error behavior
+remain unchanged. All 106 deterministic tests pass; new regressions fail against
+the old selector. Independent Antigravity review approved the fix, and the
+coordinator selected it for local branch `codex/tour-2-codex`. Windows/physical
+acceptance remains pending. CTRL-001 is not merged or released.
+
 ### RTSS Stage 1 - preparatory internal infrastructure
 
 RTSS Stage 1 adds deterministic contracts for RTSS profile identity, apply
@@ -35,22 +46,23 @@ Lossless Scaling, LHM, PDH, GUI, or lifecycle validation is included. This is
 preparatory internal infrastructure; Stage 2 transaction coordination and
 production integration remain future work.
 
-Current work consists only of review reconciliation, safety architecture, test
-planning, tracked project-status documentation, the initial deterministic
+Before the local CTRL-001 correction, work consisted only of review
+reconciliation, safety architecture, test planning, tracked project-status documentation, the initial deterministic
 controller/adapter harness, and the RTSS Stage 1 contract layer and tests. The
 harness uses standard-library `unittest`, characterizes the reviewed legacy
 decrease behavior, and supplies pure contracts and fakes without changing
 production controller or RTSS policy.
 
-`CTRL-001` remains open and its defective no-step-down result is intentionally
-preserved. `CTRL-005` has pure cap-ladder validation scaffolding, but it is not
-wired into runtime. The automated-suite portion of `TEST-001` exists without
+`CTRL-001` is locally corrected and independently reviewed; physical validation
+remains pending.
+`CTRL-005` has pure cap-ladder validation scaffolding, but it is not wired into
+runtime. The automated-suite portion of `TEST-001` exists without
 CI, while `TEST-002` has initial deterministic seams and still requires later
 production adapters.
 
 ### Known high-priority limitations
 
-- The normal controller decrease path can fail to step down.
+- The local one-step decrease correction still requires runtime acceptance.
 - FPS, process, and sensor evidence can be stale, ambiguous, or tied to the
   wrong backend.
 - LibreHardwareMonitor mode remains coupled to legacy PDH behavior.

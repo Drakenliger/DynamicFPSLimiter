@@ -21,7 +21,7 @@ Run the initial deterministic suite with:
 python -m unittest discover -s tests -t . -v
 ```
 
-The harness currently covers pure legacy decrease characterization
+The harness currently covers pure decrease regressions and unchanged-behavior coverage
 (`CTRL-001`), an unwired structural cap-ladder validator (`CTRL-005`),
 standard-library discovery and import isolation (`TEST-001`), initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`),
@@ -83,7 +83,15 @@ samples:
 Cover ascending lists at index zero, middle, and maximum; current cap absent;
 one-element and empty lists; duplicate/unsorted input rejection; Decimal values;
 finite/range validation; and proposed values below, equal to, or above measured
-FPS. These tests characterize `CTRL-001` before its behavior changes.
+FPS. `CTRL-001` now has regressions for equality and above-cap FPS at middle
+and maximum caps, minimum/empty/single-element boundaries, and exact Decimal
+step-down. Collapse and absent-current fallback retain characterization coverage,
+as do the existing production RTSS ValueError application tests.
+
+Local validation on 6 October 2026: the new regressions failed in eight subcases
+against the old selector, then all 97 tests passed with
+`python3 -m unittest discover -s tests` after correction. `git diff --check`
+passed. No Windows or physical runtime acceptance was performed.
 
 ## Fake clock and freshness tests
 

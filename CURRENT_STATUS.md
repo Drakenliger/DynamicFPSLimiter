@@ -1,5 +1,27 @@
 # Current Status
 
+## CTRL-001 draft preparation — 6 October 2026
+
+Afrim authorized this focused change and draft publication. The selected
+correction is rebased onto merged `main` at `6d4abe6`. `select_legacy_decrease_cap` now returns the
+preceding ascending-ladder entry for a requested decrease when the current cap
+is present above minimum and measured FPS is equal to or above it. Collapse,
+absent-cap fallback, exact Decimal values, caller wiring, and RTSS error
+behavior are preserved. No other finding is addressed.
+
+All 106 tests pass with `python3 -m unittest discover -s tests`; the new
+regressions failed in eight subcases against the old selector. Antigravity
+approved this candidate in read-only cross-review; no substantive findings
+were raised. The coordinator selected it for smaller, focused tests with the
+same production fix on branch `codex/tour-2-codex`. The release-notes rebase
+conflict retained both GUI-004 and CTRL-001 entries; production/tests rebased
+without conflict. Draft publication is authorized; merge remains a separate
+approval. No Windows/RTSS runtime mutation occurred.
+Windows/RTSS/hardware acceptance is pending.
+
+The following repository and phase record is the historical Stage 1 snapshot,
+not a claim about the current local branch or publication state.
+
 ## Repository
 
 - Fork: `Drakenliger/DynamicFPSLimiter`

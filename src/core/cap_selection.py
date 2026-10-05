@@ -1,4 +1,4 @@
-"""Pure cap-ladder validation and legacy decrease selection."""
+"""Pure cap-ladder validation and decrease selection for the legacy caller."""
 
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ def select_legacy_decrease_cap(
     measured_fps: ExactCapValue,
     decrease_requested: bool,
 ) -> ExactCapValue | None:
-    """Reproduce the reviewed decrease choice, including CTRL-001.
+    """Select one step down, retaining legacy collapse and fallback behavior.
 
-    This intentionally leaves the normal one-step decrease unreachable when the
-    current cap is present in the ladder and is at or below measured FPS.
+    For an ascending ladder, a present cap above minimum steps down once when
+    measured FPS is at or above that cap.
     """
 
     if not decrease_requested or not cap_ladder:
@@ -74,7 +74,7 @@ def select_legacy_decrease_cap(
         if lower_values:
             if current_cap <= measured_fps:
                 current_index = cap_ladder.index(current_cap)
-                if current_index < 0:
+                if current_index > 0:
                     return cap_ladder[current_index - 1]
             else:
                 return max(lower_values)

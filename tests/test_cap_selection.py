@@ -1,4 +1,4 @@
-"""Characterization tests for CTRL-001 and validation tests for CTRL-005."""
+"""Regression tests for CTRL-001 and validation tests for CTRL-005."""
 
 from __future__ import annotations
 
@@ -103,23 +103,30 @@ class ScriptedLegacyRtssWriter:
 
 
 class LegacyDecreaseSelectionTests(unittest.TestCase):
-    """CTRL-001 differential characterization without correcting the defect."""
+    """CTRL-001 regressions and unchanged legacy behavior coverage."""
 
     def test_CTRL_001_no_decrease_request_selects_nothing(self):
         self.assertIsNone(
             select_legacy_decrease_cap([30, 60, 90], 90, 75, False)
         )
 
-    def test_CTRL_001_present_caps_do_not_step_down_at_or_below_measured_fps(self):
+    def test_CTRL_001_present_caps_step_down_at_equal_or_above_cap_fps(self):
         ladder = [30, 60, 90]
-        for current_cap in ladder:
-            with self.subTest(current_cap=current_cap):
-                self.assertIsNone(
-                    select_legacy_decrease_cap(
-                        ladder, current_cap, Decimal("120"), True
-                    ),
-                    "reviewed defect: a present cap does not step down",
-                )
+        for current_cap, expected in ((60, 30), (90, 60)):
+            for measured_fps in (current_cap, 120):
+                with self.subTest(current_cap=current_cap, measured_fps=measured_fps):
+                    self.assertIsNone(
+                        reviewed_inline_decrease_reference(
+                            ladder, current_cap, measured_fps, True
+                        ),
+                        "the reviewed selector leaves the decrease unreachable",
+                    )
+                    self.assertEqual(
+                        select_legacy_decrease_cap(
+                            ladder, current_cap, measured_fps, True
+                        ),
+                        expected,
+                    )
 
     def test_CTRL_001_missing_current_cap_falls_back_below_current_cap(self):
         self.assertEqual(
@@ -133,10 +140,28 @@ class LegacyDecreaseSelectionTests(unittest.TestCase):
             60,
         )
 
-    def test_CTRL_001_current_cap_equal_to_measured_fps_selects_nothing(self):
-        self.assertIsNone(
-            select_legacy_decrease_cap([30, 60, 90], 60, 60, True)
-        )
+    def test_CTRL_001_minimum_cap_selects_nothing(self):
+        for measured_fps in (20, 30, 120):
+            with self.subTest(measured_fps=measured_fps):
+                self.assertIsNone(
+                    select_legacy_decrease_cap([30, 60, 90], 30, measured_fps, True)
+                )
+
+    def test_CTRL_001_empty_ladder_selects_nothing(self):
+        self.assertIsNone(select_legacy_decrease_cap([], 60, 120, True))
+
+    def test_CTRL_001_step_down_preserves_exact_decimal_ladder_entry(self):
+        ladder = [Decimal("59.94"), Decimal("60.00"), Decimal("117.50")]
+        for current_index in (1, 2):
+            for measured_fps in (ladder[current_index], Decimal("120.00")):
+                with self.subTest(current_index=current_index, measured_fps=measured_fps):
+                    selected = select_legacy_decrease_cap(
+                        ladder, ladder[current_index], measured_fps, True
+                    )
+                    self.assertIs(selected, ladder[current_index - 1])
+                    self.assertEqual(
+                        selected.as_tuple(), ladder[current_index - 1].as_tuple()
+                    )
 
     def test_CTRL_001_no_value_below_measured_fps_selects_nothing(self):
         self.assertIsNone(
@@ -157,12 +182,11 @@ class LegacyDecreaseSelectionTests(unittest.TestCase):
         self.assertIsInstance(selected, Decimal)
         self.assertEqual(selected.as_tuple(), Decimal("60.00").as_tuple())
 
-    def test_CTRL_001_matches_reviewed_inline_algorithm_over_matrix(self):
+    def test_CTRL_001_matches_reviewed_algorithm_outside_corrected_branch(self):
         ladders = (
             [30, 60, 90],
             [Decimal("59.94"), Decimal("60.00"), Decimal("117.50")],
             [60],
-            [90, 30, 60],
         )
         current_caps = (20, 30, 45, 60, 75, 90, 120, Decimal("59.94"))
         measured_values = (20, 30, 59, 60, 75, 90, 120, Decimal("117.50"))
@@ -171,6 +195,12 @@ class LegacyDecreaseSelectionTests(unittest.TestCase):
             for current_cap in current_caps:
                 for measured_fps in measured_values:
                     for decrease_requested in (False, True):
+                        if (
+                            decrease_requested
+                            and current_cap in ladder[1:]
+                            and current_cap <= measured_fps
+                        ):
+                            continue  # The corrected branch is tested above.
                         with self.subTest(
                             ladder=ladder,
                             current_cap=current_cap,

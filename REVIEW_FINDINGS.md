@@ -314,6 +314,18 @@ ledger and its identifiers; they are not duplicate ledger entries.
 - **Disposition:** Deferred to the Stage 2 capability and supported-name
   policy.
 
+## CTRL-001 local correction — 6 October 2026
+
+The impossible `current_index < 0` condition is corrected to `> 0` in the
+existing selector, preserving its API and production caller. On `[30, 60, 90]`,
+cap 90 with measured FPS 90 or 120 now selects 60 instead of no cap; cap 60
+selects 30, and minimum remains unchanged. The original reference is retained
+only for explicit corrected-difference and unchanged-branch tests. New
+regressions fail against the old selector; all 97 tests pass after correction.
+Antigravity approved this fix with no substantive findings; the coordinator
+selected it for local branch `codex/tour-2-codex`. Physical acceptance remains
+pending; other findings and RTSS application/error behavior are unchanged.
+
 ## Active finding ledger
 
 `Owner` names the responsible workstream, not an assigned individual.
@@ -323,7 +335,7 @@ and integration evidence remains outstanding.
 
 | Pri | ID | Severity / status | Active finding | Owner | Target branch / PR | Automated tests | Manual evidence | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P0 | CTRL-001 | High / Confirmed | Normal one-step cap decrease is unreachable | Controller | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Passing differential cap-selection characterization; defect preserved | RX 7900 XTX sustained overload trace | Open |
+| P0 | CTRL-001 | High / Confirmed | Normal one-step cap decrease is unreachable | Controller | `test/controller-and-adapter-harness` -> `fix/controller-validity-and-delays` | Equality/above-cap one-step and exact Decimal regressions pass; unchanged-behavior matrix retained | RX 7900 XTX sustained overload trace pending | Validation (local, independently reviewed) |
 | P0 | CTRL-002 | High / Confirmed | Stale FPS and process identity can drive decisions | Controller | `fix/controller-validity-and-delays` | Fake clock/freshness | Menus, Alt-Tab, RTSS restart | Open |
 | P1 | CTRL-003 | Medium / Confirmed | No settling period follows an RTSS cap change | Controller | `fix/controller-validity-and-delays` | Fake clock/controller | Cap timing and frametime trace | Open |
 | P1 | CTRL-004 | Medium / Confirmed design gap | No explicit CPU-bound suppression policy | Controller | `fix/controller-validity-and-delays` | Controller sensor-role policy | CPU/GPU-bound LS traces | Open |
