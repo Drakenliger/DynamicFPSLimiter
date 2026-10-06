@@ -352,13 +352,24 @@ class RTSSController:
         denominator = 1
         if os.path.isfile(profile_file):
             with open(profile_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip().startswith("LimitDenominator="):
-                        try:
-                            denominator = int(line.strip().split("=")[1])
-                        except Exception:
-                            denominator = 1
+                lines = f.readlines()
+
+            in_framerate = False
+            has_sections = any(l.strip().startswith("[") and l.strip().endswith("]") for l in lines)
+
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("[") and stripped.endswith("]"):
+                    if stripped.lower() == "[framerate]":
+                        in_framerate = True
+                    elif in_framerate:
                         break
+                elif (in_framerate or not has_sections) and stripped.startswith("LimitDenominator="):
+                    try:
+                        denominator = int(stripped.split("=", 1)[1])
+                    except Exception:
+                        denominator = 1
+                    break
 
         if denominator < 1:
             denominator = 1
