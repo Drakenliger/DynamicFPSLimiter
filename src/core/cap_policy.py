@@ -1,6 +1,11 @@
 from decimal import Decimal
 
 
+def exit_restore_cap(running, profile, limits):
+    """Restore a running profile to its ladder maximum; stopped exits skip it."""
+    return (profile, Decimal(max(limits))) if running else None
+
+
 def build_cap_model(limits):
     """Snapshot a cap ladder and its extrema and padded plot bounds."""
     ladder = tuple(sorted(set(Decimal(x) for x in limits)))
