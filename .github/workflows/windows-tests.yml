@@ -1,0 +1,27 @@
+name: Windows tests
+
+on:
+  push:
+    branches: ["codex/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Pytest (Windows, Python 3.12)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r src/requirements.txt
+      - name: Run full pytest suite
+        run: python -m pytest -q
