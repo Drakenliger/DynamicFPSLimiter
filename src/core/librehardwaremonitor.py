@@ -3,34 +3,64 @@ from pathlib import Path
 from collections import deque, defaultdict
 import time
 import threading
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError:
+    np = None
+
+def _percentile(data, percentile):
+    if not data:
+        return None
+    if np is not None:
+        return float(np.percentile(data, percentile))
+    # Pure Python percentile fallback when numpy is not installed
+    s = sorted(data)
+    k = (len(s) - 1) * (percentile / 100.0)
+    f = int(k)
+    c = f + 1
+    if c >= len(s):
+        return float(s[f])
+    return float(s[f] + (s[c] - s[f]) * (k - f))
 import os
 import sys
 
-def get_selected_sensor_values(hardware, sensor_map):
-    """Return a dict of selected sensor values for the given hardware, only for specified sensor types."""
-    result = {}
-    name_counts = {}  # Track counts for duplicate sensor names
+def get_selected_sensor_details(hardware, sensor_map):
+    """Return a list of dicts for selected sensors: [{'sensor_type': ..., 'name': ..., 'value': ..., 'identifier': ...}]"""
+    details = []
+    name_counts = defaultdict(int)
 
     for sensor in hardware.Sensors:
-        if sensor.Value is None:
-            continue
-        # Only process sensor types in sensor_map
         if sensor.SensorType not in sensor_map:
             continue
 
         wanted_names = sensor_map.get(sensor.SensorType)
-        if wanted_names is None or sensor.Name in wanted_names:
-            # Handle duplicate sensor names
-            base_name = sensor.Name
-            count = name_counts.get(base_name, 0)
-            if count == 0:
-                name = base_name
-            else:
-                name = f"{base_name} ({count})"
-            name_counts[base_name] = count + 1
+        if wanted_names is not None and sensor.Name not in wanted_names:
+            continue
 
-            result.setdefault(sensor.SensorType, {})[name] = sensor.Value
+        base_name = sensor.Name
+        stype = sensor.SensorType
+        count = name_counts[(stype, base_name)]
+        if count == 0:
+            name = base_name
+        else:
+            name = f"{base_name} ({count})"
+        name_counts[(stype, base_name)] += 1
+
+        identifier = str(sensor.Identifier) if hasattr(sensor, "Identifier") and sensor.Identifier is not None else None
+        details.append({
+            "sensor_type": sensor.SensorType,
+            "name": name,
+            "value": sensor.Value,
+            "identifier": identifier,
+        })
+    return details
+
+def get_selected_sensor_values(hardware, sensor_map):
+    """Return a dict of selected sensor values for the given hardware, only for specified sensor types."""
+    result = {}
+    for d in get_selected_sensor_details(hardware, sensor_map):
+        if d["value"] is not None:
+            result.setdefault(d["sensor_type"], {})[d["name"]] = d["value"]
     return result
 
 def get_all_sensor_infos(base_dir, logger=None):
@@ -63,23 +93,24 @@ def get_all_sensor_infos(base_dir, logger=None):
             if hw.HardwareType == HardwareType.Cpu:
                 cpu_count += 1
                 param_indices = {"Load": 0, "Power": 0, "Temperature": 0}
-                name_counts = {}  # track duplicate sensor names per hardware
+                name_counts = defaultdict(int)  # track duplicate sensor names per sensor type
                 for sensor in hw.Sensors:
                     if sensor.SensorType in [SensorType.Load, SensorType.Power, SensorType.Temperature]:
                         sensor_type_str = sensor.SensorType.ToString() if hasattr(sensor.SensorType, "ToString") else str(sensor.SensorType)
                         param_indices[sensor_type_str] += 1
 
-                        # Handle duplicate sensor names like LHMSensor.get_selected_sensor_values does
+                        # Handle duplicate sensor names per sensor type
                         base_name = sensor.Name
-                        count = name_counts.get(base_name, 0)
+                        count = name_counts[(sensor.SensorType, base_name)]
                         if count == 0:
                             indexed_name = base_name
                         else:
                             indexed_name = f"{base_name} ({count})"
-                        name_counts[base_name] = count + 1
+                        name_counts[(sensor.SensorType, base_name)] = count + 1
 
                         parameter_id = f"cpu{cpu_count}_{sensor_type_str.lower()}_{param_indices[sensor_type_str]:02d}"
                         hw_id = f"cpu{cpu_count}"
+                        identifier = str(sensor.Identifier) if hasattr(sensor, "Identifier") and sensor.Identifier is not None else None
                         sensors.append({
                             "hw_type": hw.HardwareType,
                             "hw_name": hw.Name,
@@ -87,30 +118,32 @@ def get_all_sensor_infos(base_dir, logger=None):
                             "sensor_name": sensor.Name,
                             "sensor_name_indexed": indexed_name,   # match LHMSensor naming for duplicates
                             "parameter_id": parameter_id,
-                            "hw_id": hw_id
+                            "hw_id": hw_id,
+                            "identifier": identifier,
                         })
             elif hw.HardwareType in (HardwareType.GpuAmd, HardwareType.GpuNvidia):
                 gpu_count += 1
                 param_indices = {"Load": 0, "Power": 0, "Temperature": 0}
-                name_counts = {}  # track duplicate sensor names per GPU
+                name_counts = defaultdict(int)  # track duplicate sensor names per sensor type
                 for sensor in hw.Sensors:
                     if sensor.SensorType in [SensorType.Load, SensorType.Power, SensorType.Temperature]:
                         sensor_type_str = sensor.SensorType.ToString() if hasattr(sensor.SensorType, "ToString") else str(sensor.SensorType)
                         param_indices[sensor_type_str] += 1
 
-                        # Handle duplicate sensor names the same way LHMSensor does
+                        # Handle duplicate sensor names per sensor type
                         base_name = sensor.Name
-                        count = name_counts.get(base_name, 0)
+                        count = name_counts[(sensor.SensorType, base_name)]
                         if count == 0:
                             indexed_name_only = base_name
                         else:
                             indexed_name_only = f"{base_name} ({count})"
-                        name_counts[base_name] = count + 1
+                        name_counts[(sensor.SensorType, base_name)] = count + 1
 
                         parameter_id = f"gpu{gpu_count}_{sensor_type_str.lower()}_{param_indices[sensor_type_str]:02d}"
                         hw_id = f"gpu{gpu_count}"
                         # Build the indexed sensor name exactly as LHMSensor._poll_loop uses for gpu_percentiles keys
                         sensor_name_indexed = f"{gpu_count} {indexed_name_only}"
+                        identifier = str(sensor.Identifier) if hasattr(sensor, "Identifier") and sensor.Identifier is not None else None
                         sensors.append({
                             "hw_type": hw.HardwareType,
                             "hw_name": hw.Name,
@@ -118,7 +151,8 @@ def get_all_sensor_infos(base_dir, logger=None):
                             "sensor_name": sensor.Name,
                             "sensor_name_indexed": sensor_name_indexed,
                             "parameter_id": parameter_id,
-                            "hw_id": hw_id
+                            "hw_id": hw_id,
+                            "identifier": identifier,
                         })
     finally:
         computer.Close()
@@ -261,50 +295,80 @@ class LHMSensor:
         self.logger.add_log("Stopped LibreHardwareMonitor polling.")
 
     def _poll_loop(self):
-        def calculate_percentile(data, percentile):
-            if not data:
-                return None
-            return float(np.percentile(data, percentile))
+        calculate_percentile = _percentile
 
         self.cpu_percentiles = defaultdict(float)
         self.gpu_percentiles = defaultdict(float)
 
         while not self._should_stop.is_set() and self._running():
             gpu_index = 1
+            refreshed_cpu_keys = set()
+            refreshed_gpu_keys = set()
+            cpu_hw_name = None
+
             for hw in self.computer.Hardware:
-                # CPU logic unchanged
-                if hw.Name == self.cpu_name and hw.HardwareType == self.HardwareType.Cpu:
+                if hw.HardwareType == self.HardwareType.Cpu:
                     hw.Update()
-                    values = get_selected_sensor_values(hw, self.CPU_SENSORS)
+                    details = get_selected_sensor_details(hw, self.CPU_SENSORS)
                     with self._lock:
-                        for sensor_type, sensors in values.items():
-                            for name, value in sensors.items():
-                                key = (sensor_type, name)
-                                self.cpu_history[key].append(round(value, 2))
-                                self.cpu_history_long[key].append(round(value, 2))
-                                self.cpu_percentiles[key] = round(
-                                    calculate_percentile(self.cpu_history[key], self.percentile), 2
-                                )
-                    cpu_hw_name = hw.Name  # Save for display
-                # Loop through all GPUs
+                        for d in details:
+                            if d["value"] is None:
+                                continue
+                            sensor_type = d["sensor_type"]
+                            name = d["name"]
+                            val = round(d["value"], 2)
+                            key = (sensor_type, name)
+                            identifier = d["identifier"]
+
+                            self.cpu_history[key].append(val)
+                            self.cpu_history_long[key].append(val)
+                            p = round(calculate_percentile(self.cpu_history[key], self.percentile), 2)
+                            self.cpu_percentiles[key] = p
+                            refreshed_cpu_keys.add(key)
+
+                            if identifier:
+                                self.cpu_history_long[identifier].append(val)
+                                self.cpu_percentiles[identifier] = p
+                                refreshed_cpu_keys.add(identifier)
+                    cpu_hw_name = hw.Name
                 elif hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
                     hw.Update()
-                    values = get_selected_sensor_values(hw, self.GPU_SENSORS)
+                    details = get_selected_sensor_details(hw, self.GPU_SENSORS)
                     with self._lock:
-                        for sensor_type, sensors in values.items():
-                            for name, value in sensors.items():
-                                key = (sensor_type, f"{gpu_index} {name}")
-                                self.gpu_history[key].append(round(value, 2))
-                                self.gpu_history_long[key].append(round(value, 2))
-                                self.gpu_percentiles[key] = round(
-                                    calculate_percentile(self.gpu_history[key], self.percentile), 2
-                                )
-                    # Save GPU name for display
+                        for d in details:
+                            if d["value"] is None:
+                                continue
+                            sensor_type = d["sensor_type"]
+                            name = f"{gpu_index} {d['name']}"
+                            val = round(d["value"], 2)
+                            key = (sensor_type, name)
+                            identifier = d["identifier"]
+
+                            self.gpu_history[key].append(val)
+                            self.gpu_history_long[key].append(val)
+                            p = round(calculate_percentile(self.gpu_history[key], self.percentile), 2)
+                            self.gpu_percentiles[key] = p
+                            refreshed_gpu_keys.add(key)
+
+                            if identifier:
+                                self.gpu_history_long[identifier].append(val)
+                                self.gpu_percentiles[identifier] = p
+                                refreshed_gpu_keys.add(identifier)
+
                     if not hasattr(self, 'gpu_hw_names'):
                         self.gpu_hw_names = []
                     if hw.Name not in self.gpu_hw_names:
                         self.gpu_hw_names.append(hw.Name)
                     gpu_index += 1
+
+            # Mark unrefreshed sensors missing (None) each tick
+            with self._lock:
+                for k in list(self.cpu_percentiles.keys()):
+                    if k not in refreshed_cpu_keys:
+                        self.cpu_percentiles[k] = None
+                for k in list(self.gpu_percentiles.keys()):
+                    if k not in refreshed_gpu_keys:
+                        self.gpu_percentiles[k] = None
 
             # Update ReadingsText in the GUI
             cpu_str = self.format_history(self.cpu_history, self.cpu_percentiles, cpu_hw_name if 'cpu_hw_name' in locals() else "CPU")
@@ -334,10 +398,13 @@ class LHMSensor:
         lines = [f"{title}:"]
         lines.append(header)
         lines.append("-" * len(header))
-        for (sensor_type, name), values in hist.items():
+        for key, values in hist.items():
+            if not isinstance(key, tuple) or len(key) != 2:
+                continue
+            sensor_type, name = key
             sensor_type_str = getattr(sensor_type, 'name', str(sensor_type))
             last_val = values[-1] if values else 'N/A'
-            percentile_val = percentiles.get((sensor_type, name), 'N/A')
+            percentile_val = percentiles.get(key, 'N/A')
             lines.append(
                 f"{sensor_type_str:<{type_w}}| {name:<{name_w}}| {str(last_val):>{last_w}}| {str(percentile_val):>{perc_w}}"
             )
