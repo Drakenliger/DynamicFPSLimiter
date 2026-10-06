@@ -4,6 +4,17 @@
 
 No fix has been released from the review baseline.
 
+### GUI-004 - Idle timer type declarations and long-uptime tick wraparound fix
+
+Corrected `GUI-004` in `src/core/idle_timer.py` and added 9 deterministic unit test
+regressions in `tests/test_idle_timer.py` (total unit test count increased to 104).
+Explicit argument and return declarations are set (`GetLastInputInfo.restype = wintypes.BOOL`,
+`GetTickCount64.restype = c_ulonglong`, `GetTickCount.restype = c_ulong`). Current tick
+count and `dwTime` are evaluated in the same unsigned 32-bit tick domain using modular
+arithmetic, preventing fictitious ~49.7 day idle durations and non-zero `BOOL` truncation.
+Import isolation and non-Windows compatibility are preserved. Physical Windows long-uptime
+validation remains pending.
+
 ### RTSS Stage 1 - preparatory internal infrastructure
 
 RTSS Stage 1 adds deterministic contracts for RTSS profile identity, apply

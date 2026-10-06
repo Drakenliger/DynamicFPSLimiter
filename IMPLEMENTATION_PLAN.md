@@ -242,6 +242,10 @@ state transactional and generation-owned.
   values without phase 9 evidence.
 - **Dependencies:** phase 2 restoration, phase 3 lifecycle, phase 4 controller
   state, and current-generation sensor publications.
+- **GUI-004 Status:** Corrected in `src/core/idle_timer.py` and covered by
+  deterministic regressions in `tests/test_idle_timer.py`. Win32 type declarations
+  applied, 32-bit tick domain modular arithmetic used, and non-Windows import
+  isolation preserved. Physical long-uptime integration remains pending.
 - **Completion criteria:** no iteration combines old and new profile state;
   process identity is canonical; idle owns the last verified active cap within
   one session/profile; Win32 calls have explicit ABI declarations.

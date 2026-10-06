@@ -63,9 +63,16 @@
   were synchronized at that commit.
 - All 95 deterministic unit tests passed during creation, independent review,
   and pre-push validation of `e002045`.
-- No application source or external runtime state changed during that
-  documentation work, and `SameSalamander5710/DynamicFPSLimiter` was not
-  involved.
+- `GUI-004` long-uptime idle timer types and tick wraparound corrected in
+  `src/core/idle_timer.py` and regression tested in `tests/test_idle_timer.py`.
+  Explicit Win32 declarations were applied (`GetLastInputInfo.restype = wintypes.BOOL`,
+  `GetTickCount64.restype = c_ulonglong`, `GetTickCount.restype = c_ulong`).
+  Current ticks and `dwTime` are compared in the same unsigned 32-bit tick domain
+  using modular arithmetic, preventing fictitious ~49.7 day idle durations and
+  non-zero `BOOL` truncation. Non-Windows import isolation and `GetLastInputInfo`
+  failure propagation are preserved. Total unit tests increased from 95 to 104.
+- No application source or external runtime state changed beyond this focused
+  `GUI-004` fix, and `SameSalamander5710/DynamicFPSLimiter` was not involved.
 - At the pre-merge snapshot verified on 25 July 2026, draft pull request #3
   targeted `main` from `fix/rtss-transaction-and-restore`, was open, draft,
   mergeable, and unmerged, and contained three commits and 12 changed files at

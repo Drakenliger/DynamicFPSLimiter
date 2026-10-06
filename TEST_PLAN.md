@@ -23,12 +23,13 @@ python -m unittest discover -s tests -t . -v
 
 The harness currently covers pure legacy decrease characterization
 (`CTRL-001`), an unwired structural cap-ladder validator (`CTRL-005`),
-standard-library discovery and import isolation (`TEST-001`), and initial fake
-clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`).
+standard-library discovery and import isolation (`TEST-001`), initial fake
+clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`),
+and long-uptime idle timer type/tick-wrap arithmetic regressions (`GUI-004`).
 It also covers the RTSS Stage 1 contract and deterministic-fake validation
-recorded below. It performs no live RTSS, GUI, sensor, process, registry,
-profile, or hardware interaction. CI and later production adapters remain
-outstanding.
+recorded below. The harness runs 104 deterministic unit tests without live RTSS,
+GUI, sensor, process, registry, profile, or hardware interaction. CI and later
+production adapters remain outstanding.
 
 ## RTSS Stage 1 validation record
 

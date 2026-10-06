@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Fixed
+- Fixed GUI-004: Windows idle timer type declarations and long-uptime 32-bit tick domain modular arithmetic in `src/core/idle_timer.py`. Added regression test suite in `tests/test_idle_timer.py`.
+
 ## [v5.0.0-beta.1] - 2025-11-15
 
 ### Added
