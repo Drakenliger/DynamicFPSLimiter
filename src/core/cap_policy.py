@@ -64,3 +64,22 @@ def confirm_librehm_decision(history, decrease, increase, drop_delay, raise_dela
     drops = min(history[0] + 1, drop_delay) if decrease else 0
     raises = min(history[1] + 1, raise_delay) if increase else 0
     return (drops, raises), (drops >= drop_delay, raises >= raise_delay)
+
+
+def evaluate_legacy_cap_change(gpu_values, cpu_values, drop_delay, raise_delay,
+                               gpu_upper, cpu_upper, gpu_lower, cpu_lower):
+    """Preserve Legacy thresholds; incomplete evidence makes this pass neutral.
+
+    Check both channels over both relevant windows before comparing values, so
+    an overloaded channel cannot authorize a drop with missing peer evidence.
+    """
+    gpu_drop, cpu_drop = gpu_values[-drop_delay:], cpu_values[-drop_delay:]
+    gpu_raise, cpu_raise = gpu_values[-raise_delay:], cpu_values[-raise_delay:]
+    if any(value is None for window in (gpu_drop, cpu_drop, gpu_raise, cpu_raise)
+           for value in window):
+        return False, False
+    decrease = (len(gpu_values) >= drop_delay and all(v >= gpu_upper for v in gpu_drop)
+                or len(cpu_values) >= drop_delay and all(v >= cpu_upper for v in cpu_drop))
+    increase = (len(gpu_values) >= raise_delay and all(v <= gpu_lower for v in gpu_raise)
+                and len(cpu_values) >= raise_delay and all(v <= cpu_lower for v in cpu_raise))
+    return decrease, increase

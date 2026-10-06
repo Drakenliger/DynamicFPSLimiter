@@ -2,6 +2,7 @@ from core.lhm_loader import get_types, LHMLoadError
 import os
 from pathlib import Path
 import statistics
+from core.cap_policy import evaluate_legacy_cap_change
 from collections import deque
 
 class FPSUtils:
@@ -137,40 +138,22 @@ class FPSUtils:
         upperlimit = self.dpg.get_value("input_maxcap")
         self.dpg.set_value("input_customfpslimits", f"{lowerlimit}, {upperlimit}")
         
-    def evaluate_cap_change(self, gpu_values, cpu_values):
+    def evaluate_cap_change(self, gpu_values, cpu_values, monitoring_method):
         """
         Returns a tuple (should_decrease, should_increase).
         Preserves existing semantics:
           - Legacy: decrease = (gpu_decrease OR cpu_decrease), increase = (gpu_increase AND cpu_increase)
           - LibreHM: decrease = any(enabled sensor value >= upper), increase = all(enabled sensor value <= lower)
         """
-        monitoring_method = self.dpg.get_value("input_monitoring_method")
         cm = self.cm
         lhm_sensor = self.lhm_sensor
 
         # Legacy behavior: GPU/CPU thresholds and delays
         if monitoring_method == "Legacy":
-            gpu_decrease_condition = (
-                len(gpu_values) >= cm.delaybeforedecrease and
-                all(value >= cm.gpucutofffordecrease for value in gpu_values[-cm.delaybeforedecrease:])
-            )
-            cpu_decrease_condition = (
-                len(cpu_values) >= cm.delaybeforedecrease and
-                all(value >= cm.cpucutofffordecrease for value in cpu_values[-cm.delaybeforedecrease:])
-            )
-            should_decrease = gpu_decrease_condition or cpu_decrease_condition
-
-            gpu_increase_condition = (
-                len(gpu_values) >= cm.delaybeforeincrease and
-                all(value <= cm.gpucutoffforincrease for value in gpu_values[-cm.delaybeforeincrease:])
-            )
-            cpu_increase_condition = (
-                len(cpu_values) >= cm.delaybeforeincrease and
-                all(value <= cm.cpucutoffforincrease for value in cpu_values[-cm.delaybeforeincrease:])
-            )
-            should_increase = gpu_increase_condition and cpu_increase_condition
-
-            return (should_decrease, should_increase)
+            return evaluate_legacy_cap_change(
+                gpu_values, cpu_values, cm.delaybeforedecrease, cm.delaybeforeincrease,
+                cm.gpucutofffordecrease, cm.cpucutofffordecrease,
+                cm.gpucutoffforincrease, cm.cpucutoffforincrease)
 
         # LibreHM behavior: evaluate enabled sensors once and derive decrease/increase
         elif monitoring_method == "LibreHM":

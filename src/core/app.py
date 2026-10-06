@@ -418,7 +418,7 @@ def monitoring_loop(captured_session):
                     if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
                                           cm.minvalidgpu, cm.minvalidfps):
 
-                        should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values)
+                        should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
                         if monitoring_method == "LibreHM":
                             with session_lock:
                                 if not session_is_current(captured_session, session_number, running):

@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from core.cap_policy import cap_readings_valid, confirm_librehm_decision
+from core.cap_policy import cap_readings_valid, confirm_librehm_decision, evaluate_legacy_cap_change
 from test_app_session import load_app, worker, finish, restart
 
 
@@ -15,7 +15,7 @@ def real_evaluator(ns, enabled=True, value=95):
     tree = ast.parse((Path(__file__).resolve().parents[1] / 'src/core/fps_utils.py').read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'FPSUtils')
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'evaluate_cap_change')
-    scope = {'statistics': statistics}
+    scope = {'statistics': statistics, 'evaluate_legacy_cap_change': evaluate_legacy_cap_change}
     exec(compile(ast.Module(body=[method], type_ignores=[]), '<FPSUtils>', 'exec'), scope)
     values = {'input_monitoring_method': 'LibreHM', 'input_load_enable': enabled,
               'input_load_upper': 90, 'input_load_lower': 70}
@@ -201,16 +201,16 @@ def test_real_librehm_any_drop_all_raise_and_missing_sensor_semantics():
     sensor.gpu_history_long[('Load', '1 Other')] = [50, 50]
     sensor.gpu_percentiles[('Load', '1 Other')] = 95
     evaluate = ns['fps_utils'].evaluate_cap_change
-    assert evaluate([], []) == (True, False)
+    assert evaluate([], [], 'LibreHM') == (True, False)
     sensor.gpu_percentiles[('Load', '1 Other')] = 80
-    assert evaluate([], []) == (False, False)
+    assert evaluate([], [], 'LibreHM') == (False, False)
     sensor.gpu_percentiles[('Load', '1 Other')] = 50
-    assert evaluate([], []) == (False, True)
+    assert evaluate([], [], 'LibreHM') == (False, True)
     # Existing behavior ignores a missing reading when other selected sensors have data.
     sensor.gpu_percentiles[('Load', '1 Other')] = None
-    assert evaluate([], []) == (False, True)
+    assert evaluate([], [], 'LibreHM') == (False, True)
     ns['cm'].sensor_infos = []
-    assert evaluate([], []) == (False, False)
+    assert evaluate([], [], 'LibreHM') == (False, False)
 
 
 def test_librehm_confirmed_raise_preserves_existing_cooldown():
@@ -219,3 +219,78 @@ def test_librehm_confirmed_raise_preserves_existing_cooldown():
     ns['cm'].delaybeforeincrease = 3
     ns['CurrentFPSOffset'] = -60
     assert run_passes(ns, writes, [(False, True)] * 6) == [3, 6]
+
+
+@pytest.mark.parametrize('direction', ['drop', 'raise'])
+@pytest.mark.parametrize('channel', ['gpu', 'cpu'])
+@pytest.mark.parametrize('position', [0, 1])
+@pytest.mark.parametrize('opposing', [50, 95])
+def test_real_legacy_none_window_makes_no_decision(direction, channel, position, opposing):
+    ns, _, _, _ = load_app()
+    _, values = real_evaluator(ns)
+    values['input_monitoring_method'] = 'Legacy'
+    ns['cm'].delaybeforedecrease = ns['cm'].delaybeforeincrease = 2
+    incomplete = [95 if direction == 'drop' else 0] * 2
+    incomplete[position] = None
+    other = [opposing] * 2
+    gpu, cpu = (incomplete, other) if channel == 'gpu' else (other, incomplete)
+    assert ns['fps_utils'].evaluate_cap_change(gpu, cpu, 'Legacy') == (False, False)
+
+
+def test_profile_switch_during_real_evaluator_pins_backend_and_continues():
+    import sys
+    import threading
+    ns, writes, _, _ = load_app()
+    _, values = real_evaluator(ns)
+    ns['cm'].delaybeforedecrease = 2
+    ns['gpu_monitor'].gpu_percentile = None
+    paused, release = threading.Event(), threading.Event()
+    calls, reads, ticks = [], [], []
+    original_get = ns['dpg'].get_value
+    def get_value(tag):
+        if tag == 'input_monitoring_method':
+            reads.append(original_get(tag))
+        return original_get(tag)
+    ns['dpg'].get_value = get_value
+    def load_profile(_, name, __):
+        ns['cm'].current_profile = name
+        values['input_monitoring_method'] = 'Legacy'
+        ns['gpu_monitor'].gpu_percentile = 95
+    ns['cm'].load_profile_callback = load_profile
+    def trace(frame, event, arg):
+        if frame.f_code.co_name == 'evaluate_cap_change' and event == 'call':
+            calls.append((frame.f_locals.get('monitoring_method'), list(frame.f_locals['gpu_values'])))
+            if len(calls) == 2:
+                paused.set()
+                assert release.wait(5)
+        return trace
+    def sleep(_):
+        ticks.append(None)
+        if len(ticks) == 3:
+            ns['running'] = False
+    ns['time'].sleep = sleep
+    def run():
+        sys.settrace(trace)
+        try:
+            ns['monitoring_loop'](1)
+        finally:
+            sys.settrace(None)
+    thread, errors = worker(run)
+    try:
+        assert paused.wait(5)
+        assert calls[1][1] == [None, None]
+        ns['_load_profile_on_gui']('LegacyGame')
+        assert ns['gpu_values'] == ns['cpu_values'] == ns['fps_values'] == []
+        assert ns['CurrentFPSOffset'] == ns['fps_mean'] == 0
+        assert not writes
+    finally:
+        release.set()
+    finish(thread, errors)
+    assert calls == [('LibreHM', [None]), ('LibreHM', [None, None]),
+                     ('Legacy', [95]), ('Legacy', [95, 95])]
+    assert reads == ['LibreHM', 'LibreHM', 'Legacy', 'Legacy']
+    assert ns['gpu_values'] == [95, 95]
+    assert ns['cpu_values'] == [50, 50]
+    assert ns['fps_values'] == [Decimal(95), Decimal(95)]
+    assert ns['fps_mean'] == Decimal(95)
+    assert [w[1] for w in writes] == [('LegacyGame', Decimal(60))]

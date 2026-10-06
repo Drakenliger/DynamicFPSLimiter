@@ -145,4 +145,4 @@ def test_fps_utils_constructs_and_evaluates_without_lhm(monkeypatch, fake_dpg, s
 
     assert fu.SensorType is None
     assert fu.HardwareType is None
-    assert fu.evaluate_cap_change([], []) == (False, False)
+    assert fu.evaluate_cap_change([], [], "LibreHM") == (False, False)
