@@ -7,12 +7,6 @@ from pathlib import Path
 
 import pytest
 
-# Ensure winreg is mocked on non-Windows platforms before importing core.rtss_functions
-if sys.platform != "win32" and "winreg" not in sys.modules:
-    sys.modules["winreg"] = types.ModuleType("winreg")
-
-from core.rtss_functions import RTSSController
-
 
 class FakeDLLCalls:
     """Records DLL invocation sequence and parameters for contract verification."""
@@ -63,8 +57,15 @@ class StubLogger:
 
 
 @pytest.fixture
-def rtss_controller_fake_dll(tmp_path):
+def rtss_controller_fake_dll(tmp_path, monkeypatch):
     import threading
+
+    if sys.platform != "win32" and "winreg" not in sys.modules:
+        monkeypatch.setitem(sys.modules, "winreg", types.ModuleType("winreg"))
+
+    was_rtss_imported = "core.rtss_functions" in sys.modules
+
+    from core.rtss_functions import RTSSController
 
     ctrl = object.__new__(RTSSController)
     rtss_dir = tmp_path / "RTSS"
@@ -89,7 +90,11 @@ def rtss_controller_fake_dll(tmp_path):
     ctrl.UpdateProfiles = fake.update_profiles
     ctrl.SetFlags = fake.set_flags
 
-    return ctrl, fake
+    try:
+        yield ctrl, fake
+    finally:
+        if not was_rtss_imported and "core.rtss_functions" in sys.modules:
+            del sys.modules["core.rtss_functions"]
 
 
 def test_global_decimal_5994_refresh_contract(rtss_controller_fake_dll):
@@ -117,11 +122,15 @@ def test_global_decimal_5994_refresh_contract(rtss_controller_fake_dll):
 
 def test_global_float_5994_refresh_contract(rtss_controller_fake_dll):
     ctrl, fake = rtss_controller_fake_dll
+    global_file = Path(ctrl.rtss_install_path) / "Profiles" / "Global"
 
     limit, denominator = ctrl.set_fractional_framerate("Global", 59.94, update=False)
 
     assert limit == 5994
     assert denominator == 100
+
+    content = global_file.read_text(encoding="utf-8")
+    assert "LimitDenominator=100\n" in content
 
     # Ensure float 59.94 accurately rounds float(59.94)*100 to 5994 and does not truncate
     assert fake.calls == [
@@ -135,10 +144,15 @@ def test_global_float_5994_refresh_contract(rtss_controller_fake_dll):
 @pytest.mark.parametrize("global_name", ["global", "GLOBAL", ""])
 def test_case_insensitive_global_profile_uses_empty_api_name(rtss_controller_fake_dll, global_name):
     ctrl, fake = rtss_controller_fake_dll
+    global_file = Path(ctrl.rtss_install_path) / "Profiles" / "Global"
 
     limit, denominator = ctrl.set_fractional_framerate(global_name, Decimal("59.94"), update=False)
 
     assert (limit, denominator) == (5994, 100)
+
+    content = global_file.read_text(encoding="utf-8")
+    assert "LimitDenominator=100\n" in content
+
     assert fake.calls == [
         ("LoadProfile", b""),
         ("SetProfileProperty", b"FramerateLimit", 5994, 4),
@@ -168,10 +182,15 @@ def test_non_global_profile_uses_given_api_name(rtss_controller_fake_dll):
 
 def test_fractional_framerate_update_true_sequence(rtss_controller_fake_dll):
     ctrl, fake = rtss_controller_fake_dll
+    global_file = Path(ctrl.rtss_install_path) / "Profiles" / "Global"
 
     limit, denominator = ctrl.set_fractional_framerate("Global", Decimal("59.94"), update=True)
 
     assert (limit, denominator) == (5994, 100)
+
+    content = global_file.read_text(encoding="utf-8")
+    assert "LimitDenominator=100\n" in content
+
     # When update=True, set_limit_denominator calls UpdateProfiles,
     # and set_profile_property calls UpdateProfiles.
     assert fake.calls == [
