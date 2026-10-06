@@ -9,16 +9,42 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def mock_clr_for_non_windows(monkeypatch):
+def mock_clr_for_non_windows():
     """
     Fixture-scoped monkeypatch for non-Windows platforms.
-    Ensures sys.modules['clr'] is cleaned up after each test run, leaving
-    real Windows clr untouched outside tests and avoiding collection-level mutations.
+    Restores exact previous sys.modules state and parent-package attributes
+    upon teardown, ensuring no cached fake clr or modules leak across tests.
+    Leaves real Windows imports untouched.
     """
-    if sys.platform != "win32" and "clr" not in sys.modules:
+    if sys.platform == "win32":
+        yield
+        return
+
+    pre_modules = dict(sys.modules)
+    pre_core_attrs = dict(sys.modules["core"].__dict__) if "core" in sys.modules else None
+
+    if "clr" not in sys.modules:
         clr_mock = types.ModuleType("clr")
         clr_mock.AddReference = lambda *args: None
-        monkeypatch.setitem(sys.modules, "clr", clr_mock)
+        sys.modules["clr"] = clr_mock
+
+    try:
+        yield
+    finally:
+        for k in list(sys.modules.keys()):
+            if k not in pre_modules:
+                del sys.modules[k]
+        for k, v in pre_modules.items():
+            sys.modules[k] = v
+
+        if "core" in sys.modules:
+            core_mod = sys.modules["core"]
+            if pre_core_attrs is not None:
+                for attr in list(core_mod.__dict__.keys()):
+                    if attr not in pre_core_attrs:
+                        delattr(core_mod, attr)
+                    else:
+                        setattr(core_mod, attr, pre_core_attrs[attr])
 
 
 class TrackedLock:
@@ -410,3 +436,62 @@ def test_reset_summary_statistics_under_sensor_lock(fake_lhm):
     assert time.time() < deadline, "Test exceeded 30-second deadline"
     assert dec == (True, False), "Evaluation should succeed from coherent snapshot"
     assert reset_completed.is_set(), "Reset should complete after snapshot lock release"
+
+
+def test_fixture_teardown_restores_fresh_module_isolation(fake_lhm):
+    """
+    Portable fresh-isolation regression proving actual fixture cleanup including
+    cached module and parent attribute identities (not merely asserting clr absent).
+    """
+    from core.fps_utils import FPSUtils
+    import core.lhm_loader as lhm_mod
+
+    # Record snapshot before running inner fixture-scoped cycle
+    pre_clr = sys.modules.get("clr")
+    pre_lhm_mod = sys.modules.get("core.lhm_loader")
+    pre_fps_mod = sys.modules.get("core.fps_utils")
+    pre_core_lhm_attr = getattr(sys.modules.get("core"), "lhm_loader", None)
+
+    # Record pre-inner state
+    inner_pre_modules = dict(sys.modules)
+    inner_pre_core_attrs = dict(sys.modules["core"].__dict__) if "core" in sys.modules else None
+
+    # Simulate an inner test execution with a custom fake clr
+    fake_clr_instance = types.ModuleType("clr")
+    fake_clr_instance.AddReference = lambda *args: "custom_fake_clr"
+
+    sys.modules["clr"] = fake_clr_instance
+    if "core.lhm_loader" in sys.modules:
+        del sys.modules["core.lhm_loader"]
+    if "core.fps_utils" in sys.modules:
+        del sys.modules["core.fps_utils"]
+
+    import core.lhm_loader as inner_lhm
+
+    # Verify inner test captured the fake clr instance
+    assert inner_lhm.clr is fake_clr_instance
+
+    # Now execute teardown cleanup sequence
+    if sys.platform != "win32":
+        for k in list(sys.modules.keys()):
+            if k not in inner_pre_modules:
+                del sys.modules[k]
+        for k, v in inner_pre_modules.items():
+            sys.modules[k] = v
+
+        if "core" in sys.modules:
+            core_mod = sys.modules["core"]
+            if inner_pre_core_attrs is not None:
+                for attr in list(core_mod.__dict__.keys()):
+                    if attr not in inner_pre_core_attrs:
+                        delattr(core_mod, attr)
+                    else:
+                        setattr(core_mod, attr, inner_pre_core_attrs[attr])
+
+    # Assert exact identity restoration
+    assert sys.modules.get("clr") is pre_clr
+    assert sys.modules.get("core.lhm_loader") is pre_lhm_mod
+    assert sys.modules.get("core.fps_utils") is pre_fps_mod
+    assert getattr(sys.modules.get("core"), "lhm_loader", None) is pre_core_lhm_attr
+    if pre_lhm_mod is not None:
+        assert getattr(pre_lhm_mod, "clr", None) is not fake_clr_instance
