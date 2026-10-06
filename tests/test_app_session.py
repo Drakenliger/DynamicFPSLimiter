@@ -9,7 +9,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from core.cap_policy import (build_cap_model, next_cap_on_decrease,
-                             cap_readings_valid, confirm_librehm_decision)
+                             cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence)
 from core.session_policy import session_is_current
 
 APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
@@ -41,7 +41,7 @@ def load_app(*, lockless=False):
             cpucutofffordecrease=90, cpucutoffforincrease=70,
             idle_fps_delay=10, idle_mode=False, idle_fps_cap=20,
             gpupollinginterval=100, cpupollinginterval=100, globallimitonexit=False)
-    ns = dict(cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
+    ns = dict(fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
               Decimal=Decimal, running=True, session_number=1, session_lock=threading.Lock(),
               cm=cm, threading=NS(Thread=ThreadStub),
               dpg=NS(get_value=lambda _: "Legacy", set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,

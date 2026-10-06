@@ -39,7 +39,7 @@ from core.autostart import AutoStartManager
 from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
 from core.cap_policy import next_cap_on_decrease, build_cap_model
-from core.cap_policy import cap_readings_valid, confirm_librehm_decision
+from core.cap_policy import cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
@@ -158,6 +158,17 @@ def start_stop_callback(sender, app_data, user_data):
     if not cm.autopilot:
         dpg.configure_item("autopilot_checkbox", enabled=not running)
 
+    with session_lock:
+        if not session_is_current(captured_session, session_number, running, allow_stopped=True):
+            return
+        rtss.set_fractional_fps_direct(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits())))
+        gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+    with session_lock:
+        if not session_is_current(captured_session, session_number, running, allow_stopped=True):
+            return
+        rtss.set_fractional_framerate(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits()))) #To update GUI
+        gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+
     if running:
         
         time_series.clear()
@@ -185,14 +196,6 @@ def start_stop_callback(sender, app_data, user_data):
         logger.add_log("Monitoring stopped")
     logger.add_log(f"Custom FPS limits: {cm.parse_decimal_set_to_string(fps_utils.current_stepped_limits())}")
 
-    with session_lock:
-        if not session_is_current(captured_session, session_number, running, allow_stopped=True):
-            return
-        rtss.set_fractional_fps_direct(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits())))
-    with session_lock:
-        if not session_is_current(captured_session, session_number, running, allow_stopped=True):
-            return
-        rtss.set_fractional_framerate(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits()))) #To update GUI
 
 def reset_stats():
     
@@ -413,6 +416,8 @@ def monitoring_loop(captured_session):
                         if captured_profile_revision != profile_revision:
                             continue
                         rtss.set_fractional_framerate(current_profile, last_active_fps_cap)
+                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                        should_decrease = should_increase = False
                         idle_state = False
                 else:
                     if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
@@ -440,6 +445,8 @@ def monitoring_loop(captured_session):
                                         continue
                                     CurrentFPSOffset = next_fps - current_maxcap
                                     rtss.set_fractional_framerate(current_profile, next_fps)
+                                    gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                    should_decrease = should_increase = False
 
                         # --- COOLDOWN LOGIC ---
                         with session_lock:
@@ -474,6 +481,8 @@ def monitoring_loop(captured_session):
                                             continue
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
+                                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
                             except ValueError:
                                 # If current FPS not in list, find nearest higher value
@@ -491,6 +500,8 @@ def monitoring_loop(captured_session):
                                             continue
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
+                                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
             else:
                 if idle_state:
@@ -503,6 +514,8 @@ def monitoring_loop(captured_session):
                             continue
                         last_active_fps_cap = current_maxcap + CurrentFPSOffset
                         rtss.set_fractional_framerate(current_profile, cm.idle_fps_cap)
+                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                        should_decrease = should_increase = False
                         idle_state = True
 
         if (session_is_current(captured_session, session_number, running)
@@ -655,6 +668,7 @@ def autopilot_loop():
 
 def exit_gui():
     global running, gui_running, rtss_manager, monitoring_thread, plotting_thread, session_number
+    global gpu_values, cpu_values, fps_values, fps_mean
     
     with session_lock:
         session_number += 1
@@ -667,6 +681,7 @@ def exit_gui():
             if not session_is_current(exit_session, session_number, running, allow_stopped=True):
                 return
             rtss.set_fractional_framerate("Global", Decimal(cm.globallimitonexit_fps))
+            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
     if gpu_monitor:
         gpu_monitor.cleanup()

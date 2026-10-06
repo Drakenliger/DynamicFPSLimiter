@@ -289,8 +289,6 @@ def test_profile_switch_during_real_evaluator_pins_backend_and_continues():
     assert calls == [('LibreHM', [None]), ('LibreHM', [None, None]),
                      ('Legacy', [95]), ('Legacy', [95, 95])]
     assert reads == ['LibreHM', 'LibreHM', 'Legacy', 'Legacy']
-    assert ns['gpu_values'] == [95, 95]
-    assert ns['cpu_values'] == [50, 50]
-    assert ns['fps_values'] == [Decimal(95), Decimal(95)]
-    assert ns['fps_mean'] == Decimal(95)
+    assert ns['gpu_values'] == ns['cpu_values'] == ns['fps_values'] == []
+    assert ns['fps_mean'] == 0
     assert [w[1] for w in writes] == [('LegacyGame', Decimal(60))]

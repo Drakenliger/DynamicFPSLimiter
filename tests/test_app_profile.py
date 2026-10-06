@@ -48,9 +48,8 @@ def test_switch_rebuilds_ladder_bounds_and_resets_decisions(initial, target):
     ns['monitoring_loop'](1)
     assert ns['session_number'] == 1
     assert [w[1] for w in writes] == [(initial, LADDERS[initial][-2]), (target, LADDERS[target][-2])]
-    assert ns['fps_values'] == [Decimal(95)]
-    assert ns['gpu_values'] == [90]
-    assert ns['cpu_values'] == [50]
+    assert ns['fps_values'] == ns['gpu_values'] == ns['cpu_values'] == []
+    assert ns['fps_mean'] == 0
     _, _, maximum, lower, upper = build_cap_model(LADDERS[target])
     plots = [args for args in submitted if args[0] is ns['update_plot_FPS']]
     assert plots[-1][1:] == ((Decimal(95)-lower)/(upper-lower)*100,
@@ -95,9 +94,8 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(pause_at):
         release.set()
     finish(thread, errors)
     assert [w[1] for w in writes] == [('gameB', Decimal('10.25'))]
-    assert ns['fps_values'] == [Decimal(95)]
-    assert ns['gpu_values'] == [90]
-    assert ns['cpu_values'] == [50]
+    assert ns['fps_values'] == ns['gpu_values'] == ns['cpu_values'] == []
+    assert ns['fps_mean'] == 0
 
 
 def test_profile_change_discards_idle_cached_active_cap():
