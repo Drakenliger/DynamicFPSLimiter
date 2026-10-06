@@ -7,6 +7,13 @@ except ImportError:
     winreg = None
 from decimal import Decimal, InvalidOperation
 
+try:
+    import codecs
+    codecs.lookup("mbcs")
+    PROFILE_ENCODING = "mbcs"
+except LookupError:
+    PROFILE_ENCODING = "latin1"
+
 class RTSSController:
     RTSSHOOKSFLAG_LIMITER_DISABLED = 4
 
@@ -88,16 +95,16 @@ class RTSSController:
         return r"C:\Program Files (x86)\RivaTuner Statistics Server"
 
     def delete_profile(self, profile_name):
-        self.DeleteProfile(profile_name.encode('ascii'))
+        self.DeleteProfile(profile_name.encode(PROFILE_ENCODING))
 
     def reset_profile(self, profile_name):
-        self.ResetProfile(profile_name.encode('ascii'))
+        self.ResetProfile(profile_name.encode(PROFILE_ENCODING))
 
     def get_profile_property(self, profile_name, property_name, size=4):
         with self._profile_lock:
-            self.LoadProfile(profile_name.encode('ascii'))
+            self.LoadProfile(profile_name.encode(PROFILE_ENCODING))
             buf = (ctypes.c_byte * size)()
-            success = self.GetProfileProperty(property_name.encode('ascii'), ctypes.byref(buf), size)
+            success = self.GetProfileProperty(property_name.encode(PROFILE_ENCODING), ctypes.byref(buf), size)
             if not success:
                 return None
             return bytes(buf)
@@ -106,7 +113,7 @@ class RTSSController:
         # SaveProfile writes the profile .cfg, so serialize it with the file writers
         # (re-entrant: safe when called from set_fractional_framerate holding the lock).
         with self._profile_lock:
-            self.LoadProfile(profile_name.encode('ascii'))
+            self.LoadProfile(profile_name.encode(PROFILE_ENCODING))
             if isinstance(value, int):
                 buf = ctypes.c_int(value)
                 ptr = ctypes.byref(buf)
@@ -115,8 +122,8 @@ class RTSSController:
                 ptr = ctypes.byref(buf)
             else:
                 raise ValueError("Unsupported value type")
-            success = self.SetProfileProperty(property_name.encode('ascii'), ptr, size)
-            self.SaveProfile(profile_name.encode('ascii'))
+            success = self.SetProfileProperty(property_name.encode(PROFILE_ENCODING), ptr, size)
+            self.SaveProfile(profile_name.encode(PROFILE_ENCODING))
             if update:
                 self.UpdateProfiles()
             return success
@@ -136,9 +143,9 @@ class RTSSController:
                 ptr = ctypes.byref(buf)
             else:
                 raise ValueError("Unsupported value type")
-            self.SetProfileProperty(prop.encode('ascii'), ptr, size)
+            self.SetProfileProperty(prop.encode(PROFILE_ENCODING), ptr, size)
         # Save as new profile
-        self.SaveProfile(profile_name.encode('ascii'))
+        self.SaveProfile(profile_name.encode(PROFILE_ENCODING))
         self.UpdateProfiles()
 
 #    def get_flags(self):
@@ -165,7 +172,7 @@ class RTSSController:
         half-written profile (``os.replace`` is atomic on the same volume/NTFS).
         """
         tmp_file = profile_file + ".tmp"
-        with open(tmp_file, "w", encoding="utf-8") as f:
+        with open(tmp_file, "w", encoding=PROFILE_ENCODING) as f:
             f.writelines(lines)
             f.flush()
             os.fsync(f.fileno())
@@ -256,7 +263,7 @@ class RTSSController:
                 self.logger.add_log(f"Profile file not found: {profile_file}")
                 return False
 
-            with open(profile_file, "r", encoding="utf-8") as f:
+            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
                 lines = f.readlines()
 
             lines = self._update_framerate_section(lines, {"LimitDenominator": new_denominator})
@@ -317,7 +324,7 @@ class RTSSController:
                 denominator = 1
                 limit = int(framerate)
 
-            with open(profile_file, "r", encoding="utf-8") as f:
+            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
                 lines = f.readlines()
 
             lines = self._update_framerate_section(lines, {
@@ -351,7 +358,7 @@ class RTSSController:
 
         denominator = 1
         if os.path.isfile(profile_file):
-            with open(profile_file, "r", encoding="utf-8") as f:
+            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
                 lines = f.readlines()
 
             in_framerate = False
