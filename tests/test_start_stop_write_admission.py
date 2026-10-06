@@ -70,11 +70,10 @@ def load_app_custom(*, lockless=False):
     return ns, writes, submitted, spawned
 
 
-@pytest.mark.parametrize('target_write', ['direct', 'refresh'])
 @pytest.mark.parametrize('invalidation', ['restart', 'exit'])
 @pytest.mark.parametrize('lockless', [True, False], ids=['lockless-demonstrates-stale-write', 'lock-prevents-stale-write'])
-def test_start_stop_write_admission_race(target_write, invalidation, lockless):
-    """Pause inside start_stop_callback before write; removing lock reproduces stale write admission."""
+def test_start_stop_write_admission_race(invalidation, lockless):
+    """Pause inside start_stop_callback before direct write; removing lock reproduces stale write admission."""
     ns, writes, _, _ = load_app_custom(lockless=lockless)
 
     tree = ast.parse(APP.read_text())
@@ -83,8 +82,7 @@ def test_start_stop_write_admission_race(target_write, invalidation, lockless):
                    if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
                    and isinstance(n.value.func, ast.Name) and n.value.func.id == '_write_cap']
     write_nodes.sort(key=lambda n: n.lineno)
-    target_node = write_nodes[0] if target_write == 'direct' else write_nodes[1]
-    target_line = target_node.lineno
+    target_line = write_nodes[0].lineno
 
     paused, release = threading.Event(), threading.Event()
     invalidation_attempted, invalidated = threading.Event(), threading.Event()
@@ -129,6 +127,7 @@ def test_start_stop_write_admission_race(target_write, invalidation, lockless):
             do_invalidation()
         except BaseException as exc:
             invalidator_errors.append(exc)
+        finally:
             invalidated.set()
 
     invalidator = threading.Thread(target=checked_invalidation, name='invalidator')
@@ -151,7 +150,67 @@ def test_start_stop_write_admission_race(target_write, invalidation, lockless):
         assert len(old_session_writes) == 2
         assert [w[2] for w in old_session_writes] == [1, 1]
     else:
-        # In lockless mode, invalidation ran concurrently while paused at target_line, bumping session_number.
-        # Writes executed by start_stop_callback captured the new session_number (stale admission).
         stale_writes = [w for w in old_session_writes if w[2] != 1]
         assert len(stale_writes) > 0
+
+
+@pytest.mark.parametrize('invalidation', ['restart', 'exit'])
+def test_start_stop_forced_handoff_between_write_sections(invalidation):
+    """Handoff after direct write before refresh section: refresh write is correctly suppressed by session guard."""
+    ns, writes, _, _ = load_app_custom(lockless=False)
+
+    tree = ast.parse(APP.read_text())
+    start_stop = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'start_stop_callback')
+    with_blocks = [n for n in ast.walk(start_stop) if isinstance(n, ast.With)]
+    with_blocks.sort(key=lambda n: n.lineno)
+    second_with_line = with_blocks[2].lineno
+
+    paused, release = threading.Event(), threading.Event()
+    invalidated = threading.Event()
+
+    def trace(frame, event, arg):
+        if frame.f_code.co_name == 'start_stop_callback' and event == 'line' and frame.f_lineno == second_with_line and not paused.is_set():
+            paused.set()
+            assert release.wait(5)
+        return trace
+
+    def run_start_stop():
+        sys.settrace(trace)
+        try:
+            ns['start_stop_callback'](None, None, ns['cm'])
+        finally:
+            sys.settrace(None)
+
+    def do_invalidation():
+        if invalidation == 'restart':
+            restart(ns)
+        elif invalidation == 'exit':
+            ns['exit_gui']()
+        invalidated.set()
+
+    thread, errors = worker(run_start_stop)
+    invalidator_errors = []
+
+    def checked_invalidation():
+        try:
+            do_invalidation()
+        except BaseException as exc:
+            invalidator_errors.append(exc)
+        finally:
+            invalidated.set()
+
+    invalidator = threading.Thread(target=checked_invalidation, name='invalidator')
+    try:
+        assert paused.wait(5)
+        invalidator.start()
+        assert invalidated.wait(5)
+    finally:
+        release.set()
+
+    finish(invalidator, invalidator_errors)
+    finish(thread, errors)
+
+    old_session_writes = [w for w in writes if w[0] == 'old-session']
+    assert len(old_session_writes) == 1
+    assert old_session_writes[0][2] == 1
+    assert old_session_writes[0][1] == ('Global', Decimal(90))

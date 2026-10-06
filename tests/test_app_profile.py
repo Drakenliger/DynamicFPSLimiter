@@ -81,12 +81,18 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
         ns['idle_state'] = True
         ns['monitor_idle'] = lambda _: False
 
-    if pause_at == 'sample':
-        def sample():
-            pause()
+    get_fps_calls = [0]
+    def sample():
+        get_fps_calls[0] += 1
+        if get_fps_calls[0] == 1:
+            if pause_at == 'sample':
+                pause()
             return Decimal(95), 'game'
-        ns['rtss_manager'].get_fps_for_active_window = sample
-    elif pause_at == 'decision':
+        ns['running'] = False
+        return Decimal(95), 'game'
+    ns['rtss_manager'].get_fps_for_active_window = sample
+
+    if pause_at == 'decision':
         if scenario in ('decrease', 'increase'):
             def decision(*_):
                 pause()
@@ -97,7 +103,7 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
                 pause()
                 return scenario == 'idle'
             ns['monitor_idle'] = decision
-    else:
+    elif pause_at == 'cap':
         if scenario == 'decrease':
             original = ns['next_cap_on_decrease']
             def cap(*args):
@@ -106,48 +112,44 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
                 return result
             ns['next_cap_on_decrease'] = cap
         elif scenario == 'increase':
-            orig_bcm = ns['build_cap_model']
-            def custom_bcm(limits):
-                res = orig_bcm(limits)
-                l, minc, maxc, minf, maxf = res
-                class PausingList(list):
-                    def index(self, val):
-                        pause()
-                        return super().index(val)
-                return PausingList(l), minc, maxc, minf, maxf
-            ns['build_cap_model'] = custom_bcm
+            def custom_eval(*args):
+                res = (False, True)
+                pause()
+                return res
+            ns['fps_utils'].evaluate_cap_change = custom_eval
         else:
             def decision(_):
                 pause()
                 return scenario == 'idle'
             ns['monitor_idle'] = decision
 
-    ns['time'].sleep = lambda _: ns.update(running=False)
+    def sleep(_):
+        ns['running'] = False
+    ns['time'].sleep = sleep
+
     thread, errors = worker(lambda: ns['monitoring_loop'](1))
     history_before = None
     try:
         assert paused.wait(5)
+        assert ns['running'] is True
         ns['_load_profile_on_gui']('gameB')
-        if pause_at == 'sample':
-            ns['fps_values'][:] = [Decimal(45)]
-            ns['gpu_values'][:] = [25]
-            ns['cpu_values'][:] = [15]
-            ns['fps_mean'] = Decimal(45)
-            history_before = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
-        else:
-            assert ns['fps_values'] == ns['gpu_values'] == ns['cpu_values'] == []
-            assert ns['fps_mean'] == ns['CurrentFPSOffset'] == 0
-        ns['running'] = False
+        ns['fps_values'][:] = [Decimal(45)]
+        ns['gpu_values'][:] = [25]
+        ns['cpu_values'][:] = [15]
+        ns['fps_mean'] = Decimal(45)
+        if scenario == 'increase':
+            ns['CurrentFPSOffset'] = -5
+        elif scenario == 'idle-restore':
+            ns['idle_state'] = True
+        history_before = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
+        assert ns['running'] is True
     finally:
         release.set()
+
     finish(thread, errors)
     assert not any(w[1][0] == 'Global' for w in writes)
-    if pause_at == 'sample':
-        history_after = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
-        assert history_after == history_before
-    else:
-        assert ns['fps_values'] == ns['gpu_values'] == ns['cpu_values'] == []
-        assert ns['fps_mean'] == 0
+    history_after = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
+    assert history_after == history_before
 
 
 def test_profile_change_discards_idle_cached_active_cap():
