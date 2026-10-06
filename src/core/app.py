@@ -120,23 +120,23 @@ def start_stop_callback(sender, app_data, user_data):
     cm = user_data
 
     global running, session_number
+    global fps_values, CurrentFPSOffset, fps_mean, gpu_values, cpu_values, idle_state
     with session_lock:
         session_number += 1
         running = not running
         captured_session = session_number
+        # Reset decision state atomically with session invalidation.
+        fps_values = []
+        CurrentFPSOffset = 0
+        fps_mean = 0
+        gpu_values = []
+        cpu_values = []
+        idle_state = False
     dpg.configure_item("start_stop_button", label="Stop" if running else "Start")
     dpg.bind_item_theme("start_stop_button", themes_manager.themes["stop_button_theme"] if running else themes_manager.themes["start_button_theme"])
     tray.set_running_state(running)
     cm.apply_current_input_values()
     
-    # Reset variables to zero or their default state
-    global fps_values, CurrentFPSOffset, fps_mean, gpu_values, cpu_values, idle_state
-    fps_values = []
-    CurrentFPSOffset = 0
-    fps_mean = 0
-    gpu_values = []
-    cpu_values = []
-    idle_state = False
     
     # Freeze input fields
     for key in cm.input_field_keys:
@@ -360,21 +360,25 @@ def monitoring_loop(captured_session):
             logger.add_log(f"AutoPilot: Switching from 'Global' to profile '{process_name}' (detected running process).")
             _gui_submit(_load_profile_on_gui, process_name)
 
-        if fps:
-            if len(fps_values) > 2:
-                fps_values.pop(0)
-            fps_values.append(fps)
-            fps_mean = sum(fps_values) / len(fps_values)
-        
+        # Sample outside the lock; only an admitted pass may update histories.
         gpuUsage = gpu_monitor.gpu_percentile
-        if len(gpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
-            gpu_values.pop(0)
-        gpu_values.append(gpuUsage)
-
         cpuUsage = cpu_monitor.cpu_percentile
-        if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
-            cpu_values.pop(0)
-        cpu_values.append(cpuUsage)
+        with session_lock:
+            if not session_is_current(captured_session, session_number, running):
+                return
+            if fps:
+                if len(fps_values) > 2:
+                    fps_values.pop(0)
+                fps_values.append(fps)
+                fps_mean = sum(fps_values) / len(fps_values)
+
+            if len(gpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
+                gpu_values.pop(0)
+            gpu_values.append(gpuUsage)
+
+            if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
+                cpu_values.pop(0)
+            cpu_values.append(cpuUsage)
 
         #TODO: if no LHM sensor selected, pass through without limiting
         # To prevent loading screens from affecting the fps cap
@@ -385,7 +389,7 @@ def monitoring_loop(captured_session):
                         if not session_is_current(captured_session, session_number, running):
                             return
                         rtss.set_fractional_framerate(current_profile, last_active_fps_cap)
-                    idle_state = False
+                        idle_state = False
                 else:
                     if gpuUsage > cm.minvalidgpu and fps_mean > cm.minvalidfps: 
 
@@ -395,15 +399,18 @@ def monitoring_loop(captured_session):
                             current_fps_cap = current_maxcap + CurrentFPSOffset
                             next_fps = next_cap_on_decrease(fps_limit_list, current_fps_cap, fps_mean)
                             if next_fps is not None:
-                                CurrentFPSOffset = next_fps - current_maxcap
                                 with session_lock:
                                     if not session_is_current(captured_session, session_number, running):
                                         return
+                                    CurrentFPSOffset = next_fps - current_maxcap
                                     rtss.set_fractional_framerate(current_profile, next_fps)
 
                         # --- COOLDOWN LOGIC ---
-                        if increase_cooldown > 0:
-                            increase_cooldown -= 1
+                        with session_lock:
+                            if not session_is_current(captured_session, session_number, running):
+                                return
+                            if increase_cooldown > 0:
+                                increase_cooldown -= 1
 
                         if CurrentFPSOffset < 0 and should_increase and increase_cooldown == 0:
                             current_fps = current_maxcap + CurrentFPSOffset
@@ -422,12 +429,12 @@ def monitoring_loop(captured_session):
                                 next_index = min(current_index + steps, len(fps_limit_list) - 1)
                                 if next_index > current_index:
                                     next_fps = fps_limit_list[next_index]
-                                    CurrentFPSOffset = next_fps - current_maxcap
                                     with session_lock:
                                         if not session_is_current(captured_session, session_number, running):
                                             return
+                                        CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
-                                    increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                        increase_cooldown = cm.delaybeforeincrease  # Start cooldown
                             except ValueError:
                                 # If current FPS not in list, find nearest higher value
                                 higher_values = [x for x in fps_limit_list if x > current_fps]
@@ -437,22 +444,22 @@ def monitoring_loop(captured_session):
                                     min_higher_index = fps_limit_list.index(min_higher)
                                     next_index = min(min_higher_index + steps - 1, len(fps_limit_list) - 1)
                                     next_fps = fps_limit_list[next_index]
-                                    CurrentFPSOffset = next_fps - current_maxcap
                                     with session_lock:
                                         if not session_is_current(captured_session, session_number, running):
                                             return
+                                        CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
-                                    increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                        increase_cooldown = cm.delaybeforeincrease  # Start cooldown
             else:
                 if idle_state:
                     pass
                 else:
-                    last_active_fps_cap = current_maxcap + CurrentFPSOffset
                     with session_lock:
                         if not session_is_current(captured_session, session_number, running):
                             return
+                        last_active_fps_cap = current_maxcap + CurrentFPSOffset
                         rtss.set_fractional_framerate(current_profile, cm.idle_fps_cap)
-                    idle_state = True
+                        idle_state = True
 
         if session_is_current(captured_session, session_number, running):
             # Update legend labels with current values (deferred to the main DPG thread)

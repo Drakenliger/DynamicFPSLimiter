@@ -200,3 +200,97 @@ def test_exit_invalidates_session(exit_cap):
     assert len(writes) == int(exit_cap)
     if exit_cap:
         assert writes[0][1:] == (("Global", Decimal(60)), 2)
+
+
+def test_old_cap_calculation_cannot_reset_new_session_offset():
+    ns, writes, _, _ = load_app()
+    paused, release = threading.Event(), threading.Event()
+    def calculate(*args):
+        result = next_cap_on_decrease(*args)
+        assert result == Decimal(60)
+        paused.set()
+        assert release.wait(5)
+        return result
+    ns['next_cap_on_decrease'] = calculate
+    thread, errors = worker(lambda: ns['monitoring_loop'](1))
+    try:
+        assert paused.wait(5)
+        restart(ns)
+        assert ns['CurrentFPSOffset'] == 0
+    finally:
+        release.set()
+    finish(thread, errors)
+    assert ns['CurrentFPSOffset'] == 0
+    assert not [w for w in writes if w[0] == 'old-session']
+
+
+@pytest.mark.parametrize('seed', [False, True], ids=['empty', 'seeded'])
+def test_old_sample_cannot_contaminate_new_session_histories(seed):
+    ns, writes, _, _ = load_app()
+    paused, release = threading.Event(), threading.Event()
+    def sample():
+        paused.set()
+        assert release.wait(5)
+        return Decimal(95), 'game'
+    ns['rtss_manager'].get_fps_for_active_window = sample
+    thread, errors = worker(lambda: ns['monitoring_loop'](1))
+    try:
+        assert paused.wait(5)
+        restart(ns)
+        if seed:
+            ns['fps_values'][:] = [Decimal(45)]
+            ns['gpu_values'][:] = [25]
+            ns['cpu_values'][:] = [15]
+            ns['fps_mean'] = Decimal(45)
+        before = tuple(list(ns[k]) for k in ('fps_values', 'gpu_values', 'cpu_values')) + (ns['fps_mean'],)
+    finally:
+        release.set()
+    finish(thread, errors)
+    after = tuple(list(ns[k]) for k in ('fps_values', 'gpu_values', 'cpu_values')) + (ns['fps_mean'],)
+    assert after == before
+    assert not [w for w in writes if w[0] == 'old-session']
+
+
+def test_idle_write_and_state_are_atomic_with_restart():
+    ns, writes, _, _ = load_app()
+    ns['cm'].idle_mode = True
+    ns['monitor_idle'] = lambda _: True
+    paused, release, attempted, restarted = (threading.Event() for _ in range(4))
+    states = []
+    class ObservedLock:
+        def __init__(self):
+            self.lock = threading.Lock()
+        def __enter__(self):
+            if threading.current_thread().name == 'restart':
+                attempted.set()
+            self.lock.acquire()
+        def __exit__(self, *args):
+            if threading.current_thread().name == 'old-session' and writes and not paused.is_set():
+                states.append(ns['idle_state'])
+                paused.set()
+                assert release.wait(5)
+            self.lock.release()
+    ns['session_lock'] = ObservedLock()
+    ns['time'].sleep = lambda _: restarted.wait(5)
+    thread, errors = worker(lambda: ns['monitoring_loop'](1))
+    restart_errors = []
+    def invalidate():
+        try:
+            restart(ns)
+        except BaseException as exc:
+            restart_errors.append(exc)
+        finally:
+            restarted.set()
+    invalidator = threading.Thread(target=invalidate, name='restart')
+    try:
+        assert paused.wait(5)
+        invalidator.start()
+        assert attempted.wait(5)
+        assert ns['session_number'] == 1
+    finally:
+        release.set()
+    finish(invalidator, restart_errors)
+    finish(thread, errors)
+    assert states == [True]
+    assert ns['idle_state'] is False
+    assert [w for w in writes if w[0] == 'old-session'] == [('old-session', ('Global', 20), 1)]
