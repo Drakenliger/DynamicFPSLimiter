@@ -1,7 +1,12 @@
 #Note: Primarily made with AI, check properly in case of error
 
 import os
-import clr
+try:
+    import clr
+    _clr_import_error = None
+except Exception as _exc:
+    clr = None
+    _clr_import_error = _exc
 import subprocess
 import re
 
@@ -52,24 +57,34 @@ def _detect_dotnet_framework():
 
 def _detect_dotnet_core():
     """Return highest installed .NET Core / .NET 5+ runtime version string (e.g. '6.0.21') or None."""
-    # try `dotnet --list-runtimes`
-    try:
-        out = subprocess.check_output(["dotnet", "--list-runtimes"], stderr=subprocess.DEVNULL, text=True)
-        versions = []
-        for line in out.splitlines():
-            m = re.match(r"^(?:Microsoft\.NETCore\.App|Microsoft\.AspNetCore\.App|Microsoft\.WindowsDesktop\.App)\s+([\d\.]+)", line)
-            if m:
-                versions.append(m.group(1))
-        if versions:
-            # pick highest by tuple comparison
-            versions.sort(key=lambda s: tuple(int(p) for p in s.split('.')), reverse=True)
-            return versions[0]
-    except Exception:
-        pass
+    pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+    dotnet_dir = os.path.join(pf, "dotnet")
+
+    # Try finding absolute dotnet executable under ProgramFiles
+    dotnet_exe = None
+    for name in ("dotnet.exe", "dotnet"):
+        candidate = os.path.join(dotnet_dir, name)
+        if os.path.isfile(candidate):
+            dotnet_exe = candidate
+            break
+
+    if dotnet_exe:
+        try:
+            out = subprocess.check_output([dotnet_exe, "--list-runtimes"], stderr=subprocess.DEVNULL, text=True)
+            versions = []
+            for line in out.splitlines():
+                m = re.match(r"^(?:Microsoft\.NETCore\.App|Microsoft\.AspNetCore\.App|Microsoft\.WindowsDesktop\.App)\s+([\d\.]+)", line)
+                if m:
+                    versions.append(m.group(1))
+            if versions:
+                # pick highest by tuple comparison
+                versions.sort(key=lambda s: tuple(int(p) for p in s.split('.')), reverse=True)
+                return versions[0]
+        except Exception:
+            pass
 
     # fallback: scan C:\Program Files\dotnet\shared
-    pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-    shared = os.path.join(pf, "dotnet", "shared")
+    shared = os.path.join(dotnet_dir, "shared")
     if os.path.isdir(shared):
         max_ver = None
         for folder in os.listdir(shared):
@@ -165,6 +180,16 @@ def ensure_loaded(base_dir=None, logger=None):
             dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')  # fallback
     else:
         dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')
+
+    if clr is None:
+        if isinstance(_clr_import_error, (ImportError, ModuleNotFoundError)):
+            msg = f"pythonnet (clr) module is not installed, cannot load {dll_path}"
+        else:
+            msg = f"pythonnet (clr) import failed: {_clr_import_error}"
+        raise LHMLoadError(
+            msg,
+            dll_path=str(dll_path),
+        ) from _clr_import_error
 
     try:
         clr.AddReference(str(dll_path))
