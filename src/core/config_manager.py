@@ -527,14 +527,19 @@ class ConfigManager:
     def delete_selected_profile_callback(self):
         
         profile_to_delete = self.dpg.get_value("profile_dropdown")
-        if profile_to_delete == "Global":
+        if not profile_to_delete or profile_to_delete.lower() == "global":
             self.logger.add_log("Cannot delete the default 'Global' profile.")
             return
         if profile_to_delete in self.profiles_config:
             self.profiles_config.remove_section(profile_to_delete)
-            self.rtss.delete_profile(profile_to_delete)
             with open(self.profiles_path, 'w') as f:
                 self.profiles_config.write(f)
+
+            try:
+                self.rtss.set_fractional_framerate(profile_to_delete, 0)
+            except Exception as e:
+                self.logger.add_log(f"Error resetting RTSS cap for profile '{profile_to_delete}': {e}")
+
             self.update_profile_dropdown(select_first=True)
 
             # Reset input fields to the "Global" profile values
