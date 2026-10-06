@@ -165,6 +165,22 @@ class FPSUtils:
             if not sensor_infos:
                 return (False, False)
 
+            # Snapshot relevant dictionaries and deques under lhm_sensor._lock
+            lock = getattr(lhm_sensor, "_lock", None)
+            if lock is not None:
+                with lock:
+                    cpu_perc_snap = dict(getattr(lhm_sensor, "cpu_percentiles", {}))
+                    gpu_perc_snap = dict(getattr(lhm_sensor, "gpu_percentiles", {}))
+                    cpu_hist_snap = {k: list(v) for k, v in getattr(lhm_sensor, "cpu_history_long", {}).items()}
+                    gpu_hist_snap = {k: list(v) for k, v in getattr(lhm_sensor, "gpu_history_long", {}).items()}
+                    gpu_hw_names_snap = list(getattr(lhm_sensor, "gpu_hw_names", [])) if hasattr(lhm_sensor, "gpu_hw_names") else []
+            else:
+                cpu_perc_snap = dict(getattr(lhm_sensor, "cpu_percentiles", {}))
+                gpu_perc_snap = dict(getattr(lhm_sensor, "gpu_percentiles", {}))
+                cpu_hist_snap = {k: list(v) for k, v in getattr(lhm_sensor, "cpu_history_long", {}).items()}
+                gpu_hist_snap = {k: list(v) for k, v in getattr(lhm_sensor, "gpu_history_long", {}).items()}
+                gpu_hw_names_snap = list(getattr(lhm_sensor, "gpu_hw_names", [])) if hasattr(lhm_sensor, "gpu_hw_names") else []
+
             for sensor in sensor_infos:
                 param_id = sensor.get("parameter_id")
                 enable_tag = f"input_{param_id}_enable"
@@ -201,31 +217,31 @@ class FPSUtils:
                 # CPU sensors use exact name keys in cpu_percentiles
                 if hw_type == self.HardwareType.Cpu:
                     key = (sensor_type, sensor_name)
-                    value = lhm_sensor.cpu_percentiles.get(key)
-                    values_long = lhm_sensor.cpu_history_long.get(key, [])
+                    value = cpu_perc_snap.get(key)
+                    values_long = cpu_hist_snap.get(key, [])
                 else:
                     sensor_name_indexed = sensor.get("sensor_name_indexed") or sensor_name
                     key = (sensor_type, sensor_name_indexed)
-                    value = lhm_sensor.gpu_percentiles.get(key)
-                    values_long = lhm_sensor.gpu_history_long.get(key, [])
+                    value = gpu_perc_snap.get(key)
+                    values_long = gpu_hist_snap.get(key, [])
                     if value is None:
-                        if hasattr(lhm_sensor, "gpu_hw_names"):
+                        if gpu_hw_names_snap:
                             try:
-                                idx = lhm_sensor.gpu_hw_names.index(hw_name) + 1
+                                idx = gpu_hw_names_snap.index(hw_name) + 1
                                 key2 = (sensor_type, f"{idx} {sensor_name}")
-                                value = lhm_sensor.gpu_percentiles.get(key2)
-                                values_long = lhm_sensor.gpu_history_long.get(key2, [])
+                                value = gpu_perc_snap.get(key2)
+                                values_long = gpu_hist_snap.get(key2, [])
                             except ValueError:
                                 value = None
                                 values_long = []
                         if value is None:
-                            for k, v in lhm_sensor.gpu_percentiles.items():
+                            for k, v in gpu_perc_snap.items():
                                 if k[0] == sensor_type and k[1].endswith(sensor_name):
                                     value = v
                                     break
                         
                         if not values_long:
-                            for k, v in lhm_sensor.gpu_history_long.items():
+                            for k, v in gpu_hist_snap.items():
                                 if k[0] == sensor_type and k[1].endswith(sensor_name):
                                     values_long = v
                                     break
@@ -330,5 +346,17 @@ class FPSUtils:
         self.summary_fps = []
         self.summary_cap = []
 
-        self.lhm_sensor.cpu_history_long.clear()
-        self.lhm_sensor.gpu_history_long.clear()
+        lhm_sensor = getattr(self, "lhm_sensor", None)
+        if lhm_sensor is not None:
+            lock = getattr(lhm_sensor, "_lock", None)
+            if lock is not None:
+                with lock:
+                    if hasattr(lhm_sensor, "cpu_history_long"):
+                        lhm_sensor.cpu_history_long.clear()
+                    if hasattr(lhm_sensor, "gpu_history_long"):
+                        lhm_sensor.gpu_history_long.clear()
+            else:
+                if hasattr(lhm_sensor, "cpu_history_long"):
+                    lhm_sensor.cpu_history_long.clear()
+                if hasattr(lhm_sensor, "gpu_history_long"):
+                    lhm_sensor.gpu_history_long.clear()
