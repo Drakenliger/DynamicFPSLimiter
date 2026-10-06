@@ -99,3 +99,65 @@ def test_old_monitoring_decision_cannot_overwrite_exit_restore(exit_cap):
     assert [w[1] for w in writes] == [('game.exe', Decimal(90))] * 2 + (
         [('Global', Decimal('72.25'))] if exit_cap else [])
     assert all(w[2] == 2 for w in writes)
+
+
+@pytest.mark.parametrize('exit_cap', [False, True])
+@pytest.mark.parametrize('pause_after', [1, 2, 3],
+                         ids=['snapshot-release', 'direct-release', 'refresh-release'])
+def test_rejected_exit_admission_still_cleans_up(exit_cap, pause_after):
+    ns, writes, _, _ = load_app()
+    ns['cm'].current_profile = 'game.exe'
+    ns['cm'].globallimitonexit = exit_cap
+    ns['cm'].globallimitonexit_fps = Decimal('72.25')
+    paused, release = threading.Event(), threading.Event()
+
+    class ReleasePauseLock:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.exit_acquires = 0
+
+        def __enter__(self):
+            self.lock.acquire()
+            if threading.current_thread() is exit_thread:
+                self.exit_acquires += 1
+
+        def __exit__(self, *args):
+            self.lock.release()
+            # Pause only exit's chosen acquire, after releasing the real lock.
+            # The callback must be free to acquire it and invalidate the session.
+            if (threading.current_thread() is exit_thread
+                    and self.exit_acquires == pause_after):
+                paused.set()
+                assert release.wait(5)
+
+    ns['session_lock'] = ReleasePauseLock()
+    cleanup = []
+    ns['gpu_monitor'].cleanup = lambda: cleanup.append('gpu')
+    ns['cpu_monitor'].stop = lambda: cleanup.append('cpu')
+    ns['lhm_sensor'].stop = lambda: cleanup.append('lhm')
+    ns['dpg'].is_dearpygui_running = lambda: True
+    ns['dpg'].destroy_context = lambda: cleanup.append('gui')
+    errors = []
+
+    def exit_on_thread():
+        try:
+            ns['exit_gui']()
+        except BaseException as exc:
+            errors.append(exc)
+
+    exit_thread = threading.Thread(target=exit_on_thread, name='exit')
+    exit_thread.start()
+    try:
+        assert paused.wait(5)
+        assert ns['session_number'] == 2 and not ns['running']
+        # Execute the actual callback on the other thread while exit is unlocked.
+        ns['start_stop_callback'](None, None, ns['cm'])
+        assert ns['session_number'] == 3 and ns['running']
+        before = list(writes)
+    finally:
+        release.set()
+    finish(exit_thread, errors)
+    assert writes == before
+    exit_writes = [w for w in writes if w[0] == 'exit']
+    assert exit_writes == [('exit', ('game.exe', Decimal(90)), 2)] * (pause_after - 1)
+    assert cleanup == ['gpu', 'cpu', 'lhm', 'gui']

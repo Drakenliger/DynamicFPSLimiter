@@ -678,33 +678,35 @@ def exit_gui():
         running = False
     gui_running = False
 
-    if restore_cap is not None:
-        with session_lock:
-            if not session_is_current(exit_session, session_number, running, allow_stopped=True):
-                return
-            rtss.set_fractional_fps_direct(*restore_cap)
-            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
-        with session_lock:
-            if not session_is_current(exit_session, session_number, running, allow_stopped=True):
-                return
-            rtss.set_fractional_framerate(*restore_cap)  # Update the RTSS GUI, like Stop.
-            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+    try:
+        if restore_cap is not None:
+            with session_lock:
+                if not session_is_current(exit_session, session_number, running, allow_stopped=True):
+                    return
+                rtss.set_fractional_fps_direct(*restore_cap)
+                gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+            with session_lock:
+                if not session_is_current(exit_session, session_number, running, allow_stopped=True):
+                    return
+                rtss.set_fractional_framerate(*restore_cap)  # Update the RTSS GUI, like Stop.
+                gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
-    if cm.globallimitonexit:
-        with session_lock:
-            if not session_is_current(exit_session, session_number, running, allow_stopped=True):
-                return
-            rtss.set_fractional_framerate("Global", Decimal(cm.globallimitonexit_fps))
-            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+        if cm.globallimitonexit:
+            with session_lock:
+                if not session_is_current(exit_session, session_number, running, allow_stopped=True):
+                    return
+                rtss.set_fractional_framerate("Global", Decimal(cm.globallimitonexit_fps))
+                gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
-    if gpu_monitor:
-        gpu_monitor.cleanup()
-    if cpu_monitor:
-        cpu_monitor.stop()
-    if lhm_sensor:
-        lhm_sensor.stop()
-    if dpg.is_dearpygui_running():
-        dpg.destroy_context()
+    finally:
+        if gpu_monitor:
+            gpu_monitor.cleanup()
+        if cpu_monitor:
+            cpu_monitor.stop()
+        if lhm_sensor:
+            lhm_sensor.stop()
+        if dpg.is_dearpygui_running():
+            dpg.destroy_context()
 
 tray = TrayManager(
     app_title,
