@@ -257,8 +257,30 @@ def test_three_decimal_places_refresh_contract(rtss_controller_fake_dll):
     ]
 
 
-def test_isolation_after_fixture_teardown_no_cached_parent_attr():
-    assert "core.rtss_functions" not in sys.modules
+def test_fixture_teardown_removes_newly_imported_module_and_attr(tmp_path, monkeypatch):
+    saved_mod = sys.modules.pop("core.rtss_functions", None)
     core_mod = sys.modules.get("core")
-    if core_mod is not None:
-        assert not hasattr(core_mod, "rtss_functions")
+    saved_attr = None
+    had_attr = False
+    if core_mod and hasattr(core_mod, "rtss_functions"):
+        had_attr = True
+        saved_attr = getattr(core_mod, "rtss_functions")
+        delattr(core_mod, "rtss_functions")
+
+    try:
+        gen = rtss_controller_fake_dll.__wrapped__(tmp_path, monkeypatch)
+        ctrl, fake = next(gen)
+        assert "core.rtss_functions" in sys.modules
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+
+        assert "core.rtss_functions" not in sys.modules
+        if core_mod is not None:
+            assert not hasattr(core_mod, "rtss_functions")
+    finally:
+        if saved_mod is not None:
+            sys.modules["core.rtss_functions"] = saved_mod
+        if had_attr and core_mod is not None:
+            setattr(core_mod, "rtss_functions", saved_attr)
