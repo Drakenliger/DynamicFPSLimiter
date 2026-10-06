@@ -92,6 +92,7 @@ def main() -> int:
     import dearpygui.dearpygui as dpg
 
     frame_file = None
+    context_created = False
     try:
         if args.frametime_file:
             # File failures propagate, including buffered writes on close.
@@ -99,6 +100,7 @@ def main() -> int:
             writer = csv.writer(frame_file)
             writer.writerow(("timestamp", "frame_time_ms"))
         dpg.create_context()
+        context_created = True
         dpg.create_viewport(title=args.title, width=args.width, height=args.height,
                             resizable=True, decorated=True)
         dpg.setup_dearpygui()
@@ -167,7 +169,8 @@ def main() -> int:
             if frame_file is not None:
                 frame_file.close()
         finally:
-            dpg.destroy_context()
+            if context_created:
+                dpg.destroy_context()
     return 0
 
 

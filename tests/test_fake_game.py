@@ -1,5 +1,6 @@
 import csv
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -56,6 +57,8 @@ class FakeDPG(types.ModuleType):
         self.count = 0
         self.clock = 10.0
         self.destroyed = self.stopped = False
+        self.context_created = False
+        self.create_calls = self.destroy_calls = 0
         self.values = []
         self.quads = 0
 
@@ -69,6 +72,13 @@ class FakeDPG(types.ModuleType):
         if name in ('add_text', 'add_drawlist'):
             return lambda *a, **kw: name
         return lambda *a, **kw: None
+
+    def create_context(self):
+        self.create_calls += 1
+        assert not self.context_created
+        if self.mode == 'create_error':
+            raise RuntimeError('context creation failed')
+        self.context_created = True
 
     def is_dearpygui_running(self):
         return self.count < 3 and not self.stopped
@@ -91,6 +101,9 @@ class FakeDPG(types.ModuleType):
         self.stopped = True
 
     def destroy_context(self):
+        self.destroy_calls += 1
+        assert self.context_created
+        self.context_created = False
         self.destroyed = True
 
 
@@ -131,9 +144,28 @@ def test_frame_file_failure_is_not_success(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'dearpygui', types.ModuleType('dearpygui'))
     monkeypatch.setitem(sys.modules, 'dearpygui.dearpygui', dpg)
     monkeypatch.setattr(sys, 'argv', ['fake_game', '--frametime-file', str(tmp_path / 'missing' / 'frames')])
-    with pytest.raises(OSError):
+    with pytest.raises(FileNotFoundError) as error:
         game.main()
-    assert dpg.destroyed
+    assert error.value.filename == str(tmp_path / 'missing' / 'frames')
+    assert dpg.create_calls == dpg.destroy_calls == 0
+    assert not dpg.context_created
+    assert not dpg.destroyed
+
+
+def test_context_creation_failure_closes_frame_file(monkeypatch, tmp_path):
+    dpg = FakeDPG('create_error', tmp_path / 'ready')
+    monkeypatch.setitem(sys.modules, 'dearpygui', types.ModuleType('dearpygui'))
+    monkeypatch.setitem(sys.modules, 'dearpygui.dearpygui', dpg)
+    frame_file = io.StringIO()
+    monkeypatch.setattr(game, 'open', lambda *a, **kw: frame_file, raising=False)
+    monkeypatch.setattr(sys, 'argv', ['fake_game', '--frametime-file', 'frames'])
+    with pytest.raises(RuntimeError, match='context creation failed'):
+        game.main()
+    assert frame_file.closed
+    assert dpg.create_calls == 1
+    assert dpg.destroy_calls == 0
+    assert not dpg.context_created
+    assert not dpg.destroyed
 
 
 def test_metrics_without_fps_file_and_close_failure(monkeypatch, tmp_path):
