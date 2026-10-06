@@ -66,21 +66,23 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
     
     logger.add_log(f"Autopilot detected active process: {process_name}")
 
+    matched_profile = next((p for p in profiles if p.lower() == process_name.lower()), None)
+
     if cm.autopilot_only_profiles:
         # Legacy behavior: only act when a specific profile matches the active process
-        if process_name in profiles:
-            _gui(dpg.set_value, "profile_dropdown", process_name)
-            _gui(cm.load_profile_callback, None, process_name, None)
+        if matched_profile:
+            _gui(dpg.set_value, "profile_dropdown", matched_profile)
+            _gui(cm.load_profile_callback, None, matched_profile, None)
             if not running:
-                logger.add_log(f"AutoPilot: Switched to profile '{process_name}' and started monitoring.")
+                logger.add_log(f"AutoPilot: Switched to profile '{matched_profile}' and started monitoring.")
                 _gui(start_stop_callback, None, None, cm)
     else:
         # New default: start with detected specific profile if present; otherwise start with Global
-        if process_name in profiles:
-            _gui(dpg.set_value, "profile_dropdown", process_name)
-            _gui(cm.load_profile_callback, None, process_name, None)
+        if matched_profile:
+            _gui(dpg.set_value, "profile_dropdown", matched_profile)
+            _gui(cm.load_profile_callback, None, matched_profile, None)
             if not running:
-                logger.add_log(f"AutoPilot: Switched to profile '{process_name}' and started monitoring.")
+                logger.add_log(f"AutoPilot: Switched to profile '{matched_profile}' and started monitoring.")
                 _gui(start_stop_callback, None, None, cm)
         else:
             # No specific profile for the active process -> start with Global when not running
