@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 
-from acceptance_support import SCENARIOS, SafeFormatter, Snapshot, confirmed_delay, correlate, expectations, final_results, sanitize, verdict
+from acceptance_support import SCENARIOS, SafeFormatter, Snapshot, confirmed_delay, correlate, expectations, final_results, sanitize, verdict, CAP_FIELDS, profile_bounds_valid, sustained_responses
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
@@ -90,7 +90,7 @@ class Runtime:
         self.revisions = {}
         self.live_rtss_samples = 0
         self.errors = []
-        self.stage = 'restart'
+        self.stage = 'restart_start'
         self.cycles = 0
         self.retired = []
         self.started = time.monotonic()
@@ -99,6 +99,13 @@ class Runtime:
         self.clear_observations = []
         self.lock = threading.Lock()
         self.gui_thread = threading.get_ident()
+        self.transitions = {}
+        self.barriers = []
+        self.pause = None
+        self.samples = []
+        self.overlaps = 0
+        self.current_workers = (None, None)
+        self.models = {}
 
     def configure_logging(self):
         handler = logging.FileHandler(self.error_log_file, encoding='utf-8')
@@ -126,7 +133,7 @@ class Runtime:
             safe = tuple(sanitize(value) for value in row)
             if safe[2] not in {'Global', 'pythonw.exe'}:
                 raise RuntimeError('Uncontrolled profile attempted')
-            if threading.get_ident() != self.gui_thread and threading.current_thread() is not app.get('monitoring_thread'):
+            if threading.get_ident() != self.gui_thread and threading.current_thread() is not self.current_workers[0]:
                 self.errors.append('retired session attempted cap write')
             actual = app['rtss'].get_framerate_limit(safe[2], True)
             if actual is None or float(actual) != float(safe[4]):
@@ -142,16 +149,13 @@ class Runtime:
             self.errors.append('GUI queue exception: ' + sanitize(exc))
             queue_error(fn, exc)
         app['gui_queue']._on_error = error
-        evaluate = app['fps_utils'].evaluate_cap_change
-        def observe(*args):
-            result = evaluate(*args)
-            with self.lock:
-                self.evidence['pdh_unavailable'] = bool(args[0]) and all(v is None for v in args[0])
-                self.decisions.append((time.time(), result, app['session_number'], app['profile_revision']))
-            return result
-        app['fps_utils'].evaluate_cap_change = observe
         read_fps = app['rtss_manager'].get_fps_for_active_window
         def observed_fps():
+            pause = self.pause
+            if pause is not None and threading.current_thread() is pause[0]:
+                pause[1].set()
+                if not pause[2].wait(5):
+                    self.errors.append("restart read barrier timeout")
             result = read_fps()
             if result[1] == 'pythonw.exe' and result[0] is not None and result[0] > 0:
                 self.live_rtss_samples += 1
@@ -172,7 +176,9 @@ class Runtime:
 
     def switch(self, app, profile):
         app['_load_profile_on_gui'](profile)
-        self.switches.append(sorted(float(x) for x in app['fps_utils'].current_stepped_limits()))
+        ladder = sorted(float(x) for x in app['fps_utils'].current_stepped_limits())
+        self.models[app['profile_revision']] = (profile, ladder)
+        self.switches.append(ladder)
 
     def sensors(self, app, direction):
         """Real polled values with deliberately extreme temporary thresholds."""
@@ -201,7 +207,32 @@ class Runtime:
     def callback(self, app):
         app['start_stop_callback'](None, None, app['cm'])
 
+    def transition_observed(self, session, revision):
+        self.transitions[(session, revision)] = time.time()
+
+    def workers_started(self, monitor, plot):
+        self.current_workers = (monitor, plot)
+
+    def decision_observed(self, session, revision, result, gpu, captured_time):
+        # Evaluate may cross a callback; never stamp its result with mutable globals.
+        with self.app['session_lock']:
+            if (session, revision) != (self.app['session_number'], self.app['profile_revision']) or not self.app['running']:
+                return
+            with self.lock:
+                self.evidence['pdh_unavailable'] = bool(gpu) and all(v is None for v in gpu)
+                self.decisions.append((captured_time, result, session, revision))
+
+    def sample_observed(self, session, revision):
+        if (session, revision) != (self.app['session_number'], self.app['profile_revision']):
+            self.errors.append('retired worker appended history')
+        self.samples.append((session, revision))
+
+    def release_barriers(self):
+        for _, _, release in self.barriers:
+            release.set()
+
     def finish(self, app):
+        self.release_barriers()
         self.evidence['switch_ladders'] = self.switches
         self.evidence['live_rtss_samples'] = self.live_rtss_samples
         self.evidence['exit_running'] = app['running']
@@ -221,11 +252,12 @@ class Runtime:
                 timestamp = float(row['time'])
                 revision = self.revisions[row['time']]
                 candidates = [(d[0], d[1]) for d in decisions if d[2] == int(row['session_number']) and d[3] == revision]
-                previous = max((float(r['time']) for r in changes if float(r['time']) < timestamp), default=0)
+                previous = max((float(r['time']) for r in rows if float(r['time']) < timestamp), default=0)
+                previous = max(previous, self.transitions.get((int(row['session_number']), revision), timestamp))
                 return confirmed_delay(timestamp, candidates, direction, previous)
             self.evidence[key] = bool(matched) and all(delayed(r) for r in matched)
         self.evidence['switch_response'] = bool(changes) and all(
-            24 <= float(r['new_cap']) <= 48 for r in changes if r['profile'] == 'pythonw.exe') and any(
+            profile_bounds_valid(r, self.models.get(self.revisions.get(r['time']))) for r in rows) and any(
                 r['profile'] == 'Global' and float(r['new_cap']) == 30 for r in changes) and any(
                 r['profile'] == 'pythonw.exe' and float(r['new_cap']) == 24 for r in changes) and any(
                 r['profile'] == 'pythonw.exe' and r['reason'] == 'increase' and float(r['new_cap']) == 48 for r in changes)
@@ -250,23 +282,41 @@ class Runtime:
                     self.clear_observations.append(empty)
         if now < self.due:
             return
-        if self.stage == 'restart':
+        if self.stage == 'restart_start':
             self.callback(app)
-            self.retired.extend([app.get('monitoring_thread'), app.get('plotting_thread')])
-            self.callback(app)
+            self.stage = 'restart_arm'
+        elif self.stage == 'restart_arm':
+            old = self.current_workers[0]
+            entered, release = threading.Event(), threading.Event()
+            self.pause = (old, entered, release)
+            self.barriers.append(self.pause)
+            self.stage = 'restart_wait'
+            self.barrier_deadline = now + 4
+        elif self.stage == 'restart_wait':
+            old, entered, release = self.pause
+            if not entered.is_set():
+                if now > self.barrier_deadline:
+                    self.errors.append('old worker did not enter read barrier')
+                    self.finish(app)
+                    return False
+                return
+            self.retired.extend([old, self.current_workers[1]])
+            self.callback(app)  # Stop invalidates the blocked pass.
+            self.callback(app)  # Start replacement while old worker is still alive.
+            self.overlaps += int(old.is_alive())
             self.cycles += 1
-            self.due = now + .1
+            self.pause = None
+            release.set()
+            self.stage = 'restart_arm' if self.cycles < 20 else 'quiet'
             if self.cycles == 20:
-                self.stage = 'quiet'
-                self.due = now + 2
-                self.quiet_rows = len(self.rows)
-                self.quiet_state = (list(app['fps_values']), list(app['gpu_values']), list(app['cpu_values']))
+                self.current_sample_start = len(self.samples)
+                self.due = now + 3
         elif self.stage == 'quiet':
             self.evidence['cycles'] = self.cycles
-            self.evidence['retired_quiet'] = (len(self.rows) == self.quiet_rows and
-                self.quiet_state == (app['fps_values'], app['gpu_values'], app['cpu_values']) and
-                all(not t.is_alive() for t in self.retired if t))
-            self.callback(app)
+            self.evidence['restart_overlaps'] = self.overlaps
+            self.evidence['retired_quiet'] = (app['running'] and self.overlaps == 20 and
+                len(self.samples) > self.current_sample_start and
+                all(not t.is_alive() for t in self.retired if t) and not self.errors)
             self.stage = 'warm'
             self.sensor_deadline = now + 20
             self.due = now + 6
@@ -283,6 +333,8 @@ class Runtime:
             self.due = now + 12
         elif self.stage == 'global_drop':
             self.switch(app, 'pythonw.exe')
+            with app['session_lock']:
+                app['_write_cap']('pythonw.exe', 48, 'controlled_baseline')
             self.sensors(app, 'drop')
             self.stage = 'profile_drop'
             self.due = now + 12
@@ -304,9 +356,12 @@ def child(directory, pid):
     try:
         runpy.run_path(str(ROOT / 'src/core/app.py'), init_globals={'_acceptance_runtime': runtime})
     except BaseException as exc:
+        runtime.release_barriers()
         runtime.errors.append('limiter exception: ' + sanitize(exc))
         runtime.save()
         return 1
+    finally:
+        runtime.release_barriers()
     return 0
 
 
@@ -322,6 +377,56 @@ def wait_ready(process, path, timeout):
             pass
         time.sleep(.1)
     raise TimeoutError('fake game readiness timeout')
+
+
+def export_evidence(scratch, output, errors):
+    rows, frames = [], []
+    for path in scratch.glob('cap_changes_*.csv'):
+        with path.open(newline='', encoding='utf-8') as source:
+            for row in csv.DictReader(source):
+                try:
+                    if set(row) != set(CAP_FIELDS) or row['profile'] not in {'Global', 'pythonw.exe'}:
+                        raise ValueError()
+                    for key in ('time', 'session_number', 'old_cap', 'new_cap'):
+                        if not math.isfinite(float(row[key])):
+                            raise ValueError()
+                    rows.append({k: sanitize(row[k]) for k in CAP_FIELDS})
+                except (ValueError, TypeError):
+                    errors.append('invalid controlled cap telemetry')
+    rows.sort(key=lambda r: float(r['time']))
+    path = scratch / 'frames.csv'
+    try:
+        with path.open(newline='') as source:
+            reader = csv.reader(source)
+            if next(reader, None) != ['timestamp', 'frame_time_ms']:
+                errors.append('missing or invalid frame telemetry header')
+            else:
+                for row in reader:
+                    try:
+                        t, ms = map(float, row)
+                        if not math.isfinite(t) or not math.isfinite(ms) or ms < 0:
+                            raise ValueError()
+                        frames.append((t, ms))
+                    except (ValueError, TypeError):
+                        errors.append('invalid numeric frame telemetry')
+    except OSError:
+        errors.append('frame telemetry unavailable')
+    if not frames:
+        errors.append('frame telemetry empty or unavailable')
+    if not rows:
+        errors.append('cap telemetry empty or unavailable')
+    with (output / 'cap_changes.csv').open('w', newline='', encoding='utf-8') as dest:
+        writer = csv.DictWriter(dest, fieldnames=CAP_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    target = output / ('frames.csv.gz' if path.exists() and path.stat().st_size > 3_000_000 else 'frames.csv')
+    if target.suffix == '.gz':
+        (output / 'frames.csv').unlink(missing_ok=True)
+    with (gzip.open if target.suffix == '.gz' else open)(target, 'wt', newline='') as dest:
+        writer = csv.writer(dest)
+        writer.writerow(['timestamp', 'frame_time_ms'])
+        writer.writerows(frames)
+    return rows, frames
 
 
 def run():
@@ -345,7 +450,7 @@ def run():
         flags = rtss.SetFlags(0xFFFFFFFF, 0)
         mask = rtss.RTSSHOOKSFLAG_LIMITER_DISABLED
     except BaseException as exc:
-        detail = sanitize('RTSS preflight failed: ' + str(exc))
+        detail = sanitize('RTSS preflight failed: ' + str(exc) + '; cap and frame telemetry unavailable')
         (output / 'summary.md').write_text('| Check | Result | Evidence |\n|---|---|---|\n' + ''.join(
             f'| {name} | FAIL | {detail} |\n' for name in SCENARIOS), encoding='utf-8')
         return 1
@@ -353,14 +458,15 @@ def run():
         scratch = Path(temp)
         try:
             # Fresh minimal profiles: never load/copy/enumerate existing private profiles.
-            for name, cap in [('Global', 60), ('pythonw.exe.cfg', 48)]:
+            for name, cap in [('Global', 60), ('pythonw.exe.cfg', 0)]:
                 (profiles / name).write_text('[Hooking]\nEnableHooking=1\nInjectionDelay=0\n'
                     'ApplicationDetectionLevel=3\n[Framerate]\nLimit=' + str(cap) + '\nLimitDenominator=1\n', encoding='utf-8')
             rtss.UpdateProfiles()
             rtss.enable_limiter()
-            for name, cap in [('Global', 60), ('pythonw.exe', 48)]:
+            for name, cap in [('Global', 60), ('pythonw.exe', 0)]:
                 if rtss.set_fractional_fps_direct(name, cap) is False:
                     raise RuntimeError('controlled cap initialization failed')
+                observed.setdefault('controlled_initialization', []).append({'profile': name, 'cap': cap})
             pythonw = ROOT / '.venv/Scripts/pythonw.exe'
             if not pythonw.is_file():
                 raise RuntimeError('Required .venv Scripts/pythonw.exe missing')
@@ -386,53 +492,6 @@ def run():
                 game.kill()
                 game.wait(timeout=10)
                 errors.append('forced fake game termination: incomplete telemetry')
-            data = json.loads((scratch / 'child.json').read_text())
-            observed = data['evidence']
-            errors.extend(data['errors'])
-            if limiter.returncode or game.returncode:
-                errors.append('process failure')
-            frames = []
-            with (scratch / 'frames.csv').open(newline='') as source:
-                reader = csv.reader(source)
-                next(reader)
-                frames = [(float(a), float(b)) for a, b in reader]
-            if any(not math.isfinite(t) or not math.isfinite(ms) or ms < 0 for t, ms in frames):
-                raise RuntimeError('invalid numeric frame telemetry')
-            rows = []
-            for path in scratch.glob('cap_changes_*.csv'):
-                with path.open(newline='', encoding='utf-8') as source:
-                    rows.extend(csv.DictReader(source))
-            for row in rows:
-                if row['profile'] not in {'Global', 'pythonw.exe'}:
-                    raise RuntimeError('uncontrolled cap evidence rejected')
-            correlations = correlate(rows, frames)
-            if not correlations or not all(c['complete'] for c in correlations):
-                errors.append('insufficient telemetry around cap writes')
-            # Independently confirm sustained measured response at distinct RTSS caps.
-            responses = set()
-            for a, b in zip(rows, rows[1:] + [{'time': str(time.time())}]):
-                lo, hi = float(a['time'])+2, float(b['time'])-1
-                samples = [ms for t, ms in frames if lo <= t <= hi and ms > 0]
-                cap = float(a['new_cap'])
-                if len(samples) >= 30:
-                    measured = 1000 / (sum(samples) / len(samples))
-                    if abs(measured-cap) <= max(3, cap*.15):
-                        responses.add(cap)
-            data['evidence']['hooked'] = len(responses) >= 2 and data['evidence'].get('live_rtss_samples', 0) >= 6
-            report = expectations(data['evidence'])
-            with (output / 'cap_changes.csv').open('w', newline='', encoding='utf-8') as dest:
-                writer = csv.DictWriter(dest, fieldnames=list(rows[0]) if rows else ['time'])
-                writer.writeheader()
-                writer.writerows({k: sanitize(v) for k, v in row.items()} for row in rows)
-            # Numeric-only telemetry, reconstructed rather than copied blindly.
-            target = output / ('frames.csv.gz' if (scratch / 'frames.csv').stat().st_size > 3_000_000 else 'frames.csv')
-            opener = gzip.open if target.suffix == '.gz' else open
-            if target.suffix == '.gz':
-                (output / 'frames.csv').unlink()
-            with opener(target, 'wt', newline='') as dest:
-                writer = csv.writer(dest)
-                writer.writerow(['timestamp', 'frame_time_ms'])
-                writer.writerows(frames)
         except BaseException as exc:
             errors.append(sanitize(type(exc).__name__ + ': ' + str(exc)))
         finally:
@@ -466,6 +525,28 @@ def run():
                         if any(word in line.lower() for word in ('error', 'exception', 'failed', 'traceback'))), encoding='utf-8')
             except BaseException as exc:
                 errors.append('log evidence failure: ' + sanitize(exc))
+        try:
+            for label, process in [('limiter', limiter), ('fake game', game)]:
+                if process is not None and process.returncode:
+                    errors.append(f'{label} process exit code {process.returncode}')
+            try:
+                data = json.loads((scratch / 'child.json').read_text())
+                observed.update(data['evidence'])
+                errors.extend(data['errors'])
+            except (OSError, ValueError, KeyError, TypeError):
+                errors.append('child result missing or invalid')
+            rows, frames = export_evidence(scratch, output, errors)
+            correlations = correlate(rows, frames)
+            if not correlations or not all(c['complete'] for c in correlations):
+                errors.append('insufficient telemetry around cap writes')
+            responses = sustained_responses(rows, frames)
+            observed['frame_responses'] = sorted(responses)
+            physical = {('Global', 30.0), ('pythonw.exe', 24.0), ('pythonw.exe', 48.0)} <= responses
+            observed['switch_response'] = observed.get('switch_response') is True and physical
+            observed['hooked'] = physical and observed.get('live_rtss_samples', 0) >= 6
+            report = expectations(observed)
+        except BaseException as exc:
+            errors.append('evidence processing failed: ' + sanitize(exc))
     if errors:
         report = final_results({}, errors)
     text = '# Windows local acceptance\n\nCommit: ' + sha + '\n\n| Check | Result | Evidence |\n|---|---|---|\n'

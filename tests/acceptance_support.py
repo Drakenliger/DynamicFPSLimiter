@@ -88,3 +88,29 @@ def final_results(evidence, errors):
     if errors:
         return {name: verdict(False, '; '.join(errors)) for name in SCENARIOS}
     return expectations(evidence)
+
+
+CAP_FIELDS = ('time', 'session_number', 'profile', 'old_cap', 'new_cap', 'reason',
+              'gpu_reading', 'cpu_reading', 'fps_mean')
+
+
+def profile_bounds_valid(row, model):
+    if model is None:
+        return False
+    profile, ladder = model
+    cap = float(row['new_cap'])
+    return row['profile'] == profile and bool(ladder) and min(ladder) <= cap <= max(ladder) and cap in ladder
+
+
+def sustained_responses(rows, frames):
+    responses = set()
+    for a, b in zip(rows, rows[1:] + [{'time': str(max((t for t, _ in frames), default=0))}]):
+        lo, hi = float(a['time']) + 2, float(b['time']) - 1
+        selected = [(t, ms) for t, ms in frames if lo <= t <= hi and ms > 0]
+        samples = [ms for _, ms in selected]
+        cap = float(a['new_cap'])
+        if len(samples) >= 30 and max(t for t, _ in selected) - min(t for t, _ in selected) >= 2:
+            measured = 1000 / (sum(samples) / len(samples))
+            if abs(measured - cap) <= max(3, cap * .15):
+                responses.add((a['profile'], cap))
+    return responses

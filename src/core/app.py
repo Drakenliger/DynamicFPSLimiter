@@ -52,7 +52,8 @@ from core.launch_popup import show_loading_popup, hide_loading_popup, show_rtss_
 from core.idle_timer import monitor_idle
 from core.version import display_version
 
-show_loading_popup(f"Loading Dynamic FPS Limiter {display_version()}...", Base_dir=Base_dir, dpg=dpg)
+if _acceptance_runtime is None:
+    show_loading_popup(f"Loading Dynamic FPS Limiter {display_version()}...", Base_dir=Base_dir, dpg=dpg)
 
 # Default viewport size
 Viewport_width = 610
@@ -167,6 +168,9 @@ def start_stop_callback(sender, app_data, user_data):
         session_number += 1
         running = not running
         captured_session = session_number
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.transition_observed(captured_session, profile_revision)
         # Reset decision state atomically with session invalidation.
         fps_values = []
         CurrentFPSOffset = 0
@@ -227,6 +231,9 @@ def start_stop_callback(sender, app_data, user_data):
         logger.add_log("Monitoring started")
         plotting_thread = threading.Thread(target=plotting_loop, args=(captured_session,), daemon=True)
         plotting_thread.start()
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.workers_started(monitoring_thread, plotting_thread)
         logger.add_log("Plotting started")
         fps_utils.reset_summary_statistics()
     else:
@@ -346,6 +353,9 @@ def _load_profile_on_gui(profile_name):
         except Exception:
             logger.add_log(f"AutoPilot: Failed to apply {profile_name} profile immediately.")
         profile_revision += 1
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.transition_observed(session_number, profile_revision)
         CurrentFPSOffset = 0
         fps_mean = 0
         fps_values = []
@@ -382,6 +392,7 @@ def monitoring_loop(captured_session):
                 return
             current_profile = cm.current_profile
             captured_profile_revision = profile_revision
+            captured_pass_time = time.time()
             if model_revision != captured_profile_revision:
                 fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
                     fps_utils.current_stepped_limits())
@@ -444,6 +455,9 @@ def monitoring_loop(captured_session):
             if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
                 cpu_values.pop(0)
             cpu_values.append(cpuUsage)
+            observer = globals().get("_acceptance_runtime")
+            if observer is not None:
+                observer.sample_observed(captured_session, captured_profile_revision)
 
         #TODO: if no LHM sensor selected, pass through without limiting
         # To prevent loading screens from affecting the fps cap
@@ -464,6 +478,10 @@ def monitoring_loop(captured_session):
                                           cm.minvalidgpu, cm.minvalidfps):
 
                         should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
+                        observer = globals().get("_acceptance_runtime")
+                        if observer is not None:
+                            observer.decision_observed(captured_session, captured_profile_revision,
+                                                       (should_decrease, should_increase), gpu_values, captured_pass_time)
                         if monitoring_method == "LibreHM":
                             with session_lock:
                                 if not session_is_current(captured_session, session_number, running):
@@ -1004,7 +1022,8 @@ def build_settings_window():
             dpg.add_button(label="Hide Settings", width=100, callback=lambda: dpg.configure_item("settings_window", show=False))
             dpg.bind_item_theme("settings_window", themes_manager.themes["nested_window_theme"])
 
-hide_loading_popup(dpg=dpg)
+if _acceptance_runtime is None:
+    hide_loading_popup(dpg=dpg)
 
 # GUI setup: Main Window
 dpg.create_context()
