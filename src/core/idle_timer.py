@@ -1,4 +1,5 @@
 import ctypes
+import ctypes.wintypes
 import time
 
 
@@ -21,7 +22,9 @@ class Win32IdleAPI:
 
         if hasattr(user32, "GetLastInputInfo"):
             user32.GetLastInputInfo.argtypes = [ctypes.POINTER(LASTINPUTINFO)]
-            user32.GetLastInputInfo.restype = ctypes.c_bool
+            user32.GetLastInputInfo.restype = getattr(
+                ctypes.wintypes, "BOOL", ctypes.c_long
+            )
 
         if hasattr(kernel32, "GetTickCount64"):
             kernel32.GetTickCount64.argtypes = []

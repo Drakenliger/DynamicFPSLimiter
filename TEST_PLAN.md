@@ -27,7 +27,7 @@ standard-library discovery and import isolation (`TEST-001`), initial fake
 clock, FPS/process, sensor, RTSS-result, and generation contracts (`TEST-002`),
 and long-uptime idle timer type/tick-wrap arithmetic regressions (`GUI-004`).
 It also covers the RTSS Stage 1 contract and deterministic-fake validation
-recorded below. The harness runs 103 deterministic unit tests without live RTSS,
+recorded below. The harness runs 104 deterministic unit tests without live RTSS,
 GUI, sensor, process, registry, profile, or hardware interaction. CI and later
 production adapters remain outstanding.
 

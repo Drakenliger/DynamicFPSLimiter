@@ -1,6 +1,7 @@
 """GUI-004 long-uptime idle timer types and tick wraparound regression tests."""
 
 import ctypes
+import ctypes.wintypes
 import unittest
 from unittest.mock import MagicMock
 
@@ -42,11 +43,11 @@ class TestIdleTimerRegressions(unittest.TestCase):
 
         def mock_get_last_input_info(lii_ptr):
             if not last_input_success:
-                return False
+                return 0
             lii = getattr(lii_ptr, "_obj", getattr(lii_ptr, "contents", None))
             if lii is not None:
                 lii.dwTime = dw_time & 0xFFFFFFFF
-            return True
+            return 1
 
         user32.GetLastInputInfo = MagicMock(side_effect=mock_get_last_input_info)
 
@@ -73,13 +74,60 @@ class TestIdleTimerRegressions(unittest.TestCase):
         self.assertEqual(
             user32.GetLastInputInfo.argtypes, [ctypes.POINTER(LASTINPUTINFO)]
         )
-        self.assertEqual(user32.GetLastInputInfo.restype, ctypes.c_bool)
+        self.assertEqual(
+            user32.GetLastInputInfo.restype,
+            getattr(ctypes.wintypes, "BOOL", ctypes.c_long),
+        )
 
         self.assertEqual(kernel32.GetTickCount64.argtypes, [])
         self.assertEqual(kernel32.GetTickCount64.restype, ctypes.c_ulonglong)
 
         self.assertEqual(kernel32.GetTickCount.argtypes, [])
         self.assertEqual(kernel32.GetTickCount.restype, ctypes.c_ulong)
+
+    def test_get_last_input_info_bool_return_256_truncation_regression(self):
+        # Create a C function returning 256 (0x100)
+        c_func_proto = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p)
+
+        def mock_c_func(lii_ptr):
+            if lii_ptr:
+                lii = ctypes.cast(lii_ptr, ctypes.POINTER(LASTINPUTINFO)).contents
+                lii.dwTime = 1_000_000
+            return 256  # Win32 BOOL non-zero return value 256
+
+        raw_c_func = c_func_proto(mock_c_func)
+        addr = ctypes.cast(raw_c_func, ctypes.c_void_p).value
+
+        # Wrap address with CFUNCTYPE function pointer
+        c_bool_func = ctypes.CFUNCTYPE(
+            ctypes.c_bool, ctypes.POINTER(LASTINPUTINFO)
+        )(addr)
+        win_bool_func = ctypes.CFUNCTYPE(
+            ctypes.wintypes.BOOL, ctypes.POINTER(LASTINPUTINFO)
+        )(addr)
+
+        user32_c_bool = MagicMock()
+        user32_c_bool.GetLastInputInfo = c_bool_func
+
+        user32_win_bool = MagicMock()
+        user32_win_bool.GetLastInputInfo = win_bool_func
+
+        kernel32 = MagicMock()
+        kernel32.GetTickCount64 = MagicMock(return_value=1_005_000)
+
+        api_c_bool = Win32IdleAPI(user32=user32_c_bool, kernel32=kernel32)
+        # Explicitly test c_bool restype truncation
+        api_c_bool.user32.GetLastInputInfo.restype = ctypes.c_bool
+
+        api_win_bool = Win32IdleAPI(user32=user32_win_bool, kernel32=kernel32)
+
+        # Demonstrate c_bool failure: returns False for 256, raising WinError
+        with self.assertRaises(OSError):
+            get_idle_duration(win32_api=api_c_bool)
+
+        # Demonstrate wintypes.BOOL fix: returns 256 (truthy), succeeding with 5.0s
+        result = get_idle_duration(win32_api=api_win_bool)
+        self.assertEqual(result, 5.0)
 
     def test_near_2_to_31_sign_boundary(self):
         # 2^31 = 2,147,483,648 ms. Input was 5000 ms ago.
