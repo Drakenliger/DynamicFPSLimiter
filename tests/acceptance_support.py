@@ -70,8 +70,10 @@ def expectations(e):
                              'Real LibreHM readings, controlled thresholds, real RTSS/FPS'),
         SCENARIOS[3]: verdict(e.get('cleared') is True and e.get('settled') is True,
                              'Empty histories after writes; consecutive decisions separated'),
-        SCENARIOS[4]: verdict(e.get('exit_running') is True and e.get('exit_readback') == 48,
-                             'Real exit callback; active profile max read back'),
+        SCENARIOS[4]: verdict(e.get('exit_running') is True and e.get('exit_readback') == 48
+                             and e.get('exit_pre_cap') is not None and 24 <= float(e['exit_pre_cap']) < 48
+                             and e.get('exit_restored') is True,
+                             'Below-max real cap; new exit writes for controlled session/profile; max read back'),
     }
 
 

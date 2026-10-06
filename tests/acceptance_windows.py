@@ -235,8 +235,24 @@ class Runtime:
         self.release_barriers()
         self.evidence['switch_ladders'] = self.switches
         self.evidence['live_rtss_samples'] = self.live_rtss_samples
-        self.evidence['exit_running'] = app['running']
+        # Release the non-reentrant session lock before exit_gui acquires it.
+        with app.get('session_lock', self.lock):
+            self.evidence['exit_running'] = app['running']
+            self.evidence['exit_pre_cap'] = app['rtss'].get_framerate_limit('pythonw.exe', True)
+            exit_session = app.get('session_number', -2) + 1
+            controlled = (app.get('cm') is not None and app['cm'].current_profile == 'pythonw.exe'
+                          and self.models.get(app.get('profile_revision')) == ('pythonw.exe', [24, 36, 48]))
+        with self.lock:
+            exit_start = len(self.rows)
         app['exit_gui']()
+        with self.lock:
+            exit_rows = list(self.rows[exit_start:])
+        self.evidence['exit_restored'] = controlled and bool(exit_rows) and all(
+            r['profile'] == 'pythonw.exe' and r['reason'] in ('exit', 'exit_refresh')
+            and int(r['session_number']) == exit_session and float(r['new_cap']) == 48
+            for r in exit_rows) and any(
+                r.get('old_cap') not in (None, '') and 24 <= float(r['old_cap']) < 48
+                for r in exit_rows)
         self.evidence['exit_readback'] = float(app['rtss'].get_framerate_limit('pythonw.exe', True))
         self.evidence['cleared'] = bool(self.clear_observations) and all(self.clear_observations)
         with self.lock:
@@ -345,10 +361,19 @@ class Runtime:
         elif self.stage == 'raise':
             self.sensors(app, 'drop')
             self.stage = 'exit'
-            self.due = now + 7
+            self.exit_deadline = now + 12
+            self.due = now
         elif self.stage == 'exit':
-            self.finish(app)
-            return False
+            with app['session_lock']:
+                cap = app['rtss'].get_framerate_limit('pythonw.exe', True)
+                below_max = cap is not None and 24 <= float(cap) < 48
+            if now >= self.exit_deadline:
+                self.errors.append('final below-max pythonw cap timeout')
+                self.finish(app)
+                return False
+            if below_max:
+                self.finish(app)
+                return False
 
 
 def child(directory, pid):

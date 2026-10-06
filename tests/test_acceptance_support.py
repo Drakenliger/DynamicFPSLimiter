@@ -62,7 +62,7 @@ def test_incomplete_evidence_never_passes_all_scenarios(payload):
 def complete_evidence():
     return dict(cycles=20, retired_quiet=True, switch_ladders=[[30,45,60],[24,36,48]],
                 switch_response=True, drop_delay=True, raise_delay=True, physical_sensor=True,
-                hooked=True, pdh_unavailable=True, cleared=True, settled=True, exit_running=True, exit_readback=48)
+                hooked=True, pdh_unavailable=True, cleared=True, settled=True, exit_running=True, exit_readback=48, exit_pre_cap=24, exit_restored=True)
 
 
 @pytest.mark.parametrize('field,invalid,scenario', [
@@ -70,7 +70,8 @@ def complete_evidence():
     ('switch_ladders', [[30,45,60],[30,45,60]], 1), ('switch_response', False, 1),
     ('drop_delay', False, 2), ('raise_delay', False, 2), ('physical_sensor', False, 2),
     ('hooked', False, 2), ('pdh_unavailable', False, 2), ('cleared', False, 3), ('settled', False, 3),
-    ('exit_running', False, 4), ('exit_readback', 24, 4)])
+    ('exit_running', False, 4), ('exit_readback', 24, 4),
+    ('exit_pre_cap', 48, 4), ('exit_pre_cap', 0, 4), ('exit_restored', False, 4)])
 def test_each_named_scenario_requires_its_independent_evidence(field, invalid, scenario):
     evidence = complete_evidence()
     assert all(r['status'] == 'PASS' for r in expectations(evidence).values())
@@ -424,3 +425,106 @@ def test_actual_finish_confirmation_window_cuts_at_baseline_and_transition(tmp_p
     runtime.transitions = {(1,1): 4.}
     runtime.finish(app)
     assert runtime.evidence['drop_delay'] is False
+
+
+def exit_runtime(tmp_path, monkeypatch, cap=24):
+    """Real Runtime observer and AST-loaded exit_gui/_write_cap; mock hardware only."""
+    from acceptance_windows import Runtime
+    from test_app_session import load_app
+    from types import SimpleNamespace
+    import acceptance_windows as driver
+    ns, _, _, _ = load_app()
+    monkeypatch.setattr(driver, 'generated_configs', lambda directory: None)
+    monkeypatch.setattr(driver, 'focus_game', lambda pid: None)
+    runtime = Runtime(tmp_path, 1)
+    ns['cm'].current_profile = 'pythonw.exe'
+    ns['fps_utils'].current_stepped_limits = lambda: [24, 36, 48]
+    ns['gui_queue'] = SimpleNamespace(_on_error=lambda *a: None)
+    state = {'cap': cap}
+    ns['rtss'].get_framerate_limit = lambda *a, **kw: state['cap']
+    def write(profile, value):
+        state['cap'] = value
+    ns['rtss'].set_fractional_fps_direct = write
+    ns['rtss'].set_fractional_framerate = write
+    # Profile initialization is irrelevant to exit, and otherwise requires GUI items.
+    monkeypatch.setattr(runtime, 'switch', lambda *a: None)
+    runtime.initialized(ns)
+    runtime.models = {0: ('pythonw.exe', [24, 36, 48])}
+    runtime.switches = [[30, 45, 60], [24, 36, 48]]
+    # Earlier valid records must never count as writes by this exit callback.
+    runtime.rows = [dict(time=str(i), session_number=1, profile=p, new_cap=c, reason=r)
+                    for i, (p, c, r) in enumerate([('Global', 30, 'decrease'),
+                        ('pythonw.exe', 24, 'decrease'), ('pythonw.exe', 48, 'increase'),
+                        ('pythonw.exe', 48, 'exit')], 1)]
+    runtime.revisions = {r['time']: (1 if r['profile'] == 'Global' else 0) for r in runtime.rows}
+    runtime.models[1] = ('Global', [30, 45, 60])
+    return runtime, ns, state
+
+
+@pytest.mark.parametrize('fault', ['none', 'noop', 'noop_already_max', 'already_max', 'missing_write',
+                                  'wrong_profile', 'wrong_cap', 'wrong_session', 'wrong_reason',
+                                  'bad_readback', 'below_bounds', 'wrong_old_cap'])
+def test_actual_finish_requires_new_controlled_exit_restoration(tmp_path, monkeypatch, fault):
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch,
+                                     cap=48 if fault in ('already_max', 'noop_already_max') else 0 if fault == 'below_bounds' else 24)
+    if fault == 'noop_already_max':
+        ns['exit_gui'] = lambda: None
+    elif fault == 'noop':
+        ns['exit_gui'] = lambda: state.update(cap=48)
+    elif fault == 'missing_write':
+        ns['cap_change_log'].record = lambda row: None
+    elif fault in ('wrong_profile', 'wrong_cap', 'wrong_session', 'wrong_reason', 'wrong_old_cap'):
+        record = ns['cap_change_log'].record
+        index, value = {'wrong_profile': (2, 'Global'), 'wrong_cap': (4, 36),
+                        'wrong_session': (1, 1), 'wrong_reason': (5, 'increase'),
+                        'wrong_old_cap': (3, 48)}[fault]
+        def corrupt(row):
+            row = list(row)
+            row[index] = value
+            record(row)
+        ns['cap_change_log'].record = corrupt
+    elif fault == 'bad_readback':
+        ns['rtss'].set_fractional_fps_direct = lambda *a: None
+        ns['rtss'].set_fractional_framerate = lambda *a: None
+    runtime.finish(ns)
+    assert expectations(runtime.evidence)[SCENARIOS[4]]['status'] == ('PASS' if fault == 'none' else 'FAIL')
+    if fault == 'none':
+        assert [r['reason'] for r in runtime.rows[4:]] == ['exit', 'exit_refresh']
+        assert runtime.evidence['exit_pre_cap'] == 24
+        assert runtime.evidence['exit_readback'] == 48
+
+
+@pytest.mark.parametrize('cap', [48, None, 0])
+def test_actual_frame_final_drop_timeout_is_explicit(tmp_path, monkeypatch, cap):
+    from acceptance_support import final_results
+    import acceptance_windows as driver
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch, cap=cap)
+    clock = [10.]
+    monkeypatch.setattr(driver.time, 'monotonic', lambda: clock[0])
+    runtime.started = 10
+    runtime.stage = 'raise'
+    monkeypatch.setattr(runtime, 'sensors', lambda *a: True)
+    assert runtime.frame(ns) is None
+    assert runtime.exit_deadline == 22
+    clock[0] = 21.9
+    assert runtime.frame(ns) is None
+    assert ns['running'] and len(runtime.rows) == 4
+    clock[0] = 22
+    assert runtime.frame(ns) is False
+    assert 'final below-max pythonw cap timeout' in runtime.errors
+    assert final_results(runtime.evidence, runtime.errors)[SCENARIOS[4]]['status'] == 'FAIL'
+
+
+def test_actual_frame_observed_drop_exits_without_fixed_sleep(tmp_path, monkeypatch):
+    import acceptance_windows as driver
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch, cap=48)
+    clock = [10.]
+    monkeypatch.setattr(driver.time, 'monotonic', lambda: clock[0])
+    runtime.started = 10
+    runtime.stage = 'raise'
+    monkeypatch.setattr(runtime, 'sensors', lambda *a: True)
+    runtime.frame(ns)
+    state['cap'] = 36
+    clock[0] = 10.1
+    assert runtime.frame(ns) is False
+    assert expectations(runtime.evidence)[SCENARIOS[4]]['status'] == 'PASS'
