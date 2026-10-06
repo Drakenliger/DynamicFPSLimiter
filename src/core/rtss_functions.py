@@ -139,7 +139,7 @@ class RTSSController:
         return self.SetFlags(and_mask, xor_mask)
 
     def disable_limiter(self):
-        self.SetFlags(0xFFFFFFFF, self.RTSSHOOKSFLAG_LIMITER_DISABLED)
+        self.SetFlags(~self.RTSSHOOKSFLAG_LIMITER_DISABLED & 0xFFFFFFFF, self.RTSSHOOKSFLAG_LIMITER_DISABLED)
         self.UpdateProfiles()
 
     def enable_limiter(self):
