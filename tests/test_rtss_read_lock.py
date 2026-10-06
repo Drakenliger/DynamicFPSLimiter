@@ -185,18 +185,12 @@ def test_get_profile_property_prevents_interleaving_with_writer(rtss_controller)
 
 
 def test_unlocked_baseline_fails_interleaving_test(rtss_controller):
-    """Verify that an unlocked get_profile_property fails interleaving assertion under same sync."""
+    """Verify that an unlocked get_profile_property permits interleaving when writer runs concurrently."""
     call_sequence = []
-    load_started = threading.Event()
-    writer_attempted_acquire = threading.Event()
-    reader_can_finish = threading.Event()
+    reader_load_started = threading.Event()
+    writer_loaded = threading.Event()
 
-    rtss_controller._profile_lock = TrackingRLock(
-        target_thread_name="WriterThread",
-        on_acquire_attempt_event=writer_attempted_acquire
-    )
-
-    # Unlocked get_profile_property implementation
+    # Unlocked get_profile_property implementation (baseline without _profile_lock)
     def unlocked_get_profile_property(profile_name, property_name, size=4):
         rtss_controller.LoadProfile(profile_name.encode('ascii'))
         buf = (ctypes.c_byte * size)()
@@ -210,10 +204,11 @@ def test_unlocked_baseline_fails_interleaving_test(rtss_controller):
     def fake_load_profile(name):
         call_sequence.append(("LoadProfile", name.decode('ascii')))
         if name == b"ReaderProfile":
-            load_started.set()
-            # Wait for writer to execute its set_profile_property (which acquires _profile_lock)
-            writer_attempted_acquire.wait(timeout=2.0)
-            reader_can_finish.wait(timeout=2.0)
+            reader_load_started.set()
+            # In unlocked baseline, pause reader until writer has executed LoadProfile
+            writer_loaded.wait(timeout=2.0)
+        elif name == b"WriterProfile":
+            writer_loaded.set()
 
     def fake_get_profile_property(prop_name, buf_ptr, size):
         call_sequence.append(("GetProfileProperty", prop_name.decode('ascii')))
@@ -239,7 +234,7 @@ def test_unlocked_baseline_fails_interleaving_test(rtss_controller):
         rtss_controller.get_profile_property("ReaderProfile", "FramerateLimit", 4)
 
     def writer_thread():
-        load_started.wait(timeout=2.0)
+        reader_load_started.wait(timeout=2.0)
         rtss_controller.set_profile_property("WriterProfile", "FramerateLimit", 60)
 
     r_thread = threading.Thread(target=reader_thread, name="ReaderThread")
@@ -249,12 +244,10 @@ def test_unlocked_baseline_fails_interleaving_test(rtss_controller):
         r_thread.start()
         w_thread.start()
 
-        assert writer_attempted_acquire.wait(timeout=2.0), "Writer did not attempt acquire"
-        # Delay reader finishing so writer can acquire lock and interleave LoadProfile
-        reader_can_finish.set()
+        assert writer_loaded.wait(timeout=2.0), "Writer did not complete LoadProfile"
 
     finally:
-        reader_can_finish.set()
+        writer_loaded.set()
         r_thread.join(timeout=2.0)
         w_thread.join(timeout=2.0)
 
@@ -269,5 +262,5 @@ def test_unlocked_baseline_fails_interleaving_test(rtss_controller):
         if item == ("LoadProfile", "WriterProfile") and writer_load_idx == -1:
             writer_load_idx = idx
 
-    # Unlocked baseline must interleave writer before reader GetProfileProperty
+    # Unlocked baseline deterministically interleaves writer LoadProfile before reader GetProfileProperty
     assert writer_load_idx < reader_get_idx, "Unlocked baseline did not reproduce interleaving defect"
