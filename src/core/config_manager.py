@@ -536,7 +536,9 @@ class ConfigManager:
                 self.profiles_config.write(f)
 
             try:
-                self.rtss.set_fractional_framerate(profile_to_delete, 0)
+                success = self.rtss.set_profile_property(profile_to_delete, "FramerateLimit", 0, update=True)
+                if success is False:
+                    self.logger.add_log(f"Error resetting RTSS cap for profile '{profile_to_delete}': RTSS set_profile_property returned False")
             except Exception as e:
                 self.logger.add_log(f"Error resetting RTSS cap for profile '{profile_to_delete}': {e}")
 

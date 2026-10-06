@@ -3,19 +3,50 @@ import sys
 import types
 import tempfile
 import configparser
+import contextlib
 import pytest
 
-# Non-Windows import isolation for Linux test execution
-if "clr" not in sys.modules:
-    sys.modules["clr"] = types.ModuleType("clr")
-if "winreg" not in sys.modules:
-    sys.modules["winreg"] = types.ModuleType("winreg")
-if "numpy" not in sys.modules:
-    np_mock = types.ModuleType("numpy")
-    np_mock.array = lambda *a, **k: []
-    sys.modules["numpy"] = np_mock
 
-from core.config_manager import ConfigManager
+@contextlib.contextmanager
+def isolated_config_manager_import():
+    """Context manager that temporarily patches sys.modules with stub modules
+    required for importing core.config_manager on non-Windows platforms without
+    leaving any stubs in sys.modules or parent package attributes afterward."""
+    orig_modules = sys.modules.copy()
+    stubs_created = []
+
+    for mod_name in ["clr", "winreg", "numpy"]:
+        if mod_name not in sys.modules:
+            m = types.ModuleType(mod_name)
+            if mod_name == "numpy":
+                m.array = lambda *a, **k: []
+            sys.modules[mod_name] = m
+            stubs_created.append(mod_name)
+
+    try:
+        from core.config_manager import ConfigManager
+        yield ConfigManager
+    finally:
+        # Restore sys.modules
+        for mod_name in stubs_created:
+            sys.modules.pop(mod_name, None)
+        # Restore any modified modules
+        for mod_name, mod in list(sys.modules.items()):
+            if mod_name not in orig_modules:
+                sys.modules.pop(mod_name, None)
+
+
+def test_collection_leaves_sys_modules_unchanged():
+    """Regression test 1: Collection of this test module must not leave
+    fake clr, winreg, or numpy in sys.modules."""
+    for mod_name in ["clr", "winreg", "numpy"]:
+        # If the module was not previously installed in the environment,
+        # it must not be present as a fake stub in sys.modules.
+        if mod_name not in sys.modules or getattr(sys.modules[mod_name], "__file__", None) is None:
+            # Check that sys.modules either has no fake stub or matches pre-collection environment
+            mod = sys.modules.get(mod_name)
+            if mod is not None:
+                assert hasattr(mod, "__file__"), f"Fake stub '{mod_name}' found in sys.modules after collection!"
 
 
 class DummyLogger:
@@ -56,14 +87,15 @@ class DummyThemesManager:
 
 
 class FakeRTSSForbiddingDelete:
-    def __init__(self, profiles_path):
+    def __init__(self, profiles_path, return_success=True):
         self.profiles_path = profiles_path
-        self.set_fractional_calls = []
+        self.return_success = return_success
+        self.set_property_calls = []
 
     def delete_profile(self, profile_name):
         raise AssertionError(f"delete_profile was called for {profile_name}, but it is forbidden!")
 
-    def set_fractional_framerate(self, profile_name, framerate, update=False, denominator=False):
+    def set_profile_property(self, profile_name, property_name, value, size=4, update=True):
         # Verify that profiles.ini on disk already has profile_name removed BEFORE this call!
         assert os.path.exists(self.profiles_path), "profiles.ini does not exist on disk"
         cp = configparser.ConfigParser()
@@ -71,47 +103,48 @@ class FakeRTSSForbiddingDelete:
         assert profile_name not in cp.sections(), (
             f"profiles.ini on disk still contains deleted section '{profile_name}' when RTSS call occurred!"
         )
-        self.set_fractional_calls.append((profile_name, framerate))
-        return 0, 1
+        self.set_property_calls.append((profile_name, property_name, value, update))
+        return self.return_success
 
 
-def create_test_config_manager(tmpdir, initial_profiles=None):
-    base_dir = os.path.join(tmpdir, "src")
-    os.makedirs(base_dir, exist_ok=True)
-    config_dir = os.path.join(tmpdir, "config")
-    os.makedirs(config_dir, exist_ok=True)
+def create_test_config_manager(tmpdir, initial_profiles=None, return_success=True):
+    with isolated_config_manager_import() as ConfigManager:
+        base_dir = os.path.join(tmpdir, "src")
+        os.makedirs(base_dir, exist_ok=True)
+        config_dir = os.path.join(tmpdir, "config")
+        os.makedirs(config_dir, exist_ok=True)
 
-    profiles_path = os.path.join(config_dir, "profiles.ini")
-    cp = configparser.ConfigParser()
-    cp["Global"] = {
-        "maxcap": "114",
-        "mincap": "40",
-        "capratio": "10",
-        "capstep": "5",
-        "gpucutofffordecrease": "85",
-        "gpucutoffforincrease": "70",
-        "cpucutofffordecrease": "105",
-        "cpucutoffforincrease": "101",
-        "delaybeforedecrease": "2",
-        "delaybeforeincrease": "10",
-        "capmethod": "ratio",
-        "customfpslimits": "30.01, 45.00, 59.99",
-        "monitoring_method": "LibreHM",
-    }
-    if initial_profiles:
-        for p_name, p_data in initial_profiles.items():
-            cp[p_name] = p_data
+        profiles_path = os.path.join(config_dir, "profiles.ini")
+        cp = configparser.ConfigParser()
+        cp["Global"] = {
+            "maxcap": "114",
+            "mincap": "40",
+            "capratio": "10",
+            "capstep": "5",
+            "gpucutofffordecrease": "85",
+            "gpucutoffforincrease": "70",
+            "cpucutofffordecrease": "105",
+            "cpucutoffforincrease": "101",
+            "delaybeforedecrease": "2",
+            "delaybeforeincrease": "10",
+            "capmethod": "ratio",
+            "customfpslimits": "30.01, 45.00, 59.99",
+            "monitoring_method": "LibreHM",
+        }
+        if initial_profiles:
+            for p_name, p_data in initial_profiles.items():
+                cp[p_name] = p_data
 
-    with open(profiles_path, "w") as f:
-        cp.write(f)
+        with open(profiles_path, "w") as f:
+            cp.write(f)
 
-    logger = DummyLogger()
-    dpg = DummyDPG()
-    rtss = FakeRTSSForbiddingDelete(profiles_path)
-    themes = DummyThemesManager()
+        logger = DummyLogger()
+        dpg = DummyDPG()
+        rtss = FakeRTSSForbiddingDelete(profiles_path, return_success=return_success)
+        themes = DummyThemesManager()
 
-    cm = ConfigManager(logger, dpg, rtss, None, themes, base_dir)
-    return cm, logger, dpg, rtss, profiles_path
+        cm = ConfigManager(logger, dpg, rtss, None, themes, base_dir)
+        return cm, logger, dpg, rtss, profiles_path
 
 
 def test_global_refusal():
@@ -130,7 +163,7 @@ def test_global_refusal():
         # Log must indicate Global refusal
         assert any("Cannot delete the default 'Global' profile." in log for log in logger.logs)
         # No RTSS call should occur
-        assert len(rtss.set_fractional_calls) == 0
+        assert len(rtss.set_property_calls) == 0
 
 
 def test_global_refusal_case_insensitive():
@@ -145,7 +178,7 @@ def test_global_refusal_case_insensitive():
         cp.read(profiles_path)
         assert "Global" in cp.sections()
         assert any("Cannot delete the default 'Global' profile." in log for log in logger.logs)
-        assert len(rtss.set_fractional_calls) == 0
+        assert len(rtss.set_property_calls) == 0
 
 
 def test_delete_profile_forbids_delete_profile_and_persists_ini_first():
@@ -169,12 +202,14 @@ def test_delete_profile_forbids_delete_profile_and_persists_ini_first():
         cp.read(profiles_path)
         assert "Game.exe" not in cp.sections()
 
-        # RTSS set_fractional_framerate was called with ("Game.exe", 0)
-        assert len(rtss.set_fractional_calls) == 1
-        assert rtss.set_fractional_calls[0] == ("Game.exe", 0)
+        # RTSS set_profile_property was called with ("Game.exe", "FramerateLimit", 0, True)
+        assert len(rtss.set_property_calls) == 1
+        assert rtss.set_property_calls[0] == ("Game.exe", "FramerateLimit", 0, True)
 
 
-def test_failing_rtss_call_cannot_resurrect_removed_ini_section():
+def test_rejected_dll_write_handles_false_visibly_without_resurrecting_ini():
+    """Regression test 2: When set_profile_property returns False (rejected DLL write),
+    it must log the reset failure visibly and must not resurrect the removed INI section."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cm, logger, dpg, rtss, profiles_path = create_test_config_manager(
             tmpdir,
@@ -184,14 +219,9 @@ def test_failing_rtss_call_cannot_resurrect_removed_ini_section():
                     "mincap": "60",
                 }
             },
+            return_success=False,  # DLL returns False!
         )
         dpg.set_value("profile_dropdown", "Game.exe")
-
-        # Force RTSS call to raise an exception
-        def failing_set_fractional(profile_name, framerate, **kwargs):
-            raise RuntimeError("RTSS DLL error simulation")
-
-        rtss.set_fractional_framerate = failing_set_fractional
 
         cm.delete_selected_profile_callback()
 
@@ -201,12 +231,12 @@ def test_failing_rtss_call_cannot_resurrect_removed_ini_section():
         cp.read(profiles_path)
         assert "Game.exe" not in cp.sections()
 
-        # Error was logged
+        # Failure was logged visibly
         assert any("Error resetting RTSS cap for profile 'Game.exe'" in log for log in logger.logs)
 
 
 def test_cap_reset_keeps_unrelated_settings_file_behavior():
-    """Verify non-destructive cap reset behavior on RTSS profile cfg files."""
+    """Verify non-destructive cap reset behavior preserves unrelated RTSS profile settings."""
     with tempfile.TemporaryDirectory() as tmpdir:
         profiles_dir = os.path.join(tmpdir, "Profiles")
         os.makedirs(profiles_dir, exist_ok=True)
@@ -218,32 +248,29 @@ def test_cap_reset_keeps_unrelated_settings_file_behavior():
             "PositionX=10\n"
             "PositionY=20\n"
             "OSDFormat=1\n"
-            "Limit=144000\n"
-            "LimitDenominator=1000\n"
+            "FramerateLimit=144000\n"
         )
         with open(game_cfg, "w", encoding="utf-8") as f:
             f.write(initial_cfg_content)
 
-        # Mock RTSS object that resets cap non-destructively on the cfg file
         class MockNonDestructiveRTSS:
             def delete_profile(self, profile_name):
                 raise AssertionError("delete_profile should not be called!")
 
-            def set_fractional_framerate(self, profile_name, framerate, update=False):
+            def set_profile_property(self, profile_name, prop_name, val, size=4, update=True):
                 cfg_path = os.path.join(profiles_dir, f"{profile_name}.cfg")
                 if os.path.exists(cfg_path):
                     with open(cfg_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
                     new_lines = []
                     for line in lines:
-                        if line.startswith("Limit="):
-                            new_lines.append(f"Limit={int(framerate)}\n")
-                        elif line.startswith("LimitDenominator="):
-                            new_lines.append("LimitDenominator=1\n")
+                        if line.startswith(f"{prop_name}="):
+                            new_lines.append(f"{prop_name}={val}\n")
                         else:
                             new_lines.append(line)
                     with open(cfg_path, "w", encoding="utf-8") as f:
                         f.writelines(new_lines)
+                return True
 
         cm, logger, dpg, _, profiles_path = create_test_config_manager(
             tmpdir,
@@ -262,5 +289,4 @@ def test_cap_reset_keeps_unrelated_settings_file_behavior():
         assert "PositionX=10" in content
         assert "PositionY=20" in content
         assert "OSDFormat=1" in content
-        assert "Limit=0" in content
-        assert "LimitDenominator=1" in content
+        assert "FramerateLimit=0" in content
