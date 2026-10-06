@@ -6,10 +6,17 @@ import types
 from decimal import Decimal
 from types import SimpleNamespace
 
-if "clr" not in sys.modules:
+try:
+    import clr
+except ImportError:
     sys.modules["clr"] = types.ModuleType("clr")
-if "numpy" not in sys.modules:
-    sys.modules["numpy"] = types.ModuleType("numpy")
+
+try:
+    import numpy
+except ImportError:
+    fake_np = types.ModuleType("numpy")
+    fake_np.isscalar = lambda x: isinstance(x, (int, float, complex))
+    sys.modules["numpy"] = fake_np
 
 
 def _make_fps_utils(fake_dpg, stub_logger, cm, fake_lhm):
