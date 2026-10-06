@@ -10,7 +10,7 @@ Excluded on purpose:
 - ``core.app``: importing it *runs* the application (module-level GUI
   setup, threads, RTSS enable). See docs/status.md §2.1 (A1) for the split that
   makes the app importable.
-- ``core.video2gif`` / ``core.backup_snippets``: gitignored local utilities.
+- ``core.video2gif``: gitignored local utility.
 """
 import importlib
 import json
