@@ -167,7 +167,7 @@ def test_configured_global_exit_write_resets_shared_evidence():
     ns['cm'].globallimitonexit_fps = 72
     ns['exit_gui']()
     assert_empty(ns)
-    assert [w[1] for w in writes] == [('Global', Decimal(72))]
+    assert [w[1] for w in writes] == [('Global', Decimal(90))] * 2 + [('Global', Decimal(72))]
     assert not ns['running']
     assert ns['CurrentFPSOffset'] == -30
     assert ns['idle_state']

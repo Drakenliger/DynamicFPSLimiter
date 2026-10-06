@@ -8,7 +8,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from core.cap_policy import (build_cap_model, next_cap_on_decrease,
+from core.cap_policy import (build_cap_model, next_cap_on_decrease, exit_restore_cap,
                              cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence)
 from core.session_policy import session_is_current
 
@@ -41,7 +41,7 @@ def load_app(*, lockless=False):
             cpucutofffordecrease=90, cpucutoffforincrease=70,
             idle_fps_delay=10, idle_mode=False, idle_fps_cap=20,
             gpupollinginterval=100, cpupollinginterval=100, globallimitonexit=False)
-    ns = dict(fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
+    ns = dict(exit_restore_cap=exit_restore_cap, fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
               Decimal=Decimal, running=True, session_number=1, session_lock=threading.Lock(),
               cm=cm, threading=NS(Thread=ThreadStub),
               dpg=NS(get_value=lambda _: "Legacy", set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,
@@ -200,9 +200,10 @@ def test_exit_invalidates_session(exit_cap):
     ns['exit_gui']()
     assert ns['session_number'] == 2
     assert not ns['running']
-    assert len(writes) == int(exit_cap)
+    assert len(writes) == 2 + int(exit_cap)
+    assert [w[1] for w in writes[:2]] == [("Global", Decimal(90))] * 2
     if exit_cap:
-        assert writes[0][1:] == (("Global", Decimal(60)), 2)
+        assert writes[-1][1:] == (("Global", Decimal(60)), 2)
 
 
 def test_old_cap_calculation_cannot_reset_new_session_offset():

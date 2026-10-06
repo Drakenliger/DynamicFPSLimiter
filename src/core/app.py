@@ -38,7 +38,7 @@ from core.warning import get_active_warnings
 from core.autostart import AutoStartManager
 from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
-from core.cap_policy import next_cap_on_decrease, build_cap_model
+from core.cap_policy import next_cap_on_decrease, build_cap_model, exit_restore_cap
 from core.cap_policy import cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
@@ -671,10 +671,24 @@ def exit_gui():
     global gpu_values, cpu_values, fps_values, fps_mean
     
     with session_lock:
+        restore_cap = exit_restore_cap(
+            running, cm.current_profile, tuple(fps_utils.current_stepped_limits()) if running else ())
         session_number += 1
         exit_session = session_number
         running = False
     gui_running = False
+
+    if restore_cap is not None:
+        with session_lock:
+            if not session_is_current(exit_session, session_number, running, allow_stopped=True):
+                return
+            rtss.set_fractional_fps_direct(*restore_cap)
+            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
+        with session_lock:
+            if not session_is_current(exit_session, session_number, running, allow_stopped=True):
+                return
+            rtss.set_fractional_framerate(*restore_cap)  # Update the RTSS GUI, like Stop.
+            gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
     if cm.globallimitonexit:
         with session_lock:
