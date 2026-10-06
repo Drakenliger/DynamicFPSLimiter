@@ -9,10 +9,17 @@ import types
 from decimal import Decimal
 from types import SimpleNamespace
 
-if "clr" not in sys.modules:
+try:
+    import clr
+except ImportError:
     sys.modules["clr"] = types.ModuleType("clr")
-if "numpy" not in sys.modules:
-    sys.modules["numpy"] = types.ModuleType("numpy")
+
+try:
+    import numpy
+except ImportError:
+    fake_np = types.ModuleType("numpy")
+    fake_np.isscalar = lambda x: isinstance(x, (int, float, complex))
+    sys.modules["numpy"] = fake_np
 
 
 def test_parse_and_normalize_string_to_decimal_set_unique_sorted():
