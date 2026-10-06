@@ -1,27 +1,34 @@
 import ctypes
 
+
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+
 def get_idle_duration():
     """Return seconds since last user input (mouse/keyboard) on Windows."""
-
-    class LASTINPUTINFO(ctypes.Structure):
-        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
 
     lii = LASTINPUTINFO()
     lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
 
-    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+    get_last_input_info = ctypes.windll.user32.GetLastInputInfo
+    get_last_input_info.argtypes = [ctypes.POINTER(LASTINPUTINFO)]
+    get_last_input_info.restype = ctypes.c_int32  # Win32 BOOL is four bytes
+    if not get_last_input_info(ctypes.byref(lii)):
         raise ctypes.WinError()
 
     # Prefer GetTickCount64 if available
     try:
-        ticks = ctypes.windll.kernel32.GetTickCount64()
-        # dwTime is 32-bit, keep arithmetic safe
-        delta_ms = (int(ticks) - int(lii.dwTime)) & ((1 << 64) - 1)
-
+        get_ticks = ctypes.windll.kernel32.GetTickCount64
+        get_ticks.restype = ctypes.c_uint64
     except AttributeError:
         # fallback to 32-bit GetTickCount
-        ticks = ctypes.windll.kernel32.GetTickCount()
-        delta_ms = (int(ticks) - int(lii.dwTime)) & 0xFFFFFFFF
+        get_ticks = ctypes.windll.kernel32.GetTickCount
+        get_ticks.restype = ctypes.c_uint32
+    get_ticks.argtypes = []
+    ticks = get_ticks()
+    # dwTime is a DWORD; subtract in its unsigned 32-bit domain across wrap.
+    delta_ms = (int(ticks) - int(lii.dwTime)) & 0xFFFFFFFF
     return delta_ms / 1000.0
 
 def monitor_idle(threshold=5):
