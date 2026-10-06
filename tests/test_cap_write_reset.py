@@ -109,6 +109,7 @@ def test_overlapping_thresholds_allow_one_write_per_pass(method):
 def test_start_stop_max_writes_reset_each_time_before_threads(starting):
     ns, writes, _, spawned = load_app()
     ns['running'] = not starting
+    ns['CurrentFPSOffset'] = -30
     seed(ns)
     events = []
     def write(*args):
@@ -121,6 +122,7 @@ def test_start_stop_max_writes_reset_each_time_before_threads(starting):
         def __init__(self, **kwargs):
             events.append(('thread', kwargs['target'].__name__))
             assert_empty(ns)
+            assert ns['CurrentFPSOffset'] == 0
         def start(self):
             pass
     ns['threading'].Thread = Thread
