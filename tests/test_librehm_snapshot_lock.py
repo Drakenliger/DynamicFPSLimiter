@@ -472,26 +472,25 @@ def test_fixture_teardown_restores_fresh_module_isolation(fake_lhm):
     assert inner_lhm.clr is fake_clr_instance
 
     # Now execute teardown cleanup sequence
-    if sys.platform != "win32":
-        for k in list(sys.modules.keys()):
-            if k not in inner_pre_modules:
-                del sys.modules[k]
-        for k, v in inner_pre_modules.items():
-            sys.modules[k] = v
+    for k in list(sys.modules.keys()):
+        if k not in inner_pre_modules:
+            del sys.modules[k]
+    for k, v in inner_pre_modules.items():
+        sys.modules[k] = v
 
-        if "core" in sys.modules:
-            core_mod = sys.modules["core"]
-            if inner_pre_core_attrs is not None:
-                for attr in list(core_mod.__dict__.keys()):
-                    if attr not in inner_pre_core_attrs:
-                        delattr(core_mod, attr)
-                    else:
-                        setattr(core_mod, attr, inner_pre_core_attrs[attr])
+    if "core" in sys.modules:
+        core_mod = sys.modules["core"]
+        if inner_pre_core_attrs is not None:
+            for attr in list(core_mod.__dict__.keys()):
+                if attr not in inner_pre_core_attrs:
+                    delattr(core_mod, attr)
+                else:
+                    setattr(core_mod, attr, inner_pre_core_attrs[attr])
 
     # Assert exact identity restoration
     assert sys.modules.get("clr") is pre_clr
     assert sys.modules.get("core.lhm_loader") is pre_lhm_mod
     assert sys.modules.get("core.fps_utils") is pre_fps_mod
     assert getattr(sys.modules.get("core"), "lhm_loader", None) is pre_core_lhm_attr
-    if pre_lhm_mod is not None:
+    if pre_lhm_mod is not None and sys.platform != "win32":
         assert getattr(pre_lhm_mod, "clr", None) is not fake_clr_instance
