@@ -212,37 +212,48 @@ class FPSUtils:
                 sensor_name = sensor.get("sensor_name")
                 hw_name = sensor.get("hw_name")
                 hw_type = sensor.get("hw_type")
+                identifier = sensor.get("identifier")
                 value = None
 
-                # CPU sensors use exact name keys in cpu_percentiles
-                if hw_type == self.HardwareType.Cpu:
-                    key = (sensor_type, sensor_name)
-                    value = cpu_perc_snap.get(key)
-                    values_long = cpu_hist_snap.get(key, [])
+                perc_snap = cpu_perc_snap if hw_type == self.HardwareType.Cpu else gpu_perc_snap
+                hist_snap = cpu_hist_snap if hw_type == self.HardwareType.Cpu else gpu_hist_snap
+
+                if identifier and identifier in perc_snap:
+                    value = perc_snap.get(identifier)
+                    values_long = hist_snap.get(identifier, [])
+                elif hw_type == self.HardwareType.Cpu:
+                    sensor_name_indexed = sensor.get("sensor_name_indexed") or sensor_name
+                    key = (sensor_type, sensor_name_indexed)
+                    value = perc_snap.get(key)
+                    values_long = hist_snap.get(key, [])
+                    if value is None and key != (sensor_type, sensor_name):
+                        key_raw = (sensor_type, sensor_name)
+                        value = perc_snap.get(key_raw)
+                        values_long = hist_snap.get(key_raw, [])
                 else:
                     sensor_name_indexed = sensor.get("sensor_name_indexed") or sensor_name
                     key = (sensor_type, sensor_name_indexed)
-                    value = gpu_perc_snap.get(key)
-                    values_long = gpu_hist_snap.get(key, [])
+                    value = perc_snap.get(key)
+                    values_long = hist_snap.get(key, [])
                     if value is None:
                         if gpu_hw_names_snap:
                             try:
                                 idx = gpu_hw_names_snap.index(hw_name) + 1
                                 key2 = (sensor_type, f"{idx} {sensor_name}")
-                                value = gpu_perc_snap.get(key2)
-                                values_long = gpu_hist_snap.get(key2, [])
+                                value = perc_snap.get(key2)
+                                values_long = hist_snap.get(key2, [])
                             except ValueError:
                                 value = None
                                 values_long = []
                         if value is None:
-                            for k, v in gpu_perc_snap.items():
-                                if k[0] == sensor_type and k[1].endswith(sensor_name):
+                            for k, v in perc_snap.items():
+                                if isinstance(k, tuple) and len(k) == 2 and k[0] == sensor_type and k[1].endswith(sensor_name):
                                     value = v
                                     break
                         
                         if not values_long:
-                            for k, v in gpu_hist_snap.items():
-                                if k[0] == sensor_type and k[1].endswith(sensor_name):
+                            for k, v in hist_snap.items():
+                                if isinstance(k, tuple) and len(k) == 2 and k[0] == sensor_type and k[1].endswith(sensor_name):
                                     values_long = v
                                     break
 
