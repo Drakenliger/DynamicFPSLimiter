@@ -73,7 +73,7 @@ class CPUUsageMonitor:
         c = f + 1  # Ceiling index
 
         if c >= len(data):
-            return data[f]
+            return sorted_data[f]
 
         # If the index is an integer, return the value at that index
         if f == k:

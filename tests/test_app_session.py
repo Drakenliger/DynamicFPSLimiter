@@ -10,6 +10,7 @@ import pytest
 
 from core.cap_policy import (build_cap_model, next_cap_on_decrease, exit_restore_cap,
                              cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence)
+from core.cap_change_log import make_row
 from core.session_policy import session_is_current
 
 APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
@@ -17,7 +18,7 @@ APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
 
 def load_app(*, lockless=False):
     tree = ast.parse(APP.read_text())
-    names = {'start_stop_callback', 'monitoring_loop', 'plotting_loop', 'exit_gui', '_load_profile_on_gui'}
+    names = {'_write_cap', 'start_stop_callback', 'monitoring_loop', 'plotting_loop', 'exit_gui', '_load_profile_on_gui'}
     selected = ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])
     if lockless:
         class RemoveSessionLock(ast.NodeTransformer):
@@ -41,7 +42,7 @@ def load_app(*, lockless=False):
             cpucutofffordecrease=90, cpucutoffforincrease=70,
             idle_fps_delay=10, idle_mode=False, idle_fps_cap=20,
             gpupollinginterval=100, cpupollinginterval=100, globallimitonexit=False)
-    ns = dict(exit_restore_cap=exit_restore_cap, fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
+    ns = dict(make_row=make_row, cap_change_log=NS(record=noop, close=noop), exit_restore_cap=exit_restore_cap, fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
               Decimal=Decimal, running=True, session_number=1, session_lock=threading.Lock(),
               cm=cm, threading=NS(Thread=ThreadStub),
               dpg=NS(get_value=lambda _: "Legacy", set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,
@@ -137,7 +138,7 @@ def test_pause_after_admission_before_rtss_call(lockless):
     tree = ast.parse(APP.read_text())
     monitor = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'monitoring_loop')
     call_line = min(n.lineno for n in ast.walk(monitor) if isinstance(n, ast.Expr)
-                    and isinstance(n.value, ast.Call) and ast.unparse(n.value) == 'rtss.set_fractional_framerate(current_profile, next_fps)')
+                    and isinstance(n.value, ast.Call) and ast.unparse(n.value) == "_write_cap(current_profile, next_fps, 'decrease')")
     paused, release = threading.Event(), threading.Event()
     invalidation_attempted, restarted = threading.Event(), threading.Event()
     class ObservedLock:
