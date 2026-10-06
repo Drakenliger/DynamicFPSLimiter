@@ -319,17 +319,26 @@ class LHMSensor:
                             val = round(d["value"], 2)
                             key = (sensor_type, name)
                             identifier = d["identifier"]
+                            canon_key = identifier if identifier else key
 
-                            self.cpu_history[key].append(val)
-                            self.cpu_history_long[key].append(val)
-                            p = round(calculate_percentile(self.cpu_history[key], self.percentile), 2)
-                            self.cpu_percentiles[key] = p
-                            refreshed_cpu_keys.add(key)
+                            self.cpu_history[canon_key].append(val)
+                            self.cpu_history_long[canon_key].append(val)
+                            p = round(calculate_percentile(self.cpu_history[canon_key], self.percentile), 2)
+                            self.cpu_percentiles[canon_key] = p
+                            refreshed_cpu_keys.add(canon_key)
 
-                            if identifier:
-                                self.cpu_history_long[identifier].append(val)
+                            # Mirror to display key and identifier for display / backward compatibility without mixing histories
+                            if canon_key != key:
+                                self.cpu_history[key] = self.cpu_history[canon_key]
+                                self.cpu_history_long[key] = self.cpu_history_long[canon_key]
+                                self.cpu_percentiles[key] = p
+                                refreshed_cpu_keys.add(key)
+                            if canon_key != identifier and identifier:
+                                self.cpu_history[identifier] = self.cpu_history[canon_key]
+                                self.cpu_history_long[identifier] = self.cpu_history_long[canon_key]
                                 self.cpu_percentiles[identifier] = p
                                 refreshed_cpu_keys.add(identifier)
+
                     cpu_hw_name = hw.Name
                 elif hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
                     hw.Update()
@@ -343,15 +352,23 @@ class LHMSensor:
                             val = round(d["value"], 2)
                             key = (sensor_type, name)
                             identifier = d["identifier"]
+                            canon_key = identifier if identifier else key
 
-                            self.gpu_history[key].append(val)
-                            self.gpu_history_long[key].append(val)
-                            p = round(calculate_percentile(self.gpu_history[key], self.percentile), 2)
-                            self.gpu_percentiles[key] = p
-                            refreshed_gpu_keys.add(key)
+                            self.gpu_history[canon_key].append(val)
+                            self.gpu_history_long[canon_key].append(val)
+                            p = round(calculate_percentile(self.gpu_history[canon_key], self.percentile), 2)
+                            self.gpu_percentiles[canon_key] = p
+                            refreshed_gpu_keys.add(canon_key)
 
-                            if identifier:
-                                self.gpu_history_long[identifier].append(val)
+                            # Mirror to display key and identifier for display / backward compatibility without mixing histories
+                            if canon_key != key:
+                                self.gpu_history[key] = self.gpu_history[canon_key]
+                                self.gpu_history_long[key] = self.gpu_history_long[canon_key]
+                                self.gpu_percentiles[key] = p
+                                refreshed_gpu_keys.add(key)
+                            if canon_key != identifier and identifier:
+                                self.gpu_history[identifier] = self.gpu_history[canon_key]
+                                self.gpu_history_long[identifier] = self.gpu_history_long[canon_key]
                                 self.gpu_percentiles[identifier] = p
                                 refreshed_gpu_keys.add(identifier)
 

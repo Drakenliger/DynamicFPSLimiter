@@ -218,7 +218,8 @@ class FPSUtils:
                 perc_snap = cpu_perc_snap if hw_type == self.HardwareType.Cpu else gpu_perc_snap
                 hist_snap = cpu_hist_snap if hw_type == self.HardwareType.Cpu else gpu_hist_snap
 
-                if identifier and identifier in perc_snap:
+                if identifier:
+                    # Metadata has identifier: resolve ONLY that identity even if missing (None)
                     value = perc_snap.get(identifier)
                     values_long = hist_snap.get(identifier, [])
                 elif hw_type == self.HardwareType.Cpu:
