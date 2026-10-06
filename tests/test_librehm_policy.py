@@ -213,9 +213,9 @@ def test_real_librehm_any_drop_all_raise_and_missing_sensor_semantics():
     assert evaluate([], []) == (False, False)
 
 
-def test_librehm_does_not_add_legacy_raise_cooldown_or_reset_after_write():
+def test_librehm_confirmed_raise_preserves_existing_cooldown():
     ns, writes, _, _ = load_app()
     real_evaluator(ns)
     ns['cm'].delaybeforeincrease = 3
     ns['CurrentFPSOffset'] = -60
-    assert run_passes(ns, writes, [(False, True)] * 4) == [3, 4]
+    assert run_passes(ns, writes, [(False, True)] * 6) == [3, 6]

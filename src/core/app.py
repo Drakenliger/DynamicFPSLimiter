@@ -450,7 +450,7 @@ def monitoring_loop(captured_session):
                             if increase_cooldown > 0:
                                 increase_cooldown -= 1
 
-                        if CurrentFPSOffset < 0 and should_increase and (monitoring_method == "LibreHM" or increase_cooldown == 0):
+                        if CurrentFPSOffset < 0 and should_increase and increase_cooldown == 0:
                             current_fps = current_maxcap + CurrentFPSOffset
                             gpu_range = cm.gpucutofffordecrease - cm.gpucutoffforincrease
                             last_gpu = gpu_values[-1] if gpu_values else 0
