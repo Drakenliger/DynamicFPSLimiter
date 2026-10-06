@@ -40,9 +40,9 @@ def test_profile_non_utf8_bytes_set_limit_denominator(rtss_stub):
 
     assert rtss_stub.set_limit_denominator("Global", 100, update=False) is True
 
-    updated_bytes = global_file.read_bytes()
-    assert b"LimitDenominator=100" in updated_bytes
-    assert b"Comment=Degree \xb0 symbol" in updated_bytes
+    lines = global_file.read_bytes().splitlines()
+    assert b"LimitDenominator=100" in lines
+    assert b"Comment=Degree \xb0 symbol" in lines
 
 
 def test_profile_non_utf8_bytes_set_fractional_fps_direct(rtss_stub):
@@ -54,10 +54,10 @@ def test_profile_non_utf8_bytes_set_fractional_fps_direct(rtss_stub):
 
     assert rtss_stub.set_fractional_fps_direct("Global", 59.94, update=False) is True
 
-    updated_bytes = global_file.read_bytes()
-    assert b"Limit=5994" in updated_bytes
-    assert b"LimitDenominator=100" in updated_bytes
-    assert b"Setting=Caf\xe9 \xb0" in updated_bytes
+    lines = global_file.read_bytes().splitlines()
+    assert b"Limit=5994" in lines
+    assert b"LimitDenominator=100" in lines
+    assert b"Setting=Caf\xe9 \xb0" in lines
 
 
 def test_profile_non_utf8_bytes_set_fractional_framerate(rtss_stub):
@@ -70,9 +70,9 @@ def test_profile_non_utf8_bytes_set_fractional_framerate(rtss_stub):
     limit, denom = rtss_stub.set_fractional_framerate("Global", 143.95, update=False)
     assert (limit, denom) == (14395, 100)
 
-    updated_bytes = global_file.read_bytes()
-    assert b"LimitDenominator=100" in updated_bytes
-    assert b"Setting=Caf\xe9 \xb0" in updated_bytes
+    lines = global_file.read_bytes().splitlines()
+    assert b"LimitDenominator=100" in lines
+    assert b"Setting=Caf\xe9 \xb0" in lines
 
 
 def test_process_name_decoding_cafe_accent_preserved(stub_logger, fake_dpg, monkeypatch):
