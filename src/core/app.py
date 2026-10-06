@@ -66,7 +66,7 @@ faq_path = os.path.join(Base_dir, "assets/faqs.csv")
 app_title = "Dynamic FPS Limiter"
 
 logger.init_logging(error_log_file)
-cap_change_log = CapChangeLog(run_path(cm.config_dir), logger.add_log)
+cap_change_log = CapChangeLog(run_path(cm.config_dir), logging.error)
 rtss_manager = None
 
 questions = []

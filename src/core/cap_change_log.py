@@ -74,6 +74,7 @@ class CapChangeLog:
                         drained = True
                         break
                     output.write(serialize_row(row))
+                    output.flush()
                 output.flush()
         except Exception as exc:
             self._error(exc)

@@ -39,6 +39,77 @@ def test_output_error_visible_and_close_drains(tmp_path):
     assert len(errors) == 1 and 'Cap-change CSV error' in errors[0]
 
 
+def test_queued_row_readable_before_close(monkeypatch, tmp_path):
+    from pathlib import Path
+    original = Path.open
+    flushed = threading.Event()
+    flush_threads = []
+
+    class ObservedOutput:
+        def __init__(self, output):
+            self.output = output
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.output.close()
+
+        def write(self, text):
+            return self.output.write(text)
+
+        def flush(self):
+            self.output.flush()
+            flush_threads.append(threading.current_thread().name)
+            flushed.set()
+
+    def opened(path, mode='r', *args, **kwargs):
+        output = original(path, mode, *args, **kwargs)
+        return ObservedOutput(output) if mode == 'x' else output
+
+    monkeypatch.setattr(Path, 'open', opened)
+    errors = []
+    path = tmp_path / 'events.csv'
+    log = CapChangeLog(path, errors.append)
+    row = make_row(1, 1, 'Global', None, 60, 'start')
+    try:
+        log.record(row)
+        assert flushed.wait(timeout=5), 'writer did not flush the accepted row'
+        assert log._thread.is_alive()
+        with path.open(newline='', encoding='utf-8') as source:
+            assert list(csv.reader(source)) == [list(FIELDS), list(row)]
+        assert flush_threads == ['cap-change-csv']
+    finally:
+        log.close()
+    assert not errors
+
+
+def test_row_flush_error_reports_and_drains(monkeypatch, tmp_path):
+    from pathlib import Path
+    reported = threading.Event()
+
+    class Broken(io.StringIO):
+        def flush(self):
+            raise OSError('row flush failed')
+
+    monkeypatch.setattr(Path, 'open', lambda *a, **kw: Broken())
+    errors = []
+
+    def report(message):
+        errors.append(message)
+        reported.set()
+
+    log = CapChangeLog(tmp_path / 'events.csv', report)
+    try:
+        log.record(make_row(1, 1, 'Global', None, 60, 'start'))
+        assert reported.wait(timeout=5)
+        log.record(make_row(2, 1, 'Global', 60, 30, 'decrease'))
+    finally:
+        log.close()
+    assert len(errors) == 1 and 'row flush failed' in errors[0]
+    assert not log._thread.is_alive()
+
+
 def test_flush_error_still_closes(monkeypatch, tmp_path):
     from pathlib import Path
     class Broken(io.StringIO):

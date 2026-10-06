@@ -1,14 +1,49 @@
 """Exercise the actual app AST helper and admitted write call sites."""
 import ast
 import csv
+import logging
+import sys
 from decimal import Decimal
 from types import SimpleNamespace as NS
 
 import pytest
 
-from core.cap_change_log import CapChangeLog
+from core.cap_change_log import CapChangeLog, run_path
 from test_app_session import APP, load_app
 from test_librehm_policy import run_passes
+
+
+def test_initializer_csv_error_without_gui_queue(tmp_path, monkeypatch, fake_dpg):
+    import core.logger as logger
+
+    monkeypatch.setattr(logger, '_gui_queue', None)
+    monkeypatch.setattr(logger, '_dpg', fake_dpg)
+    monkeypatch.setattr(logging.getLogger(), 'handlers', [])
+    monkeypatch.setattr(logging.getLogger(), 'level', logging.WARNING)
+    monkeypatch.setattr(sys, 'excepthook', sys.excepthook)
+    error_path = tmp_path / 'error_log.txt'
+    ns = dict(logger=logger, logging=logging, CapChangeLog=CapChangeLog,
+              run_path=run_path, cm=NS(config_dir=tmp_path / 'missing'),
+              error_log_file=str(error_path))
+    tree = ast.parse(APP.read_text())
+    initializer = [n for n in tree.body if
+                   (isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                    and isinstance(n.value.func, ast.Attribute)
+                    and n.value.func.attr == 'init_logging') or
+                   (isinstance(n, ast.Assign) and any(
+                       isinstance(t, ast.Name) and t.id == 'cap_change_log'
+                       for t in n.targets))]
+    assert len(initializer) == 2
+    try:
+        exec(compile(ast.Module(body=initializer, type_ignores=[]), str(APP), 'exec'), ns)
+        ns['cap_change_log'].close()
+        message = error_path.read_text()
+        assert 'ERROR - Cap-change CSV error' in message
+        assert str(ns['cap_change_log'].path) in message
+        assert not fake_dpg.calls
+    finally:
+        for handler in logging.getLogger().handlers:
+            handler.close()
 
 
 def setup():
