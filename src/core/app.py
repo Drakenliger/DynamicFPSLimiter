@@ -22,7 +22,11 @@ Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(Base_dir)
 
 from core.pre_launch import _unblock_alternate_data_streams, mark_first_launch_done
-DLLs_unblocked = _unblock_alternate_data_streams([parent_dir])
+_acceptance_runtime = globals().get("_acceptance_runtime")
+if _acceptance_runtime is not None:
+    _acceptance_runtime.configure_logging()
+DLLs_unblocked = (False if _acceptance_runtime is not None
+                  else _unblock_alternate_data_streams([parent_dir]))
 
 from core import logger
 logger.set_dpg(dpg)
@@ -56,7 +60,9 @@ Viewport_height = 700
 
 rtss = RTSSController(logger, error_handler=show_rtss_error_and_exit)
 themes_manager = ThemesManager(Base_dir, dpg)
-cm = ConfigManager(logger, dpg, rtss, None, themes_manager, Base_dir)
+_config_factory = (ConfigManager if _acceptance_runtime is None
+                   else _acceptance_runtime.config_factory)
+cm = _config_factory(logger, dpg, rtss, None, themes_manager, Base_dir)
 
 # Paths to configuration files
 error_log_file = os.path.join(parent_dir, "error_log.txt")
@@ -65,6 +71,8 @@ faq_path = os.path.join(Base_dir, "assets/faqs.csv")
 
 app_title = "Dynamic FPS Limiter"
 
+if _acceptance_runtime is not None:
+    error_log_file = _acceptance_runtime.error_log_file
 logger.init_logging(error_log_file)
 cap_change_log = CapChangeLog(run_path(cm.config_dir), logging.error)
 rtss_manager = None
@@ -1418,7 +1426,8 @@ apply_all_tooltips(dpg, get_tooltips(), cm.showtooltip, cm, logger)
 cm.refresh_ui_callbacks()
 
 autostart = AutoStartManager(app_path=os.path.join(os.path.dirname(Base_dir), "DynamicFPSLimiter.exe"))
-autostart.update_if_needed(cm.launchonstartup)
+if _acceptance_runtime is None:
+    autostart.update_if_needed(cm.launchonstartup)
 
 if cm.autopilot:
     dpg.configure_item("start_stop_button", enabled=False)
@@ -1458,9 +1467,16 @@ except Exception:
 # target frame has already been checked, orphaning the hook forever and silently
 # freezing all queued GUI updates. Drain the GuiQueue directly on the main render
 # thread (the thread that owns the DPG context) instead.
+if _acceptance_runtime is not None:
+    _acceptance_runtime.initialized(globals())
+
 while dpg.is_dearpygui_running():
     dpg.render_dearpygui_frame()
     try:
         gui_queue.drain()
     except Exception:
         logging.error("GuiQueue drain failed", exc_info=True)
+
+    if _acceptance_runtime is not None:
+        if _acceptance_runtime.frame(globals()) is False:
+            break

@@ -1,0 +1,21 @@
+# PR8 Windows local acceptance
+
+On the main PC, open **PowerShell as Administrator**, on an interactive desktop with RTSS already running. No GUI clicking is required. From `E:\BotProjects\DynamicFPSLimiter`, run this single command:
+
+```powershell
+Set-Location E:\BotProjects\DynamicFPSLimiter; & .\.venv\Scripts\python.exe .\tests\acceptance_windows.py
+```
+
+Use the existing `.venv`, including `Scripts\pythonw.exe`, DearPyGui and the existing hardware/RTSS dependencies. This command does not install anything and is not a CI entry point. Do not use the computer during the run: the runner brings the fake-game window forward using the Windows foreground API. If Windows refuses focus or RTSS does not hook, the evidence fails. Allow about three minutes for the fake game's normal duration to expire and flush its buffered frame CSV.
+
+The supervisor snapshots only RTSS `Global` and `pythonw.exe.cfg`, including existence and exact bytes, in memory. It replaces them with generated controlled profiles before launching the limiter and restores them and the limiter-disabled flag in its outer `finally`, including after child crashes/timeouts. Keep the supervisor alive; termination of the supervisor itself or power loss cannot execute Python cleanup. Do not run concurrently with other RTSS profile writers or unrelated `pythonw.exe` applications.
+
+The limiter runs via `runpy` with a small startup/frame runtime object. It uses the real GUI, real Start/Stop, profile and exit callbacks on the GUI thread, real monitoring threads/controllers and original asset/DLL paths. ConfigManager's acceptance-only subclass changes INI paths in `load_or_init_configs` before the parent implementation reads them. User INIs are never read or copied. Acceptance skips startup ADS unblocking and Task Scheduler updates; ordinary app launch keeps the original defaults.
+
+Five checks cover 20 rapid Start/Stop cycles and retired-worker admission; two active profiles with distinct ladders/bounds and observed cap responses; both LibreHM confirmation delays; clearing and settling between decision writes; and exit while running restoring the active maximum. LibreHM uses actual hardware readings with deliberately extreme temporary thresholds to request each direction. No LibreHM sensor feed is injected. To demonstrate that unavailable PDH GPU readings do not gate either LibreHM direction, the acceptance runtime explicitly wraps the real PDH monitor with a read-only adapter returning `None` for `gpu_percentile`; all other calls still reach that real monitor. This is controlled PDH unavailability, not evidence about physical PDH availability. LibreHM continues polling real hardware. Unavailable LibreHM readings, insufficient real RTSS/FPS response, missing frame coverage, queued/worker exceptions, deadlines and forced fake-game termination are FAIL evidence, not substitutes for runtime PASS. Later-batch failures are follow-up evidence; this runner does not fix batches A/B/D/E or DPI.
+
+Each run creates `results/<date>_<short-sha>/summary.md`, a cap-change CSV, numeric-only frame data (gzip above 3 MB) and filtered necessary error log lines. Paths and unrelated executable names are sanitized before evidence writes, including formatted tracebacks. Only controlled profile aliases and caps are exported. The original RTSS bytes/flags are never exported. Frame-time spikes are informational: every write uses a fixed ±2-second window, requiring at least three frame samples covering write−1.5s through write+1.5s. There is no invented spike threshold. Sustained cap response requires at least 30 frame samples after a two-second settling period and measured FPS within max(3 FPS, 15%) of two distinct generated caps.
+
+Exit code 0 means all five checks passed; 1 means failure. Inspect the summary before transferring results. Keep results out of commits. A separate `Drakenliger/dfl-results` repository is only a proposal and requires owner approval; this work creates no private results repository. Transfer commands will come later from the coordinator.
+
+Linux tests validate portable evidence/restoration rules only. Full Windows runtime is not available in the development container and is not claimed to pass. Full Windows CI follows the draft PR through the coordinator's workflow.
