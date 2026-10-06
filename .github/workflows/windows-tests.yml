@@ -11,9 +11,31 @@ permissions:
 
 jobs:
   pytest:
-    name: Pytest (Windows, Python 3.12)
+    name: Pytest (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r src/requirements.txt
+      - name: Run full pytest suite
+        run: python -m pytest -q
+
+  build:
+    name: Build Windows executable (Python 3.12)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: pytest
+    runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,5 +45,12 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: python -m pip install -r src/requirements.txt
-      - name: Run full pytest suite
-        run: python -m pytest -q
+      - name: Build executable
+        run: python src/__main__.py --build
+      - name: Upload executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: DynamicFPSLimiter-windows
+          path: output/dist
+          retention-days: 14
+          if-no-files-found: error
