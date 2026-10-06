@@ -18,6 +18,7 @@ def isolated_config_manager_import():
     for mod_name in ["clr", "winreg", "numpy"]:
         if mod_name not in sys.modules:
             m = types.ModuleType(mod_name)
+            m._is_test_stub = True
             if mod_name == "numpy":
                 m.array = lambda *a, **k: []
             sys.modules[mod_name] = m
@@ -38,15 +39,13 @@ def isolated_config_manager_import():
 
 def test_collection_leaves_sys_modules_unchanged():
     """Regression test 1: Collection of this test module must not leave
-    fake clr, winreg, or numpy in sys.modules."""
+    fake clr, winreg, or numpy stubs in sys.modules."""
     for mod_name in ["clr", "winreg", "numpy"]:
-        # If the module was not previously installed in the environment,
-        # it must not be present as a fake stub in sys.modules.
-        if mod_name not in sys.modules or getattr(sys.modules[mod_name], "__file__", None) is None:
-            # Check that sys.modules either has no fake stub or matches pre-collection environment
-            mod = sys.modules.get(mod_name)
-            if mod is not None:
-                assert hasattr(mod, "__file__"), f"Fake stub '{mod_name}' found in sys.modules after collection!"
+        mod = sys.modules.get(mod_name)
+        if mod is not None:
+            assert not getattr(mod, "_is_test_stub", False), (
+                f"Fake stub '{mod_name}' found in sys.modules after collection!"
+            )
 
 
 class DummyLogger:
