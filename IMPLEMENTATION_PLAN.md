@@ -7,9 +7,9 @@ started.
 
 ## Authorized local CTRL-001 exception — 6 October 2026
 
-Afrim explicitly authorized the focused selector fix from `main` at `f8c4d4a`
-despite the historical sequence below. The one-step decrease correction and
-regressions are implemented locally; all 97 deterministic tests pass. Changes
+Afrim explicitly authorized the focused selector fix despite the historical
+sequence below. The selected correction is rebased onto merged `main` at
+`6d4abe6`; all 106 deterministic tests pass. Changes
 passed independent Antigravity review and were selected for the local
 `codex/tour-2-codex` branch. No broader controller, RTSS,
 lifecycle, threshold, or delay work is included. Physical acceptance remains

@@ -321,7 +321,8 @@ existing selector, preserving its API and production caller. On `[30, 60, 90]`,
 cap 90 with measured FPS 90 or 120 now selects 60 instead of no cap; cap 60
 selects 30, and minimum remains unchanged. The original reference is retained
 only for explicit corrected-difference and unchanged-branch tests. New
-regressions fail against the old selector; all 97 tests pass after correction.
+regressions fail against the old selector; all 106 tests pass after correction
+and rebase onto merged `main` at `6d4abe6`.
 Antigravity approved this fix with no substantive findings; the coordinator
 selected it for local branch `codex/tour-2-codex`. Physical acceptance remains
 pending; other findings and RTSS application/error behavior are unchanged.

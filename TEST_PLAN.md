@@ -89,7 +89,7 @@ step-down. Collapse and absent-current fallback retain characterization coverage
 as do the existing production RTSS ValueError application tests.
 
 Local validation on 6 October 2026: the new regressions failed in eight subcases
-against the old selector, then all 97 tests passed with
+against the old selector, then all 106 tests passed on the rebased head (`6d4abe6` base) with
 `python3 -m unittest discover -s tests` after correction. `git diff --check`
 passed. No Windows or physical runtime acceptance was performed.
 
