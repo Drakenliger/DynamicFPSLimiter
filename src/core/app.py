@@ -39,6 +39,7 @@ from core.autostart import AutoStartManager
 from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
 from core.cap_policy import next_cap_on_decrease, build_cap_model
+from core.cap_policy import cap_readings_valid, confirm_librehm_decision
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
@@ -328,6 +329,7 @@ def monitoring_loop(captured_session):
     gpu_monitor.reinitialize()
 
     model_revision = None
+    librehm_history = (0, 0)
     increase_cooldown = 0 # Cooldown for increasing FPS cap
     last_active_fps_cap = None
 
@@ -341,6 +343,7 @@ def monitoring_loop(captured_session):
                 fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
                     fps_utils.current_stepped_limits())
                 model_revision = captured_profile_revision
+                librehm_history = (0, 0)
                 increase_cooldown = 0
                 last_active_fps_cap = None
         fps, process_name = rtss_manager.get_fps_for_active_window()
@@ -382,6 +385,9 @@ def monitoring_loop(captured_session):
                 return
             if captured_profile_revision != profile_revision:
                 continue
+            monitoring_method = dpg.get_value("input_monitoring_method")
+            previous_librehm_history = librehm_history
+            librehm_history = (0, 0)  # A pass without an eligible decision breaks confirmation.
             if fps:
                 if len(fps_values) > 2:
                     fps_values.pop(0)
@@ -398,7 +404,7 @@ def monitoring_loop(captured_session):
 
         #TODO: if no LHM sensor selected, pass through without limiting
         # To prevent loading screens from affecting the fps cap
-        if gpuUsage is not None and process_name not in {"DynamicFPSLimiter.exe"}:
+        if (monitoring_method == "LibreHM" or gpuUsage is not None) and process_name not in {"DynamicFPSLimiter.exe"}:
             if not monitor_idle(cm.idle_fps_delay) or not cm.idle_mode:
                 if idle_state:
                     with session_lock:
@@ -409,9 +415,19 @@ def monitoring_loop(captured_session):
                         rtss.set_fractional_framerate(current_profile, last_active_fps_cap)
                         idle_state = False
                 else:
-                    if gpuUsage > cm.minvalidgpu and fps_mean > cm.minvalidfps: 
+                    if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
+                                          cm.minvalidgpu, cm.minvalidfps):
 
-                        should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values)
+                        should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
+                        if monitoring_method == "LibreHM":
+                            with session_lock:
+                                if not session_is_current(captured_session, session_number, running):
+                                    return
+                                if captured_profile_revision != profile_revision:
+                                    continue
+                                librehm_history, (should_decrease, should_increase) = confirm_librehm_decision(
+                                    previous_librehm_history, should_decrease, should_increase,
+                                    cm.delaybeforedecrease, cm.delaybeforeincrease)
 
                         if CurrentFPSOffset > (current_mincap - current_maxcap) and should_decrease:
                             current_fps_cap = current_maxcap + CurrentFPSOffset
