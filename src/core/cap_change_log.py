@@ -64,8 +64,13 @@ class CapChangeLog:
             for child in parent.iterdir():
                 if child.name == self.path.name:
                     continue
-                match = CAP_LOG_PATTERN.match(child.name)
+                match = CAP_LOG_PATTERN.fullmatch(child.name)
                 if match:
+                    try:
+                        if child.is_symlink() or not child.is_file():
+                            continue
+                    except Exception:
+                        continue
                     timestamp = int(match.group(1))
                     candidates.append((timestamp, child))
 
@@ -86,7 +91,7 @@ class CapChangeLog:
             if not self._closed:
                 self._queue.put(row)
 
-    def close(self, timeout=5.0):
+    def close(self, timeout=None):
         with self._lock:
             if not self._closed:
                 self._closed = True
@@ -96,9 +101,9 @@ class CapChangeLog:
     def _write(self):
         drained = False
         try:
-            self._prune_old_logs()
             with self.path.open('x', newline='', encoding='utf-8') as output:
                 output.write(serialize_row(FIELDS))
+                self._prune_old_logs()
                 while True:
                     row = self._queue.get()
                     if row is None:

@@ -26,19 +26,35 @@ def test_prune_21_plus_logs_keeps_20_and_retains_current(tmp_path):
     assert not errors
 
 
-def test_unrelated_files_preserved(tmp_path):
+def test_unrelated_files_directories_symlinks_and_newlines_preserved(tmp_path):
     errors = []
-    unrelated_files = [
-        tmp_path / 'settings.json',
-        tmp_path / 'results.csv',
-        tmp_path / 'cap_changes_settings.csv',
-        tmp_path / 'cap_changes_summary.csv',
-        tmp_path / 'cap_changes_123_invalid.csv',
-        tmp_path / 'cap_changes_100_nothex12.csv',
-        tmp_path / 'cap_changes_100_00000000.txt',
-    ]
-    for p in unrelated_files:
-        p.write_text('unrelated', encoding='utf-8')
+
+    # 1. Unrelated file
+    unrelated_file = tmp_path / 'settings.json'
+    unrelated_file.write_text('unrelated', encoding='utf-8')
+
+    # 2. Filename with newline
+    newline_file = tmp_path / 'cap_changes_100_00000000.csv\n'
+    try:
+        newline_file.write_text('newline', encoding='utf-8')
+        has_newline_file = True
+    except Exception:
+        has_newline_file = False
+
+    # 3. Directory matching naming pattern
+    dir_matching_pattern = tmp_path / 'cap_changes_500_00000000.csv'
+    dir_matching_pattern.mkdir()
+    (dir_matching_pattern / 'child.txt').write_text('inside dir', encoding='utf-8')
+
+    # 4. Symlink matching naming pattern pointing to target
+    target_file = tmp_path / 'target.txt'
+    target_file.write_text('target', encoding='utf-8')
+    symlink_matching_pattern = tmp_path / 'cap_changes_501_00000000.csv'
+    try:
+        symlink_matching_pattern.symlink_to(target_file)
+        has_symlink = True
+    except (OSError, NotImplementedError):
+        has_symlink = False
 
     # Pre-populate 22 old valid generated cap logs
     old_logs = []
@@ -52,15 +68,62 @@ def test_unrelated_files_preserved(tmp_path):
     log.record(make_row(1, 1, 'Global', None, 60, 'start'))
     log.close(timeout=5.0)
 
-    for p in unrelated_files:
-        assert p.exists(), f'Unrelated file {p.name} was wrongly deleted'
+    # Verify preservation
+    assert unrelated_file.exists()
+    assert dir_matching_pattern.is_dir()
+    if has_newline_file:
+        assert newline_file.exists()
+    if has_symlink:
+        assert symlink_matching_pattern.is_symlink() or symlink_matching_pattern.exists()
 
-    retained_logs = sorted([p for p in tmp_path.glob('cap_changes_*.csv') if p not in unrelated_files])
+    retained_logs = sorted([p for p in tmp_path.glob('cap_changes_*.csv') if p.is_file() and not p.is_symlink()])
     assert len(retained_logs) == 20
     assert current_path in retained_logs
     assert old_logs[0] not in retained_logs
     assert old_logs[2] not in retained_logs
     assert old_logs[3] in retained_logs
+    assert not errors
+
+
+def test_failed_creation_preserves_old_logs(tmp_path):
+    errors = []
+    old_logs = []
+    for i in range(1, 25):
+        p = tmp_path / f'cap_changes_{1000 + i}_000000{i:02d}.csv'
+        p.write_text('header\n', encoding='utf-8')
+        old_logs.append(p)
+
+    # Attempt to initialize CapChangeLog at an existing file path (raises FileExistsError on open('x'))
+    invalid_path = old_logs[0]
+    log = CapChangeLog(invalid_path, errors.append)
+    log.record(make_row(1, 1, 'Global', None, 60, 'start'))
+    log.close(timeout=5.0)
+
+    # All 24 old logs must be preserved without history loss
+    for p in old_logs:
+        assert p.exists(), f'Old log {p.name} was wrongly deleted on file creation failure'
+
+    assert len(errors) == 1
+    assert 'Cap-change CSV error' in errors[0]
+
+
+def test_default_close_drains_accepted_rows_and_waits_writer(tmp_path):
+    errors = []
+    path = run_path(tmp_path)
+    log = CapChangeLog(path, errors.append)
+
+    count = 100
+    for i in range(count):
+        log.record(make_row(i, 1, 'Global', None, 60, 'start'))
+
+    log.close()  # Production default close() with timeout=None
+
+    assert not log._thread.is_alive()
+    assert path.exists()
+
+    with path.open(newline='', encoding='utf-8') as source:
+        rows = list(csv.reader(source))
+    assert len(rows) == count + 1  # header + count rows
     assert not errors
 
 
@@ -72,7 +135,6 @@ def test_prune_filesystem_error_reports_safely_and_does_not_block(monkeypatch, t
         p = tmp_path / f'cap_changes_{1000 + i}_000000{i:02d}.csv'
         p.write_text('header\n', encoding='utf-8')
 
-    # Force Path.unlink to fail with OSError during pruning
     original_unlink = Path.unlink
 
     def failing_unlink(self, *args, **kwargs):
@@ -87,13 +149,11 @@ def test_prune_filesystem_error_reports_safely_and_does_not_block(monkeypatch, t
     log.record(make_row(1, 1, 'Global', None, 60, 'start'))
     log.close(timeout=5.0)
 
-    # Log file writing must still succeed and not be blocked
     assert current_path.exists()
     with current_path.open(newline='', encoding='utf-8') as source:
         rows = list(csv.reader(source))
-    assert len(rows) == 2  # header + row recorded
+    assert len(rows) == 2
 
-    # Prune failure must be reported safely
     assert len(errors) == 1
     assert 'Cap-change CSV error' in errors[0]
     assert 'Permission denied' in errors[0]
