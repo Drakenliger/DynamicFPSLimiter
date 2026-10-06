@@ -40,6 +40,7 @@ from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
 from core.cap_policy import next_cap_on_decrease, build_cap_model, exit_restore_cap
 from core.cap_policy import cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence
+from core.cap_change_log import CapChangeLog, make_row, run_path
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
@@ -65,6 +66,7 @@ faq_path = os.path.join(Base_dir, "assets/faqs.csv")
 app_title = "Dynamic FPS Limiter"
 
 logger.init_logging(error_log_file)
+cap_change_log = CapChangeLog(run_path(cm.config_dir), logger.add_log)
 rtss_manager = None
 
 questions = []
@@ -117,6 +119,36 @@ lhm_sensor = LHMSensor(lambda: running, logger, dpg, themes_manager,
 fps_utils = FPSUtils(cm, lhm_sensor, logger, dpg, Viewport_width, base_dir=Base_dir)
 
 
+def _write_cap(profile, cap, reason, *, direct=False):
+    """Called only inside the existing admitted session/profile blocks."""
+    old_cap = None
+    try:
+        old_cap = rtss.get_framerate_limit(profile, get_denominator=True)
+    except Exception as exc:
+        try:
+            logger.add_log(f"Cap-change old-cap read failed for {profile}: {exc}")
+        except Exception:
+            pass
+    # Capture evidence before the write and its ensuing fresh_cap_evidence reset.
+    gpu = gpu_values[-1] if gpu_values else None
+    cpu = cpu_values[-1] if cpu_values else None
+    mean = fps_mean
+    timestamp = time.time()
+    result = (rtss.set_fractional_fps_direct(profile, cap) if direct
+              else rtss.set_fractional_framerate(profile, cap))
+    if direct and result is False:
+        return result
+    try:
+        cap_change_log.record(make_row(timestamp, session_number, profile, old_cap,
+                                       cap, reason, gpu, cpu, mean))
+    except Exception as exc:
+        try:
+            logger.add_log(f"Cap-change logging failed: {exc}")
+        except Exception:
+            pass
+    return result
+
+
 def start_stop_callback(sender, app_data, user_data):
 
     cm = user_data
@@ -161,12 +193,12 @@ def start_stop_callback(sender, app_data, user_data):
     with session_lock:
         if not session_is_current(captured_session, session_number, running, allow_stopped=True):
             return
-        rtss.set_fractional_fps_direct(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits())))
+        _write_cap(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits())), "start" if running else "stop", direct=True)
         gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
     with session_lock:
         if not session_is_current(captured_session, session_number, running, allow_stopped=True):
             return
-        rtss.set_fractional_framerate(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits()))) #To update GUI
+        _write_cap(cm.current_profile, Decimal(max(fps_utils.current_stepped_limits())), "start_refresh" if running else "stop_refresh") #To update GUI
         gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
     if running:
@@ -415,7 +447,7 @@ def monitoring_loop(captured_session):
                             return
                         if captured_profile_revision != profile_revision:
                             continue
-                        rtss.set_fractional_framerate(current_profile, last_active_fps_cap)
+                        _write_cap(current_profile, last_active_fps_cap, "idle_restore")
                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                         should_decrease = should_increase = False
                         idle_state = False
@@ -444,7 +476,7 @@ def monitoring_loop(captured_session):
                                     if captured_profile_revision != profile_revision:
                                         continue
                                     CurrentFPSOffset = next_fps - current_maxcap
-                                    rtss.set_fractional_framerate(current_profile, next_fps)
+                                    _write_cap(current_profile, next_fps, "decrease")
                                     gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                                     should_decrease = should_increase = False
 
@@ -480,7 +512,7 @@ def monitoring_loop(captured_session):
                                         if captured_profile_revision != profile_revision:
                                             continue
                                         CurrentFPSOffset = next_fps - current_maxcap
-                                        rtss.set_fractional_framerate(current_profile, next_fps)
+                                        _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
@@ -499,7 +531,7 @@ def monitoring_loop(captured_session):
                                         if captured_profile_revision != profile_revision:
                                             continue
                                         CurrentFPSOffset = next_fps - current_maxcap
-                                        rtss.set_fractional_framerate(current_profile, next_fps)
+                                        _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
@@ -513,7 +545,7 @@ def monitoring_loop(captured_session):
                         if captured_profile_revision != profile_revision:
                             continue
                         last_active_fps_cap = current_maxcap + CurrentFPSOffset
-                        rtss.set_fractional_framerate(current_profile, cm.idle_fps_cap)
+                        _write_cap(current_profile, cm.idle_fps_cap, "idle")
                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                         should_decrease = should_increase = False
                         idle_state = True
@@ -683,22 +715,23 @@ def exit_gui():
             with session_lock:
                 if not session_is_current(exit_session, session_number, running, allow_stopped=True):
                     return
-                rtss.set_fractional_fps_direct(*restore_cap)
+                _write_cap(*restore_cap, "exit", direct=True)
                 gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
             with session_lock:
                 if not session_is_current(exit_session, session_number, running, allow_stopped=True):
                     return
-                rtss.set_fractional_framerate(*restore_cap)  # Update the RTSS GUI, like Stop.
+                _write_cap(*restore_cap, "exit_refresh")  # Update the RTSS GUI, like Stop.
                 gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
         if cm.globallimitonexit:
             with session_lock:
                 if not session_is_current(exit_session, session_number, running, allow_stopped=True):
                     return
-                rtss.set_fractional_framerate("Global", Decimal(cm.globallimitonexit_fps))
+                _write_cap("Global", Decimal(cm.globallimitonexit_fps), "exit_global")
                 gpu_values, cpu_values, fps_values, fps_mean, _ = fresh_cap_evidence()
 
     finally:
+        cap_change_log.close()
         if gpu_monitor:
             gpu_monitor.cleanup()
         if cpu_monitor:
