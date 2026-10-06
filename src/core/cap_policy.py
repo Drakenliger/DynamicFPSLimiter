@@ -83,3 +83,11 @@ def evaluate_legacy_cap_change(gpu_values, cpu_values, drop_delay, raise_delay,
     increase = (len(gpu_values) >= raise_delay and all(v <= gpu_lower for v in gpu_raise)
                 and len(cpu_values) >= raise_delay and all(v <= cpu_lower for v in cpu_raise))
     return decrease, increase
+
+
+def fresh_cap_evidence():
+    """Discard pre-write samples and confirmations without changing cap state.
+
+    Each call owns three distinct lists, including across successive resets.
+    """
+    return [], [], [], 0, (0, 0)
