@@ -38,7 +38,7 @@ from core.warning import get_active_warnings
 from core.autostart import AutoStartManager
 from core.rtss_functions import RTSSController
 from core.fps_utils import FPSUtils
-from core.cap_policy import next_cap_on_decrease
+from core.cap_policy import next_cap_on_decrease, build_cap_model
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
@@ -102,7 +102,8 @@ def autopilot_checkbox_callback(sender, app_data, user_data):
 
 running = False  # Flag to control the monitoring loop
 session_number = 0
-# Serialize session invalidation with cap admission and the ensuing write.
+profile_revision = 0
+# Serialize session/profile invalidation with cap admission and the ensuing write.
 session_lock = threading.Lock()
 
 cm.update_global_variables()
@@ -291,12 +292,22 @@ def _load_profile_on_gui(profile_name):
     sets cm.current_profile, so it must run together with the dropdown value update on
     the thread that owns the DearPyGui context.
     """
-    dpg.set_value("profile_dropdown", profile_name)
-    cm.load_profile_callback(None, profile_name, None)
-    try:
-        cm.apply_current_input_values()
-    except Exception:
-        logger.add_log(f"AutoPilot: Failed to apply {profile_name} profile immediately.")
+    global profile_revision, CurrentFPSOffset, fps_mean, idle_state
+    global fps_values, gpu_values, cpu_values
+    with session_lock:
+        dpg.set_value("profile_dropdown", profile_name)
+        cm.load_profile_callback(None, profile_name, None)
+        try:
+            cm.apply_current_input_values()
+        except Exception:
+            logger.add_log(f"AutoPilot: Failed to apply {profile_name} profile immediately.")
+        profile_revision += 1
+        CurrentFPSOffset = 0
+        fps_mean = 0
+        fps_values = []
+        gpu_values = []
+        cpu_values = []
+        idle_state = False
 
 
 def _update_legend_labels(gpu_label, fps_label, cap_label, cpu_label):
@@ -316,19 +327,22 @@ def monitoring_loop(captured_session):
 
     gpu_monitor.reinitialize()
 
-    fps_limit_list = fps_utils.current_stepped_limits()
-
-    current_mincap = min(fps_limit_list)
-    current_maxcap = max(fps_limit_list)
-    min_ft = current_mincap - round((current_maxcap - current_mincap) * Decimal('0.1'))
-    max_ft = current_maxcap + round((current_maxcap - current_mincap) * Decimal('0.1'))
-
+    model_revision = None
     increase_cooldown = 0 # Cooldown for increasing FPS cap
+    last_active_fps_cap = None
 
     while running:
-        if not session_is_current(captured_session, session_number, running):
-            return
-        current_profile = cm.current_profile
+        with session_lock:
+            if not session_is_current(captured_session, session_number, running):
+                return
+            current_profile = cm.current_profile
+            captured_profile_revision = profile_revision
+            if model_revision != captured_profile_revision:
+                fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
+                    fps_utils.current_stepped_limits())
+                model_revision = captured_profile_revision
+                increase_cooldown = 0
+                last_active_fps_cap = None
         fps, process_name = rtss_manager.get_fps_for_active_window()
         #logger.add_log(f"Current highed CPU core load: {cpu_monitor.cpu_percentile}%")
 
@@ -366,6 +380,8 @@ def monitoring_loop(captured_session):
         with session_lock:
             if not session_is_current(captured_session, session_number, running):
                 return
+            if captured_profile_revision != profile_revision:
+                continue
             if fps:
                 if len(fps_values) > 2:
                     fps_values.pop(0)
@@ -388,6 +404,8 @@ def monitoring_loop(captured_session):
                     with session_lock:
                         if not session_is_current(captured_session, session_number, running):
                             return
+                        if captured_profile_revision != profile_revision:
+                            continue
                         rtss.set_fractional_framerate(current_profile, last_active_fps_cap)
                         idle_state = False
                 else:
@@ -402,6 +420,8 @@ def monitoring_loop(captured_session):
                                 with session_lock:
                                     if not session_is_current(captured_session, session_number, running):
                                         return
+                                    if captured_profile_revision != profile_revision:
+                                        continue
                                     CurrentFPSOffset = next_fps - current_maxcap
                                     rtss.set_fractional_framerate(current_profile, next_fps)
 
@@ -409,6 +429,8 @@ def monitoring_loop(captured_session):
                         with session_lock:
                             if not session_is_current(captured_session, session_number, running):
                                 return
+                            if captured_profile_revision != profile_revision:
+                                continue
                             if increase_cooldown > 0:
                                 increase_cooldown -= 1
 
@@ -432,6 +454,8 @@ def monitoring_loop(captured_session):
                                     with session_lock:
                                         if not session_is_current(captured_session, session_number, running):
                                             return
+                                        if captured_profile_revision != profile_revision:
+                                            continue
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
@@ -447,6 +471,8 @@ def monitoring_loop(captured_session):
                                     with session_lock:
                                         if not session_is_current(captured_session, session_number, running):
                                             return
+                                        if captured_profile_revision != profile_revision:
+                                            continue
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         rtss.set_fractional_framerate(current_profile, next_fps)
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
@@ -457,11 +483,14 @@ def monitoring_loop(captured_session):
                     with session_lock:
                         if not session_is_current(captured_session, session_number, running):
                             return
+                        if captured_profile_revision != profile_revision:
+                            continue
                         last_active_fps_cap = current_maxcap + CurrentFPSOffset
                         rtss.set_fractional_framerate(current_profile, cm.idle_fps_cap)
                         idle_state = True
 
-        if session_is_current(captured_session, session_number, running):
+        if (session_is_current(captured_session, session_number, running)
+                and captured_profile_revision == profile_revision):
             # Update legend labels with current values (deferred to the main DPG thread)
             _gui_submit(_update_legend_labels,
                         f"GPU: {gpuUsage}%",
