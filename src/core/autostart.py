@@ -22,31 +22,36 @@ class AutoStartManager:
         if not target:
             return False
 
-        norm = ntpath.normpath(target)
-        win_path = pathlib.PureWindowsPath(norm)
-
-        pf_env_paths = []
-        for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
-            val = os.environ.get(var)
-            if val:
-                pf_env_paths.append(pathlib.PureWindowsPath(ntpath.normpath(val)))
-
-        norm_lower = norm.lower()
-        for pf in pf_env_paths:
-            pf_lower = str(pf).lower()
-            if norm_lower.startswith(pf_lower + "\\") or norm_lower == pf_lower:
-                return True
-
-        parts = [p.lower() for p in win_path.parts]
-        if not parts:
+        if not ntpath.isabs(target):
             return False
 
-        if (win_path.is_absolute() or parts[0].endswith("\\") or parts[0].endswith(":")) and len(parts) >= 2:
-            top_folder = parts[1]
-        else:
-            top_folder = parts[0]
+        drive, _ = ntpath.splitdrive(target)
+        if not drive or drive.startswith("\\\\") or drive.startswith("//"):
+            return False
 
-        return top_folder in ("program files", "program files (x86)")
+        norm_target = ntpath.normpath(target)
+        pure_target = pathlib.PureWindowsPath(norm_target.lower())
+
+        roots = []
+        for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+            val = os.environ.get(var)
+            if val and ntpath.isabs(val):
+                r_drive, _ = ntpath.splitdrive(val)
+                if r_drive and not r_drive.startswith("\\\\") and not r_drive.startswith("//"):
+                    norm_root = ntpath.normpath(val)
+                    roots.append(pathlib.PureWindowsPath(norm_root.lower()))
+
+        if not roots:
+            return False
+
+        for root in roots:
+            try:
+                pure_target.relative_to(root)
+                return True
+            except ValueError:
+                continue
+
+        return False
 
     def task_exists(self):
         result = subprocess.run(["schtasks", "/Query", "/TN", self.task_name],
@@ -59,9 +64,12 @@ class AutoStartManager:
                 f"Autostart executable path '{self.app_path}' is outside Program Files. "
                 "It is recommended to install under Program Files before enabling autostart."
             )
-            logging.warning(msg)
-            if self.logger and hasattr(self.logger, "add_log"):
-                self.logger.add_log(f"Warning: {msg}")
+            try:
+                logging.warning(msg)
+                if self.logger and hasattr(self.logger, "add_log"):
+                    self.logger.add_log(f"Warning: {msg}")
+            except Exception:
+                pass
 
         cmd = [
             "schtasks",
