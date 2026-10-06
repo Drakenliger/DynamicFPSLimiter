@@ -1,3 +1,14 @@
+from decimal import Decimal
+
+
+def build_cap_model(limits):
+    """Snapshot a cap ladder and its extrema and padded plot bounds."""
+    ladder = tuple(sorted(set(Decimal(x) for x in limits)))
+    minimum, maximum = min(ladder), max(ladder)
+    padding = round((maximum - minimum) * Decimal("0.1"))
+    return ladder, minimum, maximum, minimum - padding, maximum + padding
+
+
 # cap_policy.py
 # Pure FPS cap decrease policy, extracted from app.monitoring_loop so it
 # can be unit-tested without a GUI, RTSS, or .NET.

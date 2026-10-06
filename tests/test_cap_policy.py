@@ -54,3 +54,18 @@ def test_app_wired_to_policy_and_dead_check_removed():
     assert "from core.cap_policy import next_cap_on_decrease" in src
     assert "next_cap_on_decrease(fps_limit_list, current_fps_cap, fps_mean)" in src
     assert "current_index < 0" not in src
+
+
+@pytest.mark.parametrize('limits', [[30, 60, 90], ['12.5', '24.5', '36.5'], [144]])
+def test_cap_model_snapshot(limits):
+    from decimal import Decimal
+    from core.cap_policy import build_cap_model
+    values = [Decimal(x) for x in limits]
+    model = build_cap_model(values)
+    values.clear()
+    ladder, minimum, maximum, lower, upper = model
+    assert ladder == tuple(Decimal(x) for x in limits)
+    assert minimum == min(ladder)
+    assert maximum == max(ladder)
+    padding = round((maximum - minimum) * Decimal('0.1'))
+    assert (lower, upper) == (minimum - padding, maximum + padding)
