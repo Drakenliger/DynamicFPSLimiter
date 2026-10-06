@@ -63,7 +63,9 @@ def rtss_controller_fake_dll(tmp_path, monkeypatch):
     if sys.platform != "win32" and "winreg" not in sys.modules:
         monkeypatch.setitem(sys.modules, "winreg", types.ModuleType("winreg"))
 
-    was_rtss_imported = "core.rtss_functions" in sys.modules
+    modules_snapshot = dict(sys.modules)
+    core_mod = sys.modules.get("core")
+    core_attrs_snapshot = dict(core_mod.__dict__) if core_mod else None
 
     from core.rtss_functions import RTSSController
 
@@ -93,8 +95,25 @@ def rtss_controller_fake_dll(tmp_path, monkeypatch):
     try:
         yield ctrl, fake
     finally:
-        if not was_rtss_imported and "core.rtss_functions" in sys.modules:
-            del sys.modules["core.rtss_functions"]
+        # Remove any newly loaded modules from sys.modules
+        added_modules = set(sys.modules) - set(modules_snapshot)
+        for mod in added_modules:
+            del sys.modules[mod]
+
+        # Restore prior values for any modified sys.modules
+        for mod, prev_val in modules_snapshot.items():
+            if sys.modules.get(mod) is not prev_val:
+                sys.modules[mod] = prev_val
+
+        # Clean up or restore parent package attributes (e.g. core.rtss_functions)
+        if core_mod is not None:
+            current_attrs = set(core_mod.__dict__)
+            added_attrs = current_attrs - set(core_attrs_snapshot)
+            for attr in added_attrs:
+                delattr(core_mod, attr)
+            for attr, prev_val in core_attrs_snapshot.items():
+                if core_mod.__dict__.get(attr) is not prev_val:
+                    setattr(core_mod, attr, prev_val)
 
 
 def test_global_decimal_5994_refresh_contract(rtss_controller_fake_dll):
@@ -236,3 +255,10 @@ def test_three_decimal_places_refresh_contract(rtss_controller_fake_dll):
         ("SaveProfile", b""),
         ("UpdateProfiles",),
     ]
+
+
+def test_isolation_after_fixture_teardown_no_cached_parent_attr():
+    assert "core.rtss_functions" not in sys.modules
+    core_mod = sys.modules.get("core")
+    if core_mod is not None:
+        assert not hasattr(core_mod, "rtss_functions")
