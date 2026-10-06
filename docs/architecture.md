@@ -114,7 +114,6 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 | `src/core/idle_timer.py` | Win32 `GetLastInputInfo` idle duration (idle FPS-cap mode) |
 | `src/core/logger.py` | logging setup, DPG log-text refresh, uncaught-exception hook; `log_messages` is lock-guarded (thread-safe) and the DPG `LogText` refresh is the only `dpg.*` touch point, run on the main thread via an injected `GuiQueue` (F3 fix) |
 | `src/core/video2gif.py` | **Dev-only** CLI (MP4→GIF); not imported by the app |
-| `src/core/backup_snippets.py` | **Not Python** — a notes snippet; not imported (see `status.md` §3) |
 
 ## 5. Core control loop (the decision engine)
 
@@ -251,8 +250,8 @@ Glaring, fix-first issues are all resolved — see **`status.md` §1.2**. Lower-
 - **Undeclared direct dependency** — `PIL`/Pillow is used by `tray_functions` but only present
   as a transitive dependency of pystray.
 - **Two competing RTSS write paths** (API vs direct `.cfg` edits) and non-atomic INI writes.
-- **Dead / stray code** — `idle_timer.monitor_idle` (debug loop), `video2gif.py` and
-  `backup_snippets.py` (not part of the app; the latter is not even valid Python).
+- **Dead / stray code** — `idle_timer.monitor_idle` (debug loop) and `video2gif.py`
+  (not part of the app).
 - **Pending refactor** — the A1–A6 modular split of `app.py`/`ConfigManager` is tracked in
   `status.md` §2.1.
 - **Latent type hazards** — `Decimal` vs `float` in the plot math (currently consistent because
