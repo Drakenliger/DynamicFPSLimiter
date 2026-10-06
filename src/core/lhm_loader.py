@@ -3,8 +3,10 @@
 import os
 try:
     import clr
-except Exception:
+    _clr_import_error = None
+except Exception as _exc:
     clr = None
+    _clr_import_error = _exc
 import subprocess
 import re
 
@@ -180,10 +182,14 @@ def ensure_loaded(base_dir=None, logger=None):
         dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')
 
     if clr is None:
+        if isinstance(_clr_import_error, (ImportError, ModuleNotFoundError)):
+            msg = f"pythonnet (clr) module is not installed, cannot load {dll_path}"
+        else:
+            msg = f"pythonnet (clr) import failed: {_clr_import_error}"
         raise LHMLoadError(
-            f"pythonnet (clr) module is not installed, cannot load {dll_path}",
+            msg,
             dll_path=str(dll_path),
-        )
+        ) from _clr_import_error
 
     try:
         clr.AddReference(str(dll_path))

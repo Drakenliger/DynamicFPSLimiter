@@ -140,3 +140,41 @@ def test_subprocess_error_falls_back_to_shared_scan(tmp_path, monkeypatch):
     res = lhm_loader._detect_dotnet_core()
 
     assert res == "6.0.0"
+
+
+def test_clr_import_runtime_error_preserves_cause(monkeypatch):
+    """
+    Test that when 'clr' is installed but fails initialization with a RuntimeError,
+    ensure_loaded raises LHMLoadError preserving the RuntimeError detail/cause,
+    and does NOT falsely claim the module is not installed.
+    """
+    runtime_err = RuntimeError("installed pythonnet cannot initialize CLR")
+    monkeypatch.setattr(lhm_loader, "clr", None)
+    monkeypatch.setattr(lhm_loader, "_clr_import_error", runtime_err)
+    monkeypatch.setattr(lhm_loader, "_LOADED", False)
+
+    with pytest.raises(lhm_loader.LHMLoadError) as exc_info:
+        lhm_loader.ensure_loaded()
+
+    err = exc_info.value
+    assert "installed pythonnet cannot initialize CLR" in str(err)
+    assert "module is not installed" not in str(err)
+    assert err.__cause__ is runtime_err
+
+
+def test_clr_import_module_not_found_reports_not_installed(monkeypatch):
+    """
+    Test that when 'clr' fails to import due to ModuleNotFoundError,
+    ensure_loaded reports that pythonnet (clr) module is not installed.
+    """
+    missing_err = ModuleNotFoundError("No module named 'clr'")
+    monkeypatch.setattr(lhm_loader, "clr", None)
+    monkeypatch.setattr(lhm_loader, "_clr_import_error", missing_err)
+    monkeypatch.setattr(lhm_loader, "_LOADED", False)
+
+    with pytest.raises(lhm_loader.LHMLoadError) as exc_info:
+        lhm_loader.ensure_loaded()
+
+    err = exc_info.value
+    assert "module is not installed" in str(err)
+    assert err.__cause__ is missing_err
