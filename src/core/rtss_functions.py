@@ -1,7 +1,6 @@
 import ctypes
 import os
 import threading
-import winreg
 from decimal import Decimal, InvalidOperation
 
 class RTSSController:
@@ -65,6 +64,7 @@ class RTSSController:
 
     def get_rtss_install_path(self):
         try:
+            import winreg
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Unwinder\RTSS")
             path, _ = winreg.QueryValueEx(key, "InstallPath")
             winreg.CloseKey(key)
@@ -86,12 +86,13 @@ class RTSSController:
         self.ResetProfile(profile_name.encode('ascii'))
 
     def get_profile_property(self, profile_name, property_name, size=4):
-        self.LoadProfile(profile_name.encode('ascii'))
-        buf = (ctypes.c_byte * size)()
-        success = self.GetProfileProperty(property_name.encode('ascii'), ctypes.byref(buf), size)
-        if not success:
-            return None
-        return bytes(buf)
+        with self._profile_lock:
+            self.LoadProfile(profile_name.encode('ascii'))
+            buf = (ctypes.c_byte * size)()
+            success = self.GetProfileProperty(property_name.encode('ascii'), ctypes.byref(buf), size)
+            if not success:
+                return None
+            return bytes(buf)
 
     def set_profile_property(self, profile_name, property_name, value, size=4, update=True):
         # SaveProfile writes the profile .cfg, so serialize it with the file writers
