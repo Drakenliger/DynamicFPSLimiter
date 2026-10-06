@@ -66,7 +66,10 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
     
     logger.add_log(f"Autopilot detected active process: {process_name}")
 
-    matched_profile = next((p for p in profiles if p.lower() == process_name.lower()), None)
+    if process_name in profiles:
+        matched_profile = process_name
+    else:
+        matched_profile = next((p for p in profiles if p.lower() == process_name.lower()), None)
 
     if cm.autopilot_only_profiles:
         # Legacy behavior: only act when a specific profile matches the active process

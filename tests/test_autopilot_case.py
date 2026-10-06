@@ -108,6 +108,58 @@ def test_queued_gui_submit_preserves_original_profile_name():
     assert queued_calls[2] == (start_stop, (None, None, cm), {})
 
 
+def test_exact_match_priority_over_case_insensitive_collision_only_profiles_mode():
+    cm = DummyConfigManager(["Global", "Game.exe", "game.exe"], autopilot_only_profiles=True)
+    rtss = DummyRTSSManager("game.exe")
+    dpg = DummyDPG()
+    logger = DummyLogger()
+    start_stop = DummyStartStopCallback()
+
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+
+    assert dpg.values.get("profile_dropdown") == "game.exe"
+    assert cm.loaded_profiles == [(None, "game.exe", None)]
+    assert len(start_stop.calls) == 1
+    assert any("Switched to profile 'game.exe'" in log for log in logger.logs)
+
+
+def test_exact_match_priority_over_case_insensitive_collision_default_mode():
+    cm = DummyConfigManager(["Global", "Game.exe", "game.exe"], autopilot_only_profiles=False)
+    rtss = DummyRTSSManager("game.exe")
+    dpg = DummyDPG()
+    logger = DummyLogger()
+    start_stop = DummyStartStopCallback()
+
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+
+    assert dpg.values.get("profile_dropdown") == "game.exe"
+    assert cm.loaded_profiles == [(None, "game.exe", None)]
+    assert len(start_stop.calls) == 1
+    assert any("Switched to profile 'game.exe'" in log for log in logger.logs)
+
+
+def test_queued_gui_submit_selects_exact_case_when_later_in_sections():
+    cm = DummyConfigManager(["Global", "Game.exe", "game.exe"], autopilot_only_profiles=False)
+    rtss = DummyRTSSManager("game.exe")
+    dpg = DummyDPG()
+    logger = DummyLogger()
+    start_stop = DummyStartStopCallback()
+
+    queued_calls = []
+
+    def gui_submit(fn, *args, **kwargs):
+        queued_calls.append((fn, args, kwargs))
+
+    autopilot_on_check(
+        cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, gui_submit=gui_submit
+    )
+
+    assert len(queued_calls) == 3
+    assert queued_calls[0] == (dpg.set_value, ("profile_dropdown", "game.exe"), {})
+    assert queued_calls[1] == (cm.load_profile_callback, (None, "game.exe", None), {})
+    assert queued_calls[2] == (start_stop, (None, None, cm), {})
+
+
 def test_unmatched_only_profiles_mode_does_nothing():
     cm = DummyConfigManager(["Global", "Game.exe"], autopilot_only_profiles=True)
     rtss = DummyRTSSManager("unmatched.exe")
