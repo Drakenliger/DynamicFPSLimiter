@@ -45,3 +45,22 @@ def next_cap_on_decrease(fps_limit_list, current_cap, fps_mean):
         return fps_limit_list[idx - 1]
     below_mean = [x for x in fps_limit_list if x < fps_mean]
     return max(below_mean) if below_mean else None
+
+
+def cap_readings_valid(method, gpu_usage, fps, fps_mean, min_gpu, min_fps):
+    """LibreHM needs live FPS; Legacy retains its PDH and mean-FPS gates."""
+    if method == "LibreHM":
+        return fps is not None and fps > 0 and fps > min_fps
+    return gpu_usage is not None and gpu_usage > min_gpu and fps_mean > min_fps
+
+
+def confirm_librehm_decision(history, decrease, increase, drop_delay, raise_delay):
+    """Count consecutive monitoring passes independently in each direction.
+
+    Neutral/no-data passes reset both counts. Counts saturate at the configured
+    delay; cap writes do not reset them here.
+    """
+    drop_delay, raise_delay = max(1, drop_delay), max(1, raise_delay)
+    drops = min(history[0] + 1, drop_delay) if decrease else 0
+    raises = min(history[1] + 1, raise_delay) if increase else 0
+    return (drops, raises), (drops >= drop_delay, raises >= raise_delay)

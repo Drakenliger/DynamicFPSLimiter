@@ -8,7 +8,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from core.cap_policy import build_cap_model, next_cap_on_decrease
+from core.cap_policy import (build_cap_model, next_cap_on_decrease,
+                             cap_readings_valid, confirm_librehm_decision)
 from core.session_policy import session_is_current
 
 APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
@@ -36,12 +37,14 @@ def load_app(*, lockless=False):
     cm = NS(current_profile='Global', autopilot=False, input_field_keys=[], input_button_tags=[],
             apply_current_input_values=noop, parse_decimal_set_to_string=str,
             delaybeforedecrease=1, delaybeforeincrease=1, minvalidgpu=0, minvalidfps=0,
+            gpucutofffordecrease=90, gpucutoffforincrease=70,
+            cpucutofffordecrease=90, cpucutoffforincrease=70,
             idle_fps_delay=10, idle_mode=False, idle_fps_cap=20,
             gpupollinginterval=100, cpupollinginterval=100, globallimitonexit=False)
-    ns = dict(build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
+    ns = dict(cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
               Decimal=Decimal, running=True, session_number=1, session_lock=threading.Lock(),
               cm=cm, threading=NS(Thread=ThreadStub),
-              dpg=NS(set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,
+              dpg=NS(get_value=lambda _: "Legacy", set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,
                      is_dearpygui_running=lambda: False),
               themes_manager=NS(themes={'stop_button_theme': 1, 'start_button_theme': 2}),
               tray=NS(set_running_state=noop), logger=NS(add_log=noop),
