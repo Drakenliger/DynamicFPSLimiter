@@ -346,5 +346,17 @@ class FPSUtils:
         self.summary_fps = []
         self.summary_cap = []
 
-        self.lhm_sensor.cpu_history_long.clear()
-        self.lhm_sensor.gpu_history_long.clear()
+        lhm_sensor = getattr(self, "lhm_sensor", None)
+        if lhm_sensor is not None:
+            lock = getattr(lhm_sensor, "_lock", None)
+            if lock is not None:
+                with lock:
+                    if hasattr(lhm_sensor, "cpu_history_long"):
+                        lhm_sensor.cpu_history_long.clear()
+                    if hasattr(lhm_sensor, "gpu_history_long"):
+                        lhm_sensor.gpu_history_long.clear()
+            else:
+                if hasattr(lhm_sensor, "cpu_history_long"):
+                    lhm_sensor.cpu_history_long.clear()
+                if hasattr(lhm_sensor, "gpu_history_long"):
+                    lhm_sensor.gpu_history_long.clear()

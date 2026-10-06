@@ -5,14 +5,20 @@ import time
 from collections import deque
 from types import SimpleNamespace as NS
 
-# Non-Windows import isolation for clr
-if "clr" not in sys.modules:
-    clr_mock = types.ModuleType("clr")
-    clr_mock.AddReference = lambda *args: None
-    sys.modules["clr"] = clr_mock
-
 import pytest
-from core.fps_utils import FPSUtils
+
+
+@pytest.fixture(autouse=True)
+def mock_clr_for_non_windows(monkeypatch):
+    """
+    Fixture-scoped monkeypatch for non-Windows platforms.
+    Ensures sys.modules['clr'] is cleaned up after each test run, leaving
+    real Windows clr untouched outside tests and avoiding collection-level mutations.
+    """
+    if sys.platform != "win32" and "clr" not in sys.modules:
+        clr_mock = types.ModuleType("clr")
+        clr_mock.AddReference = lambda *args: None
+        monkeypatch.setitem(sys.modules, "clr", clr_mock)
 
 
 class TrackedLock:
@@ -20,7 +26,8 @@ class TrackedLock:
         self._lock = threading.Lock()
         self.was_acquired = False
         self.in_lock = False
-        self.held_during_dpg = False
+        self.held_during_dpg_read = False
+        self.held_during_dpg_write = False
         self.held_during_log = False
 
     def __enter__(self):
@@ -45,6 +52,8 @@ class TrackedLock:
 
 
 def test_lock_acquired_during_evaluation_and_released_before_dpg_and_logs(fake_lhm):
+    from core.fps_utils import FPSUtils
+
     lock = TrackedLock()
     dpg_values = {
         "input_load_enable": True,
@@ -58,13 +67,23 @@ def test_lock_acquired_during_evaluation_and_released_before_dpg_and_logs(fake_l
             lock.held_during_log = True
         logs.append(msg)
 
+    def get_value(tag):
+        if lock.in_lock:
+            lock.held_during_dpg_read = True
+        return dpg_values.get(tag)
+
+    def does_item_exist(tag):
+        if lock.in_lock:
+            lock.held_during_dpg_read = True
+        return tag in dpg_values
+
     def set_value(tag, val):
         if lock.in_lock:
-            lock.held_during_dpg = True
+            lock.held_during_dpg_write = True
 
     mock_dpg = NS(
-        get_value=lambda k: dpg_values.get(k),
-        does_item_exist=lambda k: k in dpg_values,
+        get_value=get_value,
+        does_item_exist=does_item_exist,
         set_value=set_value
     )
 
@@ -100,7 +119,8 @@ def test_lock_acquired_during_evaluation_and_released_before_dpg_and_logs(fake_l
     assert dec == (True, False)
     assert lock.was_acquired, "lhm_sensor._lock was not acquired during evaluate_cap_change"
     assert not lock.in_lock, "Lock was not released after snapshotting"
-    assert not lock.held_during_dpg, "Lock was held during DPG calls!"
+    assert not lock.held_during_dpg_read, "Lock was held during DPG reads!"
+    assert not lock.held_during_dpg_write, "Lock was held during DPG writes!"
     assert not lock.held_during_log, "Lock was held during Logger calls!"
 
 
@@ -109,6 +129,8 @@ def test_no_live_deque_dict_iteration_during_mutation(fake_lhm):
     Asserts that a producer thread mutating live percentiles dicts and history deques
     concurrently does not crash evaluator or pollute its frozen snapshot.
     """
+    from core.fps_utils import FPSUtils
+
     lock = threading.Lock()
     stop_event = threading.Event()
 
@@ -190,6 +212,8 @@ def test_deterministic_paused_producer_evaluator_coherent_snapshot(fake_lhm):
     a paused producer resumes and drastically alters live dicts and deques.
     The evaluator's decision and rendered summary must strictly reflect the frozen snapshot.
     """
+    from core.fps_utils import FPSUtils
+
     lock = TrackedLock()
     snapshot_taken_event = threading.Event()
     producer_done_event = threading.Event()
@@ -277,3 +301,112 @@ def test_deterministic_paused_producer_evaluator_coherent_snapshot(fake_lhm):
     summary = summary_text_result[0]
     assert "avg= 95.00" in summary
     assert "Distractor" not in summary
+
+
+def test_reset_summary_statistics_under_sensor_lock(fake_lhm):
+    """
+    Deterministic bounded event test:
+    Asserts that reset_summary_statistics acquires lhm_sensor._lock while clearing
+    cpu/gpu_history_long. When evaluate_cap_change holds the lock while snapshotting,
+    a concurrent reset_summary_statistics call waits until snapshotting is complete.
+    """
+    from core.fps_utils import FPSUtils
+
+    snapshot_in_progress = threading.Event()
+    reset_started = threading.Event()
+    reset_completed = threading.Event()
+
+    class BarrierLock:
+        def __init__(self):
+            self._lock = threading.Lock()
+            self.eval_acquired = False
+            self.reset_acquired = False
+
+        def __enter__(self):
+            self._lock.acquire()
+            if not snapshot_in_progress.is_set():
+                self.eval_acquired = True
+            else:
+                self.reset_acquired = True
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self._lock.release()
+
+    lock = BarrierLock()
+
+    gpu_percentiles = {}
+    gpu_history_long = {}
+
+    sensor = NS(
+        _lock=lock,
+        cpu_percentiles={},
+        gpu_percentiles=gpu_percentiles,
+        cpu_history_long={},
+        gpu_history_long=gpu_history_long,
+        gpu_hw_names=["NVIDIA GPU"]
+    )
+
+    dpg_values = {
+        "input_load_enable": True,
+        "input_load_upper": "90.0",
+        "input_load_lower": "70.0",
+    }
+
+    mock_dpg = NS(
+        get_value=lambda k: dpg_values.get(k),
+        does_item_exist=lambda k: k in dpg_values,
+        set_value=lambda tag, val: None
+    )
+
+    mock_cm = NS(
+        sensor_infos=[{
+            "parameter_id": "load",
+            "sensor_type": "Load",
+            "sensor_name": "GPU Core",
+            "sensor_name_indexed": "1 GPU Core",
+            "hw_type": "Gpu",
+            "hw_name": "NVIDIA GPU"
+        }]
+    )
+
+    utils = FPSUtils(cm=mock_cm, lhm_sensor=sensor, logger=NS(add_log=lambda m: None), dpg=mock_dpg)
+    utils.HardwareType = NS(Cpu="Cpu")
+
+    gpu_percentiles[("Load", "1 GPU Core")] = 95.0
+    gpu_history_long[("Load", "1 GPU Core")] = deque([90.0, 100.0])
+
+    # Hook lhm_sensor.gpu_history_long items copying to simulate holding snapshot lock while reset is triggered
+    original_items = gpu_history_long.items
+
+    def SlowItems():
+        snapshot_in_progress.set()
+        # Signal reset thread to execute reset_summary_statistics while snapshot lock is held
+        reset_started.set()
+        # Give reset thread time to attempt lock acquisition
+        time.sleep(0.05)
+        # Verify reset thread has NOT completed yet because it's blocked on the lock
+        assert not reset_completed.is_set(), "reset_summary_statistics completed while snapshot lock was held!"
+        return original_items()
+
+    sensor.gpu_history_long = NS(
+        items=SlowItems,
+        clear=gpu_history_long.clear
+    )
+
+    def reset_worker():
+        assert reset_started.wait(timeout=5.0)
+        utils.reset_summary_statistics()
+        reset_completed.set()
+
+    reset_thread = threading.Thread(target=reset_worker, daemon=True)
+    reset_thread.start()
+
+    deadline = time.time() + 30.0
+    dec = utils.evaluate_cap_change([], [], "LibreHM")
+
+    reset_thread.join(timeout=2.0)
+
+    assert time.time() < deadline, "Test exceeded 30-second deadline"
+    assert dec == (True, False), "Evaluation should succeed from coherent snapshot"
+    assert reset_completed.is_set(), "Reset should complete after snapshot lock release"
