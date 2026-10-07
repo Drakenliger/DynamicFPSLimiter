@@ -331,7 +331,7 @@ def test_render_owner_callback_failure_keeps_later_jobs_and_frames(app, tmp_path
             job[0](*job[1:])
     dpg.run_callbacks = run_callbacks
     queue.submit(events.append, 'queued')
-    ns.update(logging=logging, gui_queue=queue, _acceptance_runtime=None)
+    ns.update(logging=logging, gui_queue=queue, _acceptance_runtime=None, _instance_lease=None)
     tree = ast.parse(APP.read_text())
     loop = next(n for n in tree.body if isinstance(n, ast.While)
                 and isinstance(n.test, ast.Call)
@@ -342,3 +342,30 @@ def test_render_owner_callback_failure_keeps_later_jobs_and_frames(app, tmp_path
     assert len(frames) == 2
     assert events == ['later-callback', 'queued']
     assert any(record.exc_info for record in caplog.records)
+
+
+def test_render_owner_activation_failure_keeps_callbacks_queue_and_frames(app, caplog):
+    import logging
+    ns, _, dpg, queue, _, _, _ = app
+    events = []
+    frames = []
+    polls = []
+    def poll(tray):
+        polls.append(threading.get_ident())
+        raise RuntimeError('activation failure')
+    dpg.is_dearpygui_running = lambda: len(frames) < 2
+    dpg.render_dearpygui_frame = lambda: frames.append(None)
+    dpg.get_callback_queue = lambda: [[lambda: events.append('callback')]]
+    dpg.run_callbacks = lambda jobs: jobs[0][0]()
+    queue.submit(events.append, 'queued')
+    ns.update(logging=logging, gui_queue=queue, _acceptance_runtime=None,
+              _instance_lease=NS(poll_activation=poll))
+    loop = next(n for n in ast.parse(APP.read_text()).body if isinstance(n, ast.While)
+                and ast.unparse(n.test) == 'dpg.is_dearpygui_running()')
+    with caplog.at_level(logging.ERROR):
+        exec(compile(ast.Module(body=[loop], type_ignores=[]), str(APP), 'exec'), ns)
+    assert len(frames) == 2 and polls == [threading.get_ident()] * 2
+    assert events == ['callback', 'queued', 'callback']
+    assert len(caplog.records) == 2
+    assert all(r.message == 'Instance activation dispatch failed' and r.exc_info
+               for r in caplog.records)
