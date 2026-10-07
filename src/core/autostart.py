@@ -66,6 +66,9 @@ class AutoStartManager:
             )
             try:
                 logging.warning(msg)
+            except Exception:
+                pass
+            try:
                 if self.logger and hasattr(self.logger, "add_log"):
                     self.logger.add_log(f"Warning: {msg}")
             except Exception:
@@ -99,7 +102,6 @@ class AutoStartManager:
         else:
             if self.task_exists():
                 self.delete()
-
 
 
 
