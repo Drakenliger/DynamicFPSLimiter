@@ -111,10 +111,29 @@ def wait_for_file(path: Path, timeout: float, poll: float = 0.1) -> bool:
 
 def read_fps_file(path: Path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("fps")
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
     except (OSError, ValueError):
         return None
+    if not content.strip():
+        return None
+    for line in reversed(content.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and "fps" in data:
+                return data.get("fps")
+        except ValueError:
+            continue
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict):
+            return data.get("fps")
+    except ValueError:
+        pass
+    return None
 
 
 def read_all_usage(mon, luids) -> dict:

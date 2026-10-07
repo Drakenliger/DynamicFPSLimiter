@@ -40,6 +40,7 @@ DEFAULT_WIDTH = 1024
 DEFAULT_HEIGHT = 768
 DEFAULT_LOAD = 8
 
+# Initial Surface 60s 144Hz calibration: light 143.93, medium 135.12, heavy 83.12, extreme 67.57 FPS.
 PRESETS = {
     "light": {"width": 1280, "height": 720, "load": 2},
     "medium": {"width": 1920, "height": 1080, "load": 8},
@@ -209,8 +210,18 @@ def main() -> int:
                 writer.writerow((wall, timing.last_ms))
             if payload is not None and args.fps_file:
                 try:
+                    prefix = ""
+                    try:
+                        with open(args.fps_file, "rb") as f_check:
+                            f_check.seek(0, os.SEEK_END)
+                            if f_check.tell() > 0:
+                                f_check.seek(-1, os.SEEK_END)
+                                if f_check.read(1) != b"\n":
+                                    prefix = "\n"
+                    except OSError:
+                        pass
                     with open(args.fps_file, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(payload) + "\n")
+                        f.write(prefix + json.dumps(payload) + "\n")
                 except OSError:
                     pass
             if first_frame:
