@@ -215,6 +215,9 @@ def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
         gpu_values = []
         cpu_values = []
         idle_state = False
+        cpu_mon = globals().get("cpu_monitor")
+        if not running and cpu_mon is not None and hasattr(cpu_mon, "reset"):
+            cpu_mon.reset()
     dpg.configure_item("start_stop_button", label="Stop" if running else "Start")
     dpg.bind_item_theme("start_stop_button", themes_manager.themes["stop_button_theme"] if running else themes_manager.themes["start_button_theme"])
     tray.set_running_state(running)

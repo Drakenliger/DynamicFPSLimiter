@@ -10,6 +10,7 @@ class CPUUsageMonitor:
         self.max_samples = max_samples
         self.samples = []
         self.cpu_percentile = 0
+        self._reset_count = 0
         self._lock = threading.Lock()
         self.percentile = percentile
         self.logger = logger_instance
@@ -25,21 +26,30 @@ class CPUUsageMonitor:
         
         while self.looping:
             if self._running():
+                with self._lock:
+                    start_reset_count = self._reset_count
                 try:
                     self.core_usages = psutil.cpu_percent(percpu=True)
                     highest_usage = max(self.core_usages)
-                    
 
                     with self._lock:
-                        self.samples.append(highest_usage)
-                        if len(self.samples) > self.max_samples:
-                            self.samples.pop(0)
-                        self.cpu_percentile = round(CPUUsageMonitor.calculate_percentile(self.samples, self.percentile))
-                        #self.logger.add_log(f"CPU usage percentile: {self.cpu_percentile}%")
+                        if self._running() and self._reset_count == start_reset_count:
+                            self.samples.append(highest_usage)
+                            if len(self.samples) > self.max_samples:
+                                self.samples.pop(0)
+                            self.cpu_percentile = round(CPUUsageMonitor.calculate_percentile(self.samples, self.percentile))
+                            #self.logger.add_log(f"CPU usage percentile: {self.cpu_percentile}%")
                 except Exception as e:
                     self.logger.add_log(f"CPU monitor error: {e}")
             
             time.sleep(self.interval)
+
+    def reset(self):
+        """Synchronously clear samples and reset cpu_percentile to 0 under lock."""
+        with self._lock:
+            self.samples.clear()
+            self.cpu_percentile = 0
+            self._reset_count += 1
 
     def stop(self):
         """Gracefully stop the background monitor thread."""
