@@ -6,7 +6,7 @@ from typing import Optional, Dict, List, Tuple
 import threading
 import logging
 
-pdh = ctypes.windll.pdh
+pdh = getattr(ctypes, "windll", None).pdh if hasattr(ctypes, "windll") else None
 
 PDH_MORE_DATA = 0x800007D2
 PDH_FMT_DOUBLE = 0x00000200
@@ -28,6 +28,7 @@ class GPUUsageMonitor:
         self.query_handle = None
         self.counter_handles = {}
         self.instances = []  # Add this line
+        self._engine_type = None
         # S2: serializes every Pdh* call on the shared query/counter handles. Re-entrant
         # because reinitialize() (called from inside a locked read section in gpu_run)
         # re-enters initialize()/_close_query() on the same thread.
@@ -56,17 +57,19 @@ class GPUUsageMonitor:
             if self.query_handle:
                 pdh.PdhCloseQuery(self.query_handle)
                 self.query_handle = None
-                self.counter_handles = {}
+            self.counter_handles = {}
+            self._engine_type = None
 
-    def initialize(self) -> None:
+    def initialize(self, engine_type: str = "engtype_3D") -> None:
         """Initialize PDH query. Serialized on self._pdh_lock (S2)."""
         with self._pdh_lock:
             self._close_query()
             self.query_handle = self._init_gpu_state()
             self.instances = self._setup_gpu_instances()  # Store instances
             self.query_handle, self.counter_handles = self._setup_gpu_query_from_instances(
-                self.query_handle, self.instances, "engtype_3D"
+                self.query_handle, self.instances, engine_type
             )
+            self._engine_type = engine_type
             if self.query_handle is None:
                 raise RuntimeError("Query handle not set up.")
 
@@ -215,11 +218,16 @@ class GPUUsageMonitor:
     def gpu_run(self, engine_type: str = "engtype_3D"):
         try:
             try:
-                # Setup counters for the specified engine type
+                # Setup counters for the specified engine type if not already setup
                 with self._pdh_lock:
-                    _, self.counter_handles = self._setup_gpu_query_from_instances(
-                        self.query_handle, self.instances, engine_type  # Use stored instances
-                    )
+                    if not getattr(self, "counter_handles", None) or getattr(self, "_engine_type", None) != engine_type:
+                        if self.query_handle is None:
+                            self.initialize(engine_type)
+                        else:
+                            self.query_handle, self.counter_handles = self._setup_gpu_query_from_instances(
+                                self.query_handle, self.instances, engine_type
+                            )
+                            self._engine_type = engine_type
 
                     status = pdh.PdhCollectQueryData(self.query_handle)
                     if status != 0:
@@ -227,7 +235,7 @@ class GPUUsageMonitor:
 
             except Exception:
                 with self._pdh_lock:
-                    self.counter_handles = {}
+                    self._close_query()
                 self._invalidate_readings()
                 logging.exception("GPU monitor initial polling setup failed")
 
@@ -358,17 +366,16 @@ class GPUUsageMonitor:
 
     def reinitialize(self, engine_type: str = "engtype_3D"):
         self.logger.add_log("Reinitializing GPU monitor.")
-        self.initialize()
+        self.initialize(engine_type)
 
-        # Setup counters for the specified engine type
         with self._pdh_lock:
-            _, self.counter_handles = self._setup_gpu_query_from_instances(
-                self.query_handle, self.instances, engine_type  # Use stored instances
-            )
-
-            pdh.PdhCollectQueryData(self.query_handle)
+            status = pdh.PdhCollectQueryData(self.query_handle)
+            if status != 0:
+                raise RuntimeError(f"Failed GPU initial collect during reinitialize: {status}")
             time.sleep(0.1)
-            pdh.PdhCollectQueryData(self.query_handle)
+            status = pdh.PdhCollectQueryData(self.query_handle)
+            if status != 0:
+                raise RuntimeError(f"Failed GPU second collect during reinitialize: {status}")
 
     @staticmethod
     def calculate_percentile(data: list, percentile: float) -> float:

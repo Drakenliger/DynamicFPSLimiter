@@ -176,7 +176,7 @@ def test_pdh_one_retry_skips_old_handles_and_recovers(failure, reinit_raises, ca
     # initialize + reinitialize setup once per successful attempt, first failure once.
     assert len(reinitializations) == (2 if reinit_raises else 1)
     assert len(set(reinitializations)) == len(reinitializations)
-    assert len(retries) == (3 if reinit_raises else 2)
+    assert len(retries) == (2 if reinit_raises else 1)
     assert m.gpu_percentile is None and m.samples == []
     assert any(r.exc_info and r.name == 'root' for r in caplog.records)
 
