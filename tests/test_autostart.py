@@ -5,6 +5,9 @@ and never pass ``shell=True``. ``update_if_needed`` must still consume the
 captured stdout and returncodes as before.
 """
 import os
+import ast
+from types import SimpleNamespace
+from unittest.mock import Mock
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -94,6 +97,7 @@ def test_task_exists_passes_argument_list_and_uses_returncode(autostart_manager)
     recorder.returncode = 0
     assert mgr.task_exists() is True
     recorder.returncode = 1
+    recorder.stderr = "ERROR: The system cannot find the file specified."
     assert mgr.task_exists() is False
     _assert_call_sequences(recorder, [QUERY_ARGS, QUERY_ARGS])
 
@@ -186,7 +190,7 @@ def test_current_user_sid_rejects_unvalidated_output(monkeypatch, output):
 
 
 @pytest.mark.parametrize("error", [subprocess.CalledProcessError(1, "whoami"), OSError("launch failed")])
-def test_sid_native_failure_does_not_replace_task(autostart_manager, monkeypatch, error):
+def test_sid_native_failure_does_not_replace_task(autostart_manager, monkeypatch, error, caplog):
     mgr, recorder = autostart_manager
     recorder.stdout = autostart.build_task_xml(FIXED_APP_PATH, USER_SID).decode("utf-16")
     monkeypatch.setattr(autostart, "current_user_sid", SID_LOOKUP)
@@ -197,14 +201,17 @@ def test_sid_native_failure_does_not_replace_task(autostart_manager, monkeypatch
             raise error
         return recorder(args, **kwargs)
     monkeypatch.setattr(autostart.subprocess, "run", run)
-    with pytest.raises(type(error)):
-        mgr.update_if_needed(True)
+    mgr.logger = Mock()
+    assert mgr.update_if_needed(True) is False
+    assert "failed" in caplog.text
+    mgr.logger.add_log.assert_called_once()
     _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS])
 
 
 def test_update_if_needed_creates_when_task_missing(autostart_manager):
     mgr, recorder = autostart_manager
     recorder.returncode = 1  # task does not exist
+    recorder.stderr = "ERROR: The system cannot find the file specified."
     mgr.update_if_needed(True)
     _assert_call_sequences(recorder, [QUERY_ARGS, CREATE_ARGS])
 
@@ -265,7 +272,7 @@ def test_migrates_same_executable_with_old_constraints(autostart_manager, field,
 
 
 @pytest.mark.parametrize("failure", ["nonzero", "raised"])
-def test_creation_failure_is_reported_and_temp_removed(autostart_manager, monkeypatch, failure):
+def test_creation_failure_is_reported_and_temp_removed(autostart_manager, monkeypatch, failure, caplog):
     mgr, recorder = autostart_manager
     files = []
     def run(args, **kwargs):
@@ -280,12 +287,17 @@ def test_creation_failure_is_reported_and_temp_removed(autostart_manager, monkey
             raise subprocess.CalledProcessError(1, args)
         raise OSError("native launch failed")
     monkeypatch.setattr(autostart.subprocess, "run", run)
-    with pytest.raises(subprocess.CalledProcessError if failure == "nonzero" else OSError):
-        mgr.create()
+    mgr.logger = Mock()
+    assert mgr.create() is False
+    assert "failed" in caplog.text
+    messages = [call.args[0] for call in mgr.logger.add_log.call_args_list]
+    assert len(messages) == 2
+    assert messages[0].startswith("Warning:") and "outside Program Files" in messages[0]
+    assert messages[1].startswith("Error: Autostart create failed:")
     assert files and all(not Path(filename).exists() for filename in files)
 
 
-def test_failed_update_query_does_not_overwrite_task(autostart_manager, monkeypatch):
+def test_failed_update_query_does_not_overwrite_task(autostart_manager, monkeypatch, caplog):
     mgr, recorder = autostart_manager
     def run(args, **kwargs):
         if "/XML" in args:
@@ -293,6 +305,91 @@ def test_failed_update_query_does_not_overwrite_task(autostart_manager, monkeypa
             raise subprocess.CalledProcessError(1, args, stderr="access denied")
         return recorder(args, **kwargs)
     monkeypatch.setattr(autostart.subprocess, "run", run)
-    with pytest.raises(subprocess.CalledProcessError):
-        mgr.update_if_needed(True)
+    mgr.logger = Mock()
+    assert mgr.update_if_needed(True) is False
+    assert "failed" in caplog.text
+    mgr.logger.add_log.assert_called_once()
     _assert_call_sequences(recorder, [QUERY_ARGS])
+
+
+@pytest.mark.parametrize("operation,enabled", [("create", True), ("delete", False),
+    ("query", True), ("identity", True), ("sid", True)])
+@pytest.mark.parametrize("caller", ["startup", "checkbox"])
+def test_actual_callers_report_failure_and_continue(
+        autostart_manager, monkeypatch, caplog, operation, enabled, caller):
+    if caller == "checkbox" and operation == "sid":
+        pytest.skip("Checkbox creation does not resolve SID aliases")
+    mgr, recorder = autostart_manager
+    mgr.logger = Mock()
+    recorder.stdout = autostart.build_task_xml(FIXED_APP_PATH, USER_SID).decode("utf-16")
+    if caller == "checkbox" and operation == "query":
+        enabled = False
+    def run(args, **kwargs):
+        if ((operation == "create" and "/Create" in args)
+                or (operation == "delete" and "/Delete" in args)
+                or (operation == "query" and "/Query" in args)):
+            raise subprocess.CalledProcessError(1, args, stderr="native denied")
+        if operation == "create" and "/Query" in args:
+            return _FakeResult(1, "", "ERROR: The system cannot find the file specified.")
+        return recorder(args, **kwargs)
+    monkeypatch.setattr(autostart.subprocess, "run", run)
+    if operation in ("identity", "sid"):
+        def fail(*args):
+            raise OSError("identity unavailable")
+        monkeypatch.setattr(autostart, "current_user_id" if operation == "identity"
+                            else "current_user_sid", fail)
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "src/core/app.py").read_text())
+    results = []
+    class ObservedManager:
+        def __getattr__(self, name):
+            def invoke(*args):
+                result = getattr(mgr, name)(*args)
+                results.append(result)
+                return result
+            return invoke
+    namespace = {"autostart": ObservedManager(), "_acceptance_runtime": None,
+        "cm": SimpleNamespace(launchonstartup=enabled, update_preference_setting=Mock()),
+        "dpg": SimpleNamespace(get_value=lambda tag: enabled)}
+    if caller == "startup":
+        node = next(n for n in tree.body if isinstance(n, ast.If)
+                    and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                            and c.func.attr == "update_if_needed" for c in ast.walk(n)))
+    else:
+        node = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                    and n.name == "autostart_checkbox_callback")
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "app.py", "exec"), namespace)
+    if caller == "checkbox":
+        namespace[node.name](None, enabled, None)
+    assert results == [False]
+    assert "failed" in caplog.text
+    messages = [call.args[0] for call in mgr.logger.add_log.call_args_list]
+    if operation == "create" or (caller == "checkbox" and operation == "identity"):
+        assert len(messages) == 2
+        assert messages[0].startswith("Warning:") and "outside Program Files" in messages[0]
+        assert messages[1].startswith("Error: Autostart create failed:")
+    else:
+        assert len(messages) == 1
+        assert messages[0].startswith("Error:")
+    if operation in ("query", "identity", "sid"):
+        assert not recorder.files
+
+
+def test_programming_defect_propagates(autostart_manager, monkeypatch):
+    mgr, _ = autostart_manager
+    def broken():
+        raise ValueError("programming defect")
+    monkeypatch.setattr(autostart, "current_user_id", broken)
+    with pytest.raises(ValueError, match="programming defect"):
+        mgr.create()
+
+
+@pytest.mark.parametrize("diagnostic", ["access denied", "", "unrecognized diagnostic"])
+def test_failed_existence_query_never_creates(autostart_manager, caplog, diagnostic):
+    mgr, recorder = autostart_manager
+    mgr.logger = Mock()
+    recorder.returncode = 1
+    recorder.stderr = diagnostic
+    assert mgr.update_if_needed(True) is False
+    _assert_call_sequences(recorder, [QUERY_ARGS])
+    assert "failed" in caplog.text
+    mgr.logger.add_log.assert_called_once()

@@ -7,6 +7,7 @@ import pathlib
 import ctypes
 import csv
 import re
+from functools import wraps
 from ctypes import wintypes
 import tempfile
 import xml.etree.ElementTree as ET
@@ -15,6 +16,27 @@ TASK_NAME = "DynamicFPSLimiter"
 
 TASK_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+class IdentityLookupError(ValueError):
+    """Native identity output cannot safely identify the current user."""
+
+
+def report_operational_failure(method):
+    """Report expected native failures without interrupting app callers."""
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except (OSError, subprocess.CalledProcessError, IdentityLookupError) as error:
+            message = f"Autostart {method.__name__} failed: {error}"
+            if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+                message += f": {error.stderr.strip()}"
+            logging.error(message)
+            if self.logger is not None:
+                self.logger.add_log(f"Error: {message}")
+            return False
+    return call
 
 
 def current_user_id():
@@ -36,17 +58,20 @@ def current_user_sid(user_id):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         creationflags=CREATE_NO_WINDOW, check=True,
     )
-    rows = list(csv.reader(result.stdout.splitlines(), strict=True))
+    try:
+        rows = list(csv.reader(result.stdout.splitlines(), strict=True))
+    except csv.Error as error:
+        raise IdentityLookupError("Unexpected whoami user output") from error
     if len(rows) != 1 or len(rows[0]) != 2:
-        raise ValueError("Unexpected whoami user output")
+        raise IdentityLookupError("Unexpected whoami user output")
     account, sid = rows[0]
     if account.casefold() != user_id.casefold():
-        raise ValueError("whoami account does not match the current user")
+        raise IdentityLookupError("whoami account does not match the current user")
     if not re.fullmatch(r"S-1-[0-9]+(?:-[0-9]+){1,15}", sid):
-        raise ValueError("Invalid current user SID")
+        raise IdentityLookupError("Invalid current user SID")
     numbers = [int(part) for part in sid.split("-")[2:]]
     if numbers[0] >= 2**48 or any(part >= 2**32 for part in numbers[1:]):
-        raise ValueError("Invalid current user SID")
+        raise IdentityLookupError("Invalid current user SID")
     return sid
 
 
@@ -156,12 +181,27 @@ class AutoStartManager:
 
         return False
 
+    @report_operational_failure
     def task_exists(self):
+        return self._task_exists()
+
+    def _task_exists(self):
         result = subprocess.run(["schtasks", "/Query", "/TN", self.task_name],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 creationflags=CREATE_NO_WINDOW)
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
+        # Only a confirmed missing task permits creation. Other query failures
+        # (including unrecognized/localized diagnostics) must not overwrite it.
+        if "the system cannot find the file specified" in result.stderr.casefold():
+            return False
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args if hasattr(result, "args") else
+            ["schtasks", "/Query", "/TN", self.task_name],
+            output=result.stdout, stderr=result.stderr,
+        )
 
+    @report_operational_failure
     def create(self):
         if not self.is_in_program_files():
             msg = (
@@ -192,16 +232,18 @@ class AutoStartManager:
             if filename is not None:
                 os.unlink(filename)
 
+    @report_operational_failure
     def delete(self):
-        if self.task_exists():
+        if self._task_exists():
             return subprocess.run(
                 ["schtasks", "/Delete", "/TN", self.task_name, "/F"],
                 creationflags=CREATE_NO_WINDOW, check=True,
             )
 
+    @report_operational_failure
     def update_if_needed(self, startup_checkbox):
         if startup_checkbox:
-            if self.task_exists():
+            if self._task_exists():
                 result = subprocess.run(
                     ["schtasks", "/Query", "/TN", self.task_name, "/XML"],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -215,5 +257,5 @@ class AutoStartManager:
             else:
                 return self.create()
         else:
-            if self.task_exists():
+            if self._task_exists():
                 return self.delete()
