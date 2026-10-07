@@ -304,12 +304,16 @@ class LHMSensor:
             gpu_index = 1
             refreshed_cpu_keys = set()
             refreshed_gpu_keys = set()
-            cpu_hw_name = None
+            cpu_displays = []
+            gpu_displays = []
+            gpu_hw_names = []
 
             for hw in self.computer.Hardware:
                 if hw.HardwareType == self.HardwareType.Cpu:
                     hw.Update()
                     details = get_selected_sensor_details(hw, self.CPU_SENSORS)
+                    display_history = {}
+                    display_percentiles = {}
                     with self._lock:
                         for d in details:
                             if d["value"] is None:
@@ -326,6 +330,8 @@ class LHMSensor:
                             p = round(calculate_percentile(self.cpu_history[canon_key], self.percentile), 2)
                             self.cpu_percentiles[canon_key] = p
                             refreshed_cpu_keys.add(canon_key)
+                            display_history[key] = list(self.cpu_history[canon_key])
+                            display_percentiles[key] = p
 
                             # Mirror to display key and identifier for display / backward compatibility without mixing histories
                             if canon_key != key:
@@ -339,10 +345,12 @@ class LHMSensor:
                                 self.cpu_percentiles[identifier] = p
                                 refreshed_cpu_keys.add(identifier)
 
-                    cpu_hw_name = hw.Name
+                    cpu_displays.append(self.format_history(display_history, display_percentiles, hw.Name))
                 elif hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
                     hw.Update()
                     details = get_selected_sensor_details(hw, self.GPU_SENSORS)
+                    display_history = {}
+                    display_percentiles = {}
                     with self._lock:
                         for d in details:
                             if d["value"] is None:
@@ -359,6 +367,8 @@ class LHMSensor:
                             p = round(calculate_percentile(self.gpu_history[canon_key], self.percentile), 2)
                             self.gpu_percentiles[canon_key] = p
                             refreshed_gpu_keys.add(canon_key)
+                            display_history[key] = list(self.gpu_history[canon_key])
+                            display_percentiles[key] = p
 
                             # Mirror to display key and identifier for display / backward compatibility without mixing histories
                             if canon_key != key:
@@ -372,10 +382,8 @@ class LHMSensor:
                                 self.gpu_percentiles[identifier] = p
                                 refreshed_gpu_keys.add(identifier)
 
-                    if not hasattr(self, 'gpu_hw_names'):
-                        self.gpu_hw_names = []
-                    if hw.Name not in self.gpu_hw_names:
-                        self.gpu_hw_names.append(hw.Name)
+                    gpu_displays.append(self.format_history(display_history, display_percentiles, hw.Name))
+                    gpu_hw_names.append(hw.Name)
                     gpu_index += 1
 
             # Mark unrefreshed sensors missing (None) each tick
@@ -387,18 +395,19 @@ class LHMSensor:
                     if k not in refreshed_gpu_keys:
                         self.gpu_percentiles[k] = None
 
-            # Update ReadingsText in the GUI
-            cpu_str = self.format_history(self.cpu_history, self.cpu_percentiles, cpu_hw_name if 'cpu_hw_name' in locals() else "CPU")
-            gpu_titles = self.gpu_hw_names if hasattr(self, 'gpu_hw_names') else ["GPU"]
-            gpu_str = ""
-            # Split GPU history by index for display
-            for idx, gpu_name in enumerate(gpu_titles, start=1):
-                gpu_str += self.format_history(
-                    {k: v for k, v in self.gpu_history.items() if k[1].startswith(f"{idx} ")},
-                    self.gpu_percentiles,
-                    gpu_name
-                ) + "\n\n"
-            readings = cpu_str + "\n\n" + gpu_str
+                # Detach obsolete display aliases while retaining missing canonical percentiles.
+                for history, history_long, refreshed in (
+                    (self.cpu_history, self.cpu_history_long, refreshed_cpu_keys),
+                    (self.gpu_history, self.gpu_history_long, refreshed_gpu_keys),
+                ):
+                    for key in list(history):
+                        if isinstance(key, tuple) and key not in refreshed:
+                            history.pop(key, None)
+                            history_long.pop(key, None)
+                self.gpu_hw_names = gpu_hw_names
+
+            # Each hardware's rows are independent of shared compatibility aliases.
+            readings = "\n\n".join(cpu_displays + gpu_displays)
             try:
                 self._submit_dpg(self.dpg.set_value, "ReadingsText", readings)
             except Exception as e:

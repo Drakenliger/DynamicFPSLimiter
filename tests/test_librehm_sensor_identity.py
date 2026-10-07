@@ -6,6 +6,7 @@ import ast
 from collections import defaultdict, deque
 from pathlib import Path
 import statistics
+import pytest
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -82,6 +83,8 @@ def _load_lhm_ast(fake_types=None):
         "Path": Path,
     }
     exec(compile(tree, "<librehardwaremonitor>", "exec"), scope)
+    # Restore the isolated clock after executing the production import.
+    scope["time"] = SimpleNamespace(sleep=lambda x: None)
     return scope
 
 
@@ -148,7 +151,8 @@ def test_first_none_then_recover_stability():
     assert values2[st]["Fan (1)"] == 80.0
 
 
-def test_two_cpus_identical_sensor_names_distinct_histories():
+@pytest.mark.parametrize("cpu_count", [1, 2])
+def test_two_cpus_identical_sensor_names_distinct_histories(cpu_count):
     """Two CPUs with identical sensor names maintain distinct histories/percentiles via identifier."""
     st_temp = FakeEnumItem("Temperature")
     s_type = SimpleNamespace(Load=FakeEnumItem("Load"), Temperature=st_temp, Power=FakeEnumItem("Power"))
@@ -159,7 +163,7 @@ def test_two_cpus_identical_sensor_names_distinct_histories():
     cpu1 = MockHardware("CPU 1", hw_type.Cpu, [s1])
     cpu2 = MockHardware("CPU 2", hw_type.Cpu, [s2])
 
-    comp = MockComputer([cpu1, cpu2])
+    comp = MockComputer([cpu1, cpu2][:cpu_count])
     fake_types = (lambda: comp, s_type, hw_type)
 
     lhm_scope = _load_lhm_ast(lambda: fake_types)
@@ -195,7 +199,17 @@ def test_two_cpus_identical_sensor_names_distinct_histories():
     LHMSensor._poll_loop(sensor)
 
     assert sensor.cpu_percentiles["/amdcpu/0/temp/0"] == 10.0
-    assert sensor.cpu_percentiles["/amdcpu/1/temp/0"] == 90.0
+    rows = sensor.dpg.set_value.call_args.args[1].split("\n\n")
+    assert rows[0].startswith("CPU 1:") and "Core Max" in rows[0] and "10.0" in rows[0]
+    assert list(sensor.get_cpu_history()[s1.Identifier]) == [10.0]
+    if cpu_count == 2:
+        assert sensor.cpu_percentiles[s2.Identifier] == 90.0
+        assert rows[1].startswith("CPU 2:") and "Core Max" in rows[1] and "90.0" in rows[1]
+        assert list(sensor.get_cpu_history()[s2.Identifier]) == [90.0]
+    else:
+        assert len(rows) == 1
+        assert sensor.cpu_percentiles[(st_temp, "Core Max")] == 10.0
+        assert sensor.cpu_history[(st_temp, "Core Max")] is sensor.cpu_history[s1.Identifier]
 
 
 def test_gpu_removal_reindex_distinct_histories():
@@ -238,6 +252,7 @@ def test_gpu_removal_reindex_distinct_histories():
         run_ticks[0] += 1
         if run_ticks[0] == 2: # GPU 1 removed on tick 2 within same poll loop
             comp.Hardware = [gpu2]
+            g2_s.Value = 50.0
         return run_ticks[0] <= 2
 
     sensor._running = poll_running
@@ -248,8 +263,43 @@ def test_gpu_removal_reindex_distinct_histories():
 
     # GPU 1 identifier is unrefreshed -> None
     assert sensor.gpu_percentiles["/gpu/0/load/0"] is None
-    # GPU 2 identifier remains 30.0 and is not corrupted by GPU 1's history
-    assert sensor.gpu_percentiles["/gpu/1/load/0"] == 30.0
+    assert sensor.gpu_percentiles[g2_s.Identifier] == 44.0
+    assert list(sensor.gpu_history[g2_s.Identifier]) == [30.0, 50.0]
+    assert list(sensor.gpu_history_long[g2_s.Identifier]) == [30.0, 50.0]
+    current_key = (st_load, "1 GPU Core")
+    obsolete_key = (st_load, "2 GPU Core")
+    assert sensor.get_gpu_history()[current_key] is sensor.gpu_history[g2_s.Identifier]
+    assert sensor.gpu_percentiles[current_key] == 44.0
+    assert obsolete_key not in sensor.get_gpu_history()
+    assert obsolete_key not in sensor.gpu_history_long
+    assert sensor.gpu_percentiles[obsolete_key] is None
+    first, second = [call.args[1] for call in sensor.dpg.set_value.call_args_list]
+    assert "GPU 1:" in first and "GPU 2:" in first and "2 GPU Core" in first
+    assert second.startswith("GPU 2:") and "1 GPU Core" in second and "50.0" in second
+    assert "GPU 1:" not in second and "2 GPU Core" not in second
+    assert sensor.gpu_hw_names == ["GPU 2"]
+
+    # Evaluate actual polled data using original discovery identities/indexed names.
+    evaluate = _load_fps_evaluator()
+    for identifier, indexed_name, expected in (
+        (g1_s.Identifier, "1 GPU Core", (False, False)),
+        (g2_s.Identifier, "2 GPU Core", (True, False)),
+    ):
+        dpg = MagicMock()
+        dpg.does_item_exist.return_value = True
+        dpg.get_value.side_effect = lambda tag: {
+            "input_monitoring_method": "LibreHM",
+            "input_gpu_load_enable": True,
+            "input_gpu_load_upper": 40.0,
+            "input_gpu_load_lower": 20.0,
+        }.get(tag)
+        info = dict(parameter_id="gpu_load", sensor_type=st_load,
+                    sensor_name="GPU Core", sensor_name_indexed=indexed_name,
+                    hw_name="GPU", hw_type=hw_type.GpuNvidia, identifier=identifier)
+        utils = SimpleNamespace(cm=SimpleNamespace(sensor_infos=[info]),
+                                lhm_sensor=sensor, logger=MagicMock(), dpg=dpg,
+                                HardwareType=hw_type)
+        assert evaluate(utils, [], [], "LibreHM") == expected
 
 
 def test_get_all_sensor_infos_executes_actual_discovery():
