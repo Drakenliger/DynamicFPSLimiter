@@ -22,7 +22,11 @@ Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(Base_dir)
 
 from core.pre_launch import _unblock_alternate_data_streams, mark_first_launch_done
-DLLs_unblocked = _unblock_alternate_data_streams([parent_dir])
+_acceptance_runtime = globals().get("_acceptance_runtime")
+if _acceptance_runtime is not None:
+    _acceptance_runtime.configure_logging()
+DLLs_unblocked = (False if _acceptance_runtime is not None
+                  else _unblock_alternate_data_streams([parent_dir]))
 
 from core import logger
 logger.set_dpg(dpg)
@@ -48,7 +52,8 @@ from core.launch_popup import show_loading_popup, hide_loading_popup, show_rtss_
 from core.idle_timer import monitor_idle
 from core.version import display_version
 
-show_loading_popup(f"Loading Dynamic FPS Limiter {display_version()}...", Base_dir=Base_dir, dpg=dpg)
+if _acceptance_runtime is None:
+    show_loading_popup(f"Loading Dynamic FPS Limiter {display_version()}...", Base_dir=Base_dir, dpg=dpg)
 
 # Default viewport size
 Viewport_width = 610
@@ -56,7 +61,9 @@ Viewport_height = 700
 
 rtss = RTSSController(logger, error_handler=show_rtss_error_and_exit)
 themes_manager = ThemesManager(Base_dir, dpg)
-cm = ConfigManager(logger, dpg, rtss, None, themes_manager, Base_dir)
+_config_factory = (ConfigManager if _acceptance_runtime is None
+                   else _acceptance_runtime.config_factory)
+cm = _config_factory(logger, dpg, rtss, None, themes_manager, Base_dir)
 
 # Paths to configuration files
 error_log_file = os.path.join(parent_dir, "error_log.txt")
@@ -65,6 +72,8 @@ faq_path = os.path.join(Base_dir, "assets/faqs.csv")
 
 app_title = "Dynamic FPS Limiter"
 
+if _acceptance_runtime is not None:
+    error_log_file = _acceptance_runtime.error_log_file
 logger.init_logging(error_log_file)
 cap_change_log = CapChangeLog(run_path(cm.config_dir), logging.error)
 rtss_manager = None
@@ -159,6 +168,9 @@ def start_stop_callback(sender, app_data, user_data):
         session_number += 1
         running = not running
         captured_session = session_number
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.transition_observed(captured_session, profile_revision)
         # Reset decision state atomically with session invalidation.
         fps_values = []
         CurrentFPSOffset = 0
@@ -219,6 +231,9 @@ def start_stop_callback(sender, app_data, user_data):
         logger.add_log("Monitoring started")
         plotting_thread = threading.Thread(target=plotting_loop, args=(captured_session,), daemon=True)
         plotting_thread.start()
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.workers_started(monitoring_thread, plotting_thread)
         logger.add_log("Plotting started")
         fps_utils.reset_summary_statistics()
     else:
@@ -338,6 +353,9 @@ def _load_profile_on_gui(profile_name):
         except Exception:
             logger.add_log(f"AutoPilot: Failed to apply {profile_name} profile immediately.")
         profile_revision += 1
+        observer = globals().get("_acceptance_runtime")
+        if observer is not None:
+            observer.transition_observed(session_number, profile_revision)
         CurrentFPSOffset = 0
         fps_mean = 0
         fps_values = []
@@ -374,6 +392,7 @@ def monitoring_loop(captured_session):
                 return
             current_profile = cm.current_profile
             captured_profile_revision = profile_revision
+            captured_pass_time = time.time()
             if model_revision != captured_profile_revision:
                 fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
                     fps_utils.current_stepped_limits())
@@ -436,6 +455,9 @@ def monitoring_loop(captured_session):
             if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
                 cpu_values.pop(0)
             cpu_values.append(cpuUsage)
+            observer = globals().get("_acceptance_runtime")
+            if observer is not None:
+                observer.sample_observed(captured_session, captured_profile_revision)
 
         #TODO: if no LHM sensor selected, pass through without limiting
         # To prevent loading screens from affecting the fps cap
@@ -456,6 +478,10 @@ def monitoring_loop(captured_session):
                                           cm.minvalidgpu, cm.minvalidfps):
 
                         should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
+                        observer = globals().get("_acceptance_runtime")
+                        if observer is not None:
+                            observer.decision_observed(captured_session, captured_profile_revision,
+                                                       (should_decrease, should_increase), gpu_values, captured_pass_time)
                         if monitoring_method == "LibreHM":
                             with session_lock:
                                 if not session_is_current(captured_session, session_number, running):
@@ -478,6 +504,9 @@ def monitoring_loop(captured_session):
                                     CurrentFPSOffset = next_fps - current_maxcap
                                     _write_cap(current_profile, next_fps, "decrease")
                                     gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                    observer = globals().get("_acceptance_runtime")
+                                    if observer is not None:
+                                        observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                     should_decrease = should_increase = False
 
                         # --- COOLDOWN LOGIC ---
@@ -514,6 +543,9 @@ def monitoring_loop(captured_session):
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        observer = globals().get("_acceptance_runtime")
+                                        if observer is not None:
+                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
                             except ValueError:
@@ -533,6 +565,9 @@ def monitoring_loop(captured_session):
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        observer = globals().get("_acceptance_runtime")
+                                        if observer is not None:
+                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
             else:
@@ -996,7 +1031,8 @@ def build_settings_window():
             dpg.add_button(label="Hide Settings", width=100, callback=lambda: dpg.configure_item("settings_window", show=False))
             dpg.bind_item_theme("settings_window", themes_manager.themes["nested_window_theme"])
 
-hide_loading_popup(dpg=dpg)
+if _acceptance_runtime is None:
+    hide_loading_popup(dpg=dpg)
 
 # GUI setup: Main Window
 dpg.create_context()
@@ -1418,7 +1454,8 @@ apply_all_tooltips(dpg, get_tooltips(), cm.showtooltip, cm, logger)
 cm.refresh_ui_callbacks()
 
 autostart = AutoStartManager(app_path=os.path.join(os.path.dirname(Base_dir), "DynamicFPSLimiter.exe"), logger=logger)
-autostart.update_if_needed(cm.launchonstartup)
+if _acceptance_runtime is None:
+    autostart.update_if_needed(cm.launchonstartup)
 
 if cm.autopilot:
     dpg.configure_item("start_stop_button", enabled=False)
@@ -1458,9 +1495,16 @@ except Exception:
 # target frame has already been checked, orphaning the hook forever and silently
 # freezing all queued GUI updates. Drain the GuiQueue directly on the main render
 # thread (the thread that owns the DPG context) instead.
+if _acceptance_runtime is not None:
+    _acceptance_runtime.initialized(globals())
+
 while dpg.is_dearpygui_running():
     dpg.render_dearpygui_frame()
     try:
         gui_queue.drain()
     except Exception:
         logging.error("GuiQueue drain failed", exc_info=True)
+
+    if _acceptance_runtime is not None:
+        if _acceptance_runtime.frame(globals()) is False:
+            break
