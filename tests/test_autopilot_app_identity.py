@@ -215,3 +215,17 @@ def test_start_admission_closes_profile_load_lifecycle_gap():
     queue.drain()
     assert not errors
     assert not ns['running'] and ns['session_number'] == 3
+
+
+@pytest.mark.parametrize('only', [False, True])
+@pytest.mark.parametrize('stored', ['global', 'GLOBAL'])
+def test_reserved_global_alias_selects_game(only, stored):
+    ns, writes, submitted, queue, errors = app('Global', only, 'GAMEA')
+    global_ladder = ns['fps_utils'].current_stepped_limits()
+    ns['fps_utils'].current_stepped_limits = lambda: global_ladder
+    ns['cm'].profiles_config.add_section(stored)
+    ns['cm'].current_profile = stored
+    one_pass(ns)
+    assert len(actions(ns, submitted)) == 1
+    assert actions(ns, submitted)[0][0] is ns['_load_profile_on_gui']
+    assert actions(ns, submitted)[0][1] == 'gameA'
