@@ -37,19 +37,21 @@ sustained load is high and raises it (with a cooldown) when load is low, reactin
                         │            DearPyGui render loop (blocking)            │
                         │                                                        │
                         │   UI (profile, cap params, plots, LHM tables, FAQ)     │
-                        │   gui_update_loop (0.1s)   autopilot_loop (1s)         │
-                        └───────────────▲───────────────────────────▲────────────┘
-                                        │ dpg.* (NOT thread-safe)   │
-        ┌───────────────────────────────┴──────────────┐            │
-        │              BACKGROUND THREADS (daemon)      │            │
-        │                                              │            │
-        │  monitoring_loop (1s)  ──► decision engine    │            │
-        │  plotting_loop         ──► usage plots        │            │
-        │  LHMSensor._poll_loop  ──► LHM percentiles    │            │
-        │  GPUUsageMonitor       ──► PDH 3D utilization │            │
-        │  CPUUsageMonitor       ──► psutil CPU         │            │
-        │  pystray tray thread   ──► menu/restore/exit ─┘            │
-        └───────┬───────────────────────────────┬───────────────────┘
+                        │   gui_queue drain executes queued callbacks            │
+                        └───────────────▲────────────────────────────────────────┘
+                                        │ GuiQueue.submit() (thread-safe)
+        ┌───────────────────────────────┴──────────────┐
+        │              BACKGROUND THREADS (daemon)      │
+        │                                              │
+        │  gui_update_loop (0.1s)──► idle UI/warnings   │
+        │  autopilot_loop (1s)   ──► focus auto-start   │
+        │  monitoring_loop (1s)  ──► decision engine    │
+        │  plotting_loop         ──► usage plots        │
+        │  LHMSensor._poll_loop  ──► LHM percentiles    │
+        │  GPUUsageMonitor       ──► PDH 3D utilization │
+        │  CPUUsageMonitor       ──► psutil CPU         │
+        │  pystray tray thread   ──► menu/restore/exit ─┘
+        └───────┬───────────────────────────────┬───────┘
                 │ sense                         │ act
                 ▼                               ▼
    ┌───────────────────────────┐     ┌───────────────────────────────┐
@@ -74,7 +76,7 @@ main render loop drains once per frame (F3 fix — see `status.md` §1.2).
 | `gui_update_loop` | module init (app:1214) | 0.1 s | yes (warnings, log, cap viz) |
 | `autopilot_loop` | module init (app:1218) | 1 s | yes (profile switch) |
 | `monitoring_loop` | Start button | 1 s | yes (series, plots) |
-| `plotting_loop` | Start button | `lcm(gpu,cpu interval)` | yes (usage plot) |
+| `plotting_loop` | Start button | `min(gpu,cpu interval)` | yes (usage plot) |
 | `LHMSensor._poll_loop` | Start | `lhwmonitorpollinginterval` ms | yes (readings table) |
 | `GPUUsageMonitor.gpu_run` | constructed | `gpupollinginterval` ms | no (PDH only) |
 | `CPUUsageMonitor.cpu_run` | constructed | `cpupollinginterval` ms | no (psutil only) |
@@ -99,7 +101,7 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 | `src/core/librehardwaremonitor.py` | `LHMSensor` polling thread + `get_all_sensor_infos` hardware discovery; degrades to a disabled no-sensor state when LHM is unavailable (F2 fix); `start()` re-opens a closed `Computer` so Stop→Start keeps working and `get_all_sensor_infos` closes its one-shot `Computer` (F7 fix) |
 | `src/core/lhm_loader.py` | pythonnet CLR bootstrap, .NET runtime detection, DLL-variant selection; raises `LHMLoadError` on load failure (F2 fix) |
 | `src/core/gpu_monitor.py` | Legacy GPU usage via PDH performance counters (per-LUID 3D engine); `initialize()` closes the prior PDH query before re-opening and `reinitialize()` re-assigns `counter_handles` (F8 fix); `get_gpu_usage()` reuses the live query (no re-init), `self.luid` reads/writes are lock-guarded, and its `dpg.*` calls defer to the `GuiQueue` (F9 fix) |
-| `src/core/gui_queue.py` | Thread-safe `GuiQueue` — background threads `submit(fn, *args, **kwargs)`; the main render loop in `app.py` `drain()`s the queue once per frame on the main thread (per-callback exception isolation, optional `on_error`) so DearPyGui is only touched on the main thread. Injected into `GPUUsageMonitor`, `logger`, and `TrayManager` (F3 fix — complete) |
+| `src/core/gui_queue.py` | Thread-safe `GuiQueue` — background threads `submit(fn, *args, **kwargs)`; the main render loop in `app.py` `drain()`s the queue once per frame on the main thread (per-callback exception isolation, optional `on_error`) so DearPyGui is only touched on the main thread. Injected into `GPUUsageMonitor`, `logger`, `TrayManager`, and `LHMSensor` (F3 fix — complete) |
 | `src/core/cpu_monitor.py` | Legacy CPU usage via psutil (per-core max) |
 | `src/core/rtss_functions.py` | `RTSSController`: loads `RTSSHooks64.dll`, profile API + `.cfg` edits; `set_fractional_fps_direct` safely appends missing `Limit=`/`LimitDenominator=` lines (F4 fix); all profile file + API mutations are serialized behind an `RLock` and file writes are atomic via `_atomic_write_lines` (tmp + `os.replace`) (F6 fix) |
 | `src/core/rtss_interface.py` | `RTSSInterface`: reads live FPS from `RTSSSharedMemoryV2` |
@@ -113,7 +115,6 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 | `src/core/autostart.py` | `AutoStartManager`: `schtasks` Run-key create/delete |
 | `src/core/idle_timer.py` | Win32 `GetLastInputInfo` idle duration (idle FPS-cap mode) |
 | `src/core/logger.py` | logging setup, DPG log-text refresh, uncaught-exception hook; `log_messages` is lock-guarded (thread-safe) and the DPG `LogText` refresh is the only `dpg.*` touch point, run on the main thread via an injected `GuiQueue` (F3 fix) |
-| `src/core/video2gif.py` | **Dev-only** CLI (MP4→GIF); not imported by the app |
 
 ## 5. Core control loop (the decision engine)
 
@@ -126,9 +127,9 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 3. **On window change** — log it, update the "Last process" field, `gpu_monitor.reinitialize()`.
 4. **Fill rolling buffers** — `fps_values` (last 3 → `fps_mean`), `gpu_values`/`cpu_values`
    (Legacy percentiles) or read LHM per-sensor percentiles.
-5. **Idle check** — `get_idle_duration()` (seconds since last input).
+5. **Idle check** — `monitor_idle(cm.idle_fps_delay)` (seconds since last input).
 6. **Cap decision** (only when GPU usage is valid and the active window isn't DFL itself):
-   - **Active**: `fps_utils.evaluate_cap_change(gpu_values, cpu_values)` →
+   - **Active**: `fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)` →
      `(should_decrease, should_increase)`.
       - **Decrease**: if not already at `mincap`, `cap_policy.next_cap_on_decrease` picks the
         next rung — one step down when `cap <= fps_mean`, a jump to the highest rung below
@@ -217,9 +218,9 @@ Config lives in `<app dir>/config/` (`src/config/` in dev, next to the exe when 
   `error_log.txt`.
 - RTSS missing → dedicated popup + exit (by design).
 - LHM load failure is caught (F2 fix) — `LHMLoadError` degrades to Legacy with no fallback crash.
-- Most per-sensor / per-counter read failures are logged and skipped, but several daemon
-  threads have **no** try/except around their main work, so a single exception kills the thread
-  silently (see flaws #18, #21).
+- Most per-sensor / per-counter read failures are logged and skipped; daemon polling and
+  monitoring loops catch pass exceptions, invalidate stale readings, and log the failure
+  to recover on the next iteration.
 - INI writes are non-atomic; a crash mid-write can corrupt `settings.ini`/`profiles.ini`
   (flaw #14).
 
@@ -235,7 +236,7 @@ See the module map (§4) for Python sources. Non-code:
 | `src/core/assets/*.ico`, `*.png` | App/tray icons + window-control icons |
 | `src/core/assets/faqs.csv` | FAQ rows shown in the GUI |
 | `src/core/assets/LHM_0.9.6_lib/` | LibreHardwareMonitorLib.dll (4 .NET variants) + license |
-| `src/Public_SameSalamander5710.cer` | Code-signing public certificate |
+| `src/Public_SameSalamander5710_2026.cer` | Code-signing public certificate |
 | `README.md`, `CHANGELOG.md`, `src/BUILD.md` | User/release docs |
 | `docs/README.md`, `docs/architecture.md`, `docs/status.md`, `docs/lessons.md` | Design docs + status tracker |
 
@@ -243,15 +244,12 @@ See the module map (§4) for Python sources. Non-code:
 
 Glaring, fix-first issues are all resolved — see **`status.md` §1.2**. Lower-priority debt worth noting:
 
-- **Single-file orchestrator** — `app.py` is ~1,270 lines of module-level script with heavy
-  global state and import-order-dependent startup; hard to test or reason about.
-- **GUI coupling in core** — several non-GUI modules (`logger`, `cpu_monitor`, `autostart`,
-  `tray_functions`) import DearPyGui at module top, preventing headless use.
+- **Single-file orchestrator** — `app.py` is a module-level script with heavy
+  global state and import-order-dependent startup (tracked as **A1**; the dpg-coupling part was
+  resolved by **A2**).
 - **Undeclared direct dependency** — `PIL`/Pillow is used by `tray_functions` but only present
   as a transitive dependency of pystray.
 - **Two competing RTSS write paths** (API vs direct `.cfg` edits) and non-atomic INI writes.
-- **Dead / stray code** — `idle_timer.monitor_idle` (debug loop) and `video2gif.py`
-  (not part of the app).
 - **Pending refactor** — the A1–A6 modular split of `app.py`/`ConfigManager` is tracked in
   `status.md` §2.1.
 - **Latent type hazards** — `Decimal` vs `float` in the plot math (currently consistent because

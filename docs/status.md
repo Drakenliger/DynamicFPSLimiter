@@ -97,7 +97,6 @@ Lower-priority debt; glaring issues are all resolved (see §1.2).
 - **Non-atomic INI writes** — `settings.ini`/`profiles.ini` are rewritten immediately on every
   preference change with no tmp+rename; a crash mid-write can corrupt them (RTSS `.cfg` writes
   are already atomic — F6; INI is not).
-- **Dead / stray code** — `video2gif.py` (not part of the app).
 - **Latent type hazards** — `Decimal` vs `float` in plot math (consistent today only because the
   FPS reader returns `Decimal`); `copy_from_plot` truncates fractional custom limits.
 - **`faqs.csv`** present in both dev and frozen builds — its import-time `open()` only crashes if
