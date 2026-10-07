@@ -421,8 +421,16 @@ def monitoring_loop(captured_session):
                 current_profile = cm.current_profile
                 captured_profile_revision = profile_revision
                 captured_pass_time = time.time()
+            # Native PDH setup may pause; Stop/Exit must remain able to retire
+            # this session while it is in progress.
+            if not backend_initialized:
+                gpu_monitor.reinitialize()
+            with session_lock:
+                if not session_is_current(captured_session, session_number, running):
+                    return
+                if captured_profile_revision != profile_revision:
+                    continue
                 if not backend_initialized:
-                    gpu_monitor.reinitialize()
                     backend_initialized = True
                 if model_revision != captured_profile_revision:
                     fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(

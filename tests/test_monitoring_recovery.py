@@ -166,3 +166,79 @@ def test_failed_legacy_sample_requires_entire_new_delay(direction):
     ns['time'].sleep = sleep
     ns['monitoring_loop'](1)
     assert write_ticks == [6] and len(writes) == 1
+
+
+@pytest.mark.parametrize('action', ['restart', 'exit', 'profile'])
+@pytest.mark.parametrize('setup_fails', [False, True], ids=['success', 'failure'])
+def test_paused_initial_setup_allows_invalidation_and_discards_old_pass(action, setup_fails):
+    ns, writes, _, _ = load_app()
+    paused, release, invalidated = (threading.Event() for _ in range(3))
+    setup_calls, model_calls, samples, ticks = [], [], [], []
+
+    def setup():
+        setup_calls.append(ns['profile_revision'])
+        if len(setup_calls) == 1:
+            paused.set()
+            # Longer than the invalidation deadline: failure cannot release setup
+            # and accidentally make a blocked invalidator appear responsive.
+            assert release.wait(15)
+            if setup_fails:
+                raise RuntimeError('retired initial setup')
+        else:
+            # End the next pass before publishing state; only the replacement
+            # revision may retry initialization.
+            ns['running'] = False
+
+    ns['gpu_monitor'].reinitialize = setup
+    ns['fps_utils'].current_stepped_limits = lambda: (model_calls.append(ns['profile_revision']) or [Decimal(30), Decimal(60), Decimal(90)])
+    ns['rtss_manager'].get_fps_for_active_window = lambda: (samples.append(ns['profile_revision']) or (Decimal(95), 'game'))
+
+    def sleep(seconds):
+        ticks.append(seconds)
+        ns['running'] = False
+    ns['time'].sleep = sleep
+    before = {}
+
+    def invalidate():
+        if action == 'restart':
+            restart(ns)
+        elif action == 'exit':
+            ns['exit_gui']()
+        else:
+            with ns['session_lock']:
+                ns['profile_revision'] += 1
+                ns['cm'].current_profile = 'replacement.exe'
+        with ns['session_lock']:
+            ns['gpu_values'] = [12, 13]
+            ns['cpu_values'] = [22]
+            ns['fps_values'] = [Decimal(44)]
+            ns['fps_mean'] = Decimal(44)
+            ns['CurrentFPSOffset'] = -7
+            before['lists'] = tuple(ns[k] for k in ('gpu_values', 'cpu_values', 'fps_values'))
+            before['writes'] = list(writes)
+            # Stop/Exit may build their restoration model, independently of
+            # monitoring. Count only calls after their completion.
+            model_calls.clear()
+        invalidated.set()
+
+    thread, errors = worker(lambda: ns['monitoring_loop'](1))
+    invalidator = None
+    try:
+        assert paused.wait(5)
+        invalidator, invalidator_errors = worker(invalidate)
+        assert invalidated.wait(5), 'invalidation blocked while native setup remained paused'
+        assert not release.is_set()
+        assert thread.is_alive()
+        assert ns['session_number'] == (3 if action == 'restart' else 2 if action == 'exit' else 1)
+    finally:
+        release.set()
+        if invalidator is not None:
+            finish(invalidator, invalidator_errors)
+        finish(thread, errors)
+
+    assert writes == before['writes']
+    assert all(ns[k] is planted for k, planted in zip(('gpu_values', 'cpu_values', 'fps_values'), before['lists']))
+    assert (ns['gpu_values'], ns['cpu_values'], ns['fps_values'], ns['fps_mean'], ns['CurrentFPSOffset']) == ([12, 13], [22], [Decimal(44)], Decimal(44), -7)
+    assert not model_calls and not samples
+    assert setup_calls == ([0, 1] if action == 'profile' and not setup_fails else [0])
+    assert ticks == ([1] if action == 'profile' and setup_fails else [])
