@@ -66,7 +66,7 @@ def autopilot_decision(foreground, sections, current, running, only_profiles):
     if not running:
         target = matched or (None if only_profiles else canonical_profile('Global', sections))
         return ('start', target) if target else None
-    if current == 'Global':
+    if current and current.lower() == 'global':
         return ('select', matched) if matched and matched != current else None
     if matched == current:
         return None
