@@ -19,7 +19,7 @@ LADDERS = {
 def setup_profile(ns, initial):
     cm = ns['cm']
     cm.current_profile = initial
-    cm.load_profile_callback = lambda _, name, __: setattr(cm, 'current_profile', name)
+    cm.load_profile_raw = lambda name, **kw: setattr(cm, 'current_profile', name)
     cm.gpucutofffordecrease = 90
     cm.gpucutoffforincrease = 50
     ns['fps_utils'].current_stepped_limits = lambda: LADDERS[cm.current_profile]
@@ -49,7 +49,8 @@ def test_switch_rebuilds_ladder_bounds_and_resets_decisions(initial, target):
     ns['time'].sleep = sleep
     ns['monitoring_loop'](1)
     assert ns['session_number'] == 1
-    assert [w[1] for w in writes] == [(initial, LADDERS[initial][-2]), (target, LADDERS[target][-2])]
+    assert [w[1] for w in writes] == [(initial, LADDERS[initial][-2]), (initial, LADDERS[initial][-1]),
+                                    (target, LADDERS[target][-1]), (target, LADDERS[target][-2])]
     assert ns['fps_values'] == ns['gpu_values'] == ns['cpu_values'] == []
     assert ns['fps_mean'] == 0
     _, _, maximum, lower, upper = build_cap_model(LADDERS[target])
@@ -149,7 +150,8 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
     finally:
         release.set()
         finish(thread, errors)
-    assert not any(w[1][0] == 'Global' for w in writes)
+    assert [w[1] for w in writes] == [('Global', LADDERS['Global'][-1]),
+                                    ('gameB', LADDERS['gameB'][-1])]
     history_after = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
     assert history_after == history_before
     if scenario == 'increase':
@@ -172,7 +174,8 @@ def test_profile_change_discards_idle_cached_active_cap():
             ns['running'] = False
     ns['time'].sleep = sleep
     ns['monitoring_loop'](1)
-    assert [w[1] for w in writes] == [('Global', 20), ('gameB', Decimal('10.25'))]
+    assert [w[1] for w in writes] == [('Global', 20), ('Global', Decimal(120)),
+                                    ('gameB', Decimal('15.25')), ('gameB', Decimal('10.25'))]
     assert not ns['idle_state']
 
 
@@ -194,6 +197,7 @@ def test_profile_change_resets_increase_cooldown():
     ns['time'].sleep = sleep
     ns['monitoring_loop'](1)
     assert [w[1] for w in writes] == [('Global', Decimal(90)), ('Global', Decimal(120)),
+                                    ('Global', Decimal(120)), ('gameB', Decimal('15.25')),
                                     ('gameB', Decimal('10.25')), ('gameB', Decimal('15.25'))]
 
 
@@ -212,12 +216,12 @@ def test_profile_load_and_model_snapshot_are_coherent():
             self.lock.release()
     ns['session_lock'] = ObservedLock()
     inputs = {'ladder': LADDERS['Global']}
-    def load(_, name, __):
+    def load(name, **kw):
         ns['cm'].current_profile = name
         loading.set()
         assert release.wait(5)
         inputs['ladder'] = LADDERS[name]
-    ns['cm'].load_profile_callback = load
+    ns['cm'].load_profile_raw = load
     ns['fps_utils'].current_stepped_limits = lambda: inputs['ladder']
     ns['time'].sleep = lambda _: ns.update(running=False)
     loader, loader_errors = worker(lambda: ns['_load_profile_on_gui']('gameB'))
@@ -232,12 +236,13 @@ def test_profile_load_and_model_snapshot_are_coherent():
         assert loading.wait(5)
         thread.start()
         assert attempted.wait(5)
-        assert not writes
+        assert [w[1] for w in writes] == [('Global', Decimal(120))]
     finally:
         release.set()
     finish(loader, loader_errors)
     finish(thread, monitor_errors)
-    assert [w[1] for w in writes] == [('gameB', Decimal('10.25'))]
+    assert [w[1] for w in writes] == [('Global', Decimal(120)),
+                                    ('gameB', Decimal('15.25')), ('gameB', Decimal('10.25'))]
 
 
 def test_profile_switch_waits_for_admitted_cap_write():
@@ -287,7 +292,8 @@ def test_profile_switch_waits_for_admitted_cap_write():
         release.set()
     finish(switcher, switch_errors)
     finish(thread, errors)
-    assert [w[1] for w in writes] == [('Global', Decimal(90))]
+    assert [w[1] for w in writes] == [('Global', Decimal(90)), ('Global', Decimal(120)),
+                                    ('gameB', Decimal('15.25'))]
     assert ns['CurrentFPSOffset'] == 0
 
 
@@ -374,10 +380,13 @@ def test_increase_lookup_profile_handoff(arm, remove_guard):
     after = (list(ns['fps_values']), list(ns['gpu_values']),
              list(ns['cpu_values']), ns['fps_mean'])
     if remove_guard:
-        assert writes == [('old-session', ('Global', Decimal(120)), 1)]
+        assert [w[1] for w in writes] == [('Global', Decimal(120)),
+                                        ('gameB', Decimal('15.25')), ('Global', Decimal(120))]
+        assert writes[-1] == ('old-session', ('Global', Decimal(120)), 1)
         assert ns['CurrentFPSOffset'] == 0
         assert after == ([], [], [], 0)
     else:
-        assert writes == []
+        assert [w[1] for w in writes] == [('Global', Decimal(120)), ('gameB', Decimal('15.25'))]
+        assert not any(w[0] == 'old-session' for w in writes)
         assert ns['CurrentFPSOffset'] == -5
         assert after == before

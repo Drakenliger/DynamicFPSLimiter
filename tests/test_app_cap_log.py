@@ -68,7 +68,7 @@ def setup():
     return ns, writes, rows, errors, closed
 
 
-@pytest.mark.parametrize('direct,result,count', [(True, False, 0), (True, True, 1), (True, None, 1), (False, (60, 1), 1)])
+@pytest.mark.parametrize('direct,result,count', [(True, False, 0), (True, True, 1), (True, None, 1), (False, (60, 1), 1), (False, False, 0)])
 def test_helper_success_timestamp_snapshot_and_return(direct, result, count):
     ns, _, rows, _, _ = setup()
     ns.update(gpu_values=[Decimal('80.25')], cpu_values=[Decimal('20.5')], fps_mean=Decimal('61.125'))

@@ -221,7 +221,6 @@ class TrayManager:
             for profile in self.cm.profiles_config.sections():
                 def make_callback(profile_name):
                     def _do():
-                        self.dpg.set_value("profile_dropdown", profile_name)
                         self._select_profile_from_tray(profile_name)
                     return lambda icon, item: self._run_on_main(_do)
                 profiles.append(MenuItem(

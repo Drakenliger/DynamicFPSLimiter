@@ -298,7 +298,8 @@ class RTSSController:
                 if not denom_success:
                     return False
 
-            self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update)
+            if not self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update):
+                return False
 
             if not update:
                 self.UpdateProfiles()

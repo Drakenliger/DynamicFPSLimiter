@@ -1,5 +1,6 @@
 """Execute selected app functions without importing or launching core.app."""
 import ast
+import configparser
 import logging
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 from core.cap_policy import (build_cap_model, next_cap_on_decrease, exit_restore_cap,
                              cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence)
 from core.cap_change_log import make_row
+from core.profile_policy import profile_transition_kind, effective_max, profile_request_current
 from core.session_policy import session_is_current
 
 APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
@@ -19,7 +21,7 @@ APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
 
 def load_app(*, lockless=False, transform=None):
     tree = ast.parse(APP.read_text())
-    names = {'_write_cap', 'start_stop_callback', 'monitoring_loop', 'plotting_loop', 'exit_gui', '_load_profile_on_gui'}
+    names = {'_write_cap', 'start_stop_callback', 'monitoring_loop', 'plotting_loop', 'exit_gui', '_load_profile_on_gui', '_request_profile_transition'}
     selected = ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])
     if lockless:
         class RemoveSessionLock(ast.NodeTransformer):
@@ -38,16 +40,19 @@ def load_app(*, lockless=False, transform=None):
             spawned.append(kw)
         def start(self):
             pass
+    profiles = configparser.ConfigParser()
+    profiles.read_dict({"Global": {}, "gameA": {}, "gameB": {}})
     cm = NS(current_profile='Global', autopilot=False, input_field_keys=[], input_button_tags=[],
             apply_current_input_values=noop, parse_decimal_set_to_string=str,
+            profiles_config=profiles, refresh_ui_callbacks=noop, tray=None,
             delaybeforedecrease=1, delaybeforeincrease=1, minvalidgpu=0, minvalidfps=0,
             gpucutofffordecrease=90, gpucutoffforincrease=70,
             cpucutofffordecrease=90, cpucutoffforincrease=70,
             idle_fps_delay=10, idle_mode=False, idle_fps_cap=20,
             gpupollinginterval=100, cpupollinginterval=100, globallimitonexit=False)
-    ns = dict(logging=logging, make_row=make_row, cap_change_log=NS(record=noop, close=noop), exit_restore_cap=exit_restore_cap, fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
+    ns = dict(profile_transition_kind=profile_transition_kind, effective_max=effective_max, profile_request_current=profile_request_current, _profile_gui_thread=threading.get_ident(), logging=logging, make_row=make_row, cap_change_log=NS(record=noop, close=noop), exit_restore_cap=exit_restore_cap, fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid, confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model, profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,
               Decimal=Decimal, running=True, session_number=1, session_lock=threading.Lock(),
-              cm=cm, threading=NS(Thread=ThreadStub),
+              cm=cm, threading=NS(Thread=ThreadStub, get_ident=threading.get_ident),
               dpg=NS(get_value=lambda _: "Legacy", set_value=noop, configure_item=noop, bind_item_theme=noop, does_item_exist=lambda _: False,
                      is_dearpygui_running=lambda: False),
               themes_manager=NS(themes={'stop_button_theme': 1, 'start_button_theme': 2}),

@@ -107,6 +107,7 @@ class Runtime:
         self.overlaps = 0
         self.current_workers = (None, None)
         self.models = {}
+        self.handoff_models = {}
 
     def configure_logging(self):
         handler = logging.FileHandler(self.error_log_file, encoding='utf-8')
@@ -139,6 +140,13 @@ class Runtime:
             actual = app['rtss'].get_framerate_limit(safe[2], True)
             if actual is None or float(actual) != float(safe[4]):
                 self.errors.append('RTSS cap readback mismatch')
+            if safe[5] == 'profile_start':
+                # This write precedes revision publication and belongs to the
+                # incoming GUI ladder, while normal decisions use admitted revisions.
+                ladder = sorted(float(x) for x in app['fps_utils'].current_stepped_limits())
+                self.handoff_models[safe[0]] = (safe[2], ladder)
+                if float(safe[4]) != max(ladder):
+                    self.errors.append('profile handoff did not write effective maximum')
             with self.lock:
                 self.revisions[safe[0]] = app['profile_revision']
                 self.rows.append(dict(zip(('time', 'session_number', 'profile', 'old_cap', 'new_cap',
@@ -309,7 +317,8 @@ class Runtime:
                 return confirmed_delay(timestamp, candidates, direction, previous)
             self.evidence[key] = bool(matched) and all(delayed(r) for r in matched)
         self.evidence['switch_response'] = bool(changes) and all(
-            profile_bounds_valid(r, self.models.get(self.revisions.get(r['time']))) for r in rows) and any(
+            profile_bounds_valid(r, self.handoff_models.get(r['time'],
+                self.models.get(self.revisions.get(r['time'])))) for r in rows) and any(
                 r['profile'] == 'Global' and float(r['new_cap']) == 30 for r in changes) and any(
                 r['profile'] == 'pythonw.exe' and float(r['new_cap']) == 24 for r in changes) and any(
                 r['profile'] == 'pythonw.exe' and r['reason'] == 'increase' and float(r['new_cap']) == 48 for r in changes)
