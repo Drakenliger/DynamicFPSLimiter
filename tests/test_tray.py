@@ -112,6 +112,16 @@ def test_update_hover_text_inline_on_main_thread(fake_dpg):
 def test_profile_menu_lambda_defers_to_queue(fake_dpg):
     queue = GuiQueue()
     cm = _CmStub()
+    callback_calls = []
+
+    def load_profile_callback(sender, app_data, user_data):
+        callback_calls.append(
+            ((sender, app_data, user_data), threading.current_thread())
+        )
+        cm.current_profile = app_data
+        fake_dpg.set_value("profile_dropdown", app_data)
+
+    cm.load_profile_callback = load_profile_callback
     cfg = configparser.ConfigParser()
     cfg["Global"] = {}
     cfg["GameA"] = {}
@@ -122,25 +132,30 @@ def test_profile_menu_lambda_defers_to_queue(fake_dpg):
     items = tray._profile_menu_items()
     assert [item.text for item in items] == ["Global", "GameA"]
 
-    # Invoke the first item's action as pystray would (from the tray thread).
+    # Invoke GameA's action as pystray would (from the tray thread).
     def _bg():
-        items[0]._action(None, None)
+        items[1]._action(None, None)
 
     t = threading.Thread(target=_bg)
     t.start()
     t.join()
 
-    # Deferred: no DPG set_value on the background thread.
-    set_value_calls = [c for c in fake_dpg.calls if c[0] == "set_value"]
-    assert set_value_calls == []
+    # Both the ConfigManager callback and its DPG update are deferred.
+    assert callback_calls == []
+    assert fake_dpg.calls == []
     assert len(queue) == 1
 
     queue.drain()
 
+    assert callback_calls == [((None, "GameA", None), threading.main_thread())]
+    assert cm.current_profile == "GameA"
+    assert fake_dpg.values["profile_dropdown"] == "GameA"
+    assert len(queue) == 0
     set_value_calls = [c for c in fake_dpg.calls if c[0] == "set_value"]
     assert len(set_value_calls) == 1
     assert set_value_calls[0][1][0] == "profile_dropdown"
-    assert set_value_calls[0][1][1] == "Global"
+    assert set_value_calls[0][1][1] == "GameA"
+    assert set_value_calls[0][3] == threading.main_thread().name
 
 
 def test_method_menu_lambda_defers_to_queue(fake_dpg):

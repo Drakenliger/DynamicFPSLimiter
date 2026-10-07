@@ -48,6 +48,7 @@ from core.fps_utils import FPSUtils
 from core.cap_policy import next_cap_on_decrease, build_cap_model, exit_restore_cap
 from core.cap_policy import cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence
 from core.cap_change_log import CapChangeLog, make_row, run_path
+from core.profile_policy import profile_transition_kind, effective_max, profile_request_current
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
 from core.autopilot import autopilot_on_check, get_foreground_process_name
@@ -169,7 +170,7 @@ def _write_cap(profile, cap, reason, *, direct=False):
     timestamp = time.time()
     result = (rtss.set_fractional_fps_direct(profile, cap) if direct
               else rtss.set_fractional_framerate(profile, cap))
-    if direct and result is False:
+    if result is False:
         return result
     try:
         cap_change_log.record(make_row(timestamp, session_number, profile, old_cap,
@@ -360,22 +361,74 @@ CurrentFPSOffset = 0
 fps_mean = 0
 idle_state = False
 
-def _load_profile_on_gui(profile_name):
-    """Switch the active profile on the main DPG thread (submitted via the GuiQueue).
+def _request_profile_transition(profile_name):
+    if threading.get_ident() != _profile_gui_thread:
+        with session_lock:
+            session, revision = session_number, profile_revision
+        _gui_submit(_load_profile_on_gui, profile_name, session, revision)
+        return None
+    return _load_profile_on_gui(profile_name)
 
-    load_profile_callback() writes the profile's values into the GUI input fields and
-    sets cm.current_profile, so it must run together with the dropdown value update on
-    the thread that owns the DearPyGui context.
-    """
+
+def _load_profile_on_gui(profile_name, expected_session=None, expected_revision=None):
+    """Apply one GUI-thread handoff under the ordinary session lock."""
     global profile_revision, CurrentFPSOffset, fps_mean, idle_state
     global fps_values, gpu_values, cpu_values
     with session_lock:
-        dpg.set_value("profile_dropdown", profile_name)
-        cm.load_profile_callback(None, profile_name, None)
+        if expected_session is not None and not profile_request_current(
+                expected_session, expected_revision, session_number, profile_revision):
+            return False
+        kind = profile_transition_kind(profile_name, cm.profiles_config,
+                                       cm.current_profile, running)
+        if kind == "invalid":
+            return False
+        if kind == "same":
+            dpg.set_value("profile_dropdown", cm.current_profile)
+            return True
+        if kind == "load":
+            return cm.load_profile_raw(profile_name)
+        outgoing = cm.current_profile
+        outgoing_max = effective_max(fps_utils.current_stepped_limits())
+        outgoing_cap = cm.idle_fps_cap if idle_state else outgoing_max + CurrentFPSOffset
+        # Preserve unsaved inputs and applied values on a failed handoff.
+        inputs = {key: dpg.get_value(f"input_{key}") for key in cm.input_field_keys}
+        labels = {tag: dpg.get_value(tag) for tag in ("game_name", "new_profile_input")}
+        applied = {key: getattr(cm, key) for key in cm.input_field_keys if hasattr(cm, key)}
+        restored = False
         try:
-            cm.apply_current_input_values()
-        except Exception:
-            logger.add_log(f"AutoPilot: Failed to apply {profile_name} profile immediately.")
+            if _write_cap(outgoing, outgoing_max, "profile_restore") is False:
+                raise RuntimeError("outgoing cap restore failed")
+            restored = True
+            if cm.load_profile_raw(profile_name, publish=False) is False:
+                raise RuntimeError("profile load failed")
+            if cm.apply_current_input_values() is False:
+                raise RuntimeError("profile apply failed")
+            incoming_max = effective_max(fps_utils.current_stepped_limits())
+            if _write_cap(profile_name, incoming_max, "profile_start") is False:
+                raise RuntimeError("incoming cap write failed")
+        except Exception as exc:
+            cm.current_profile = outgoing
+            for key, value in inputs.items():
+                dpg.set_value(f"input_{key}", value)
+            for key, value in applied.items():
+                setattr(cm, key, value)
+            dpg.set_value("profile_dropdown", outgoing)
+            for tag, value in labels.items():
+                dpg.set_value(tag, value)
+            try:
+                cm.refresh_ui_callbacks()
+            except Exception as refresh_exc:
+                logger.add_log(f"Profile rollback UI refresh failed: {refresh_exc}")
+            if restored:
+                try:
+                    if _write_cap(outgoing, outgoing_cap, "profile_rollback") is False:
+                        logger.add_log("Profile transition rollback cap write failed.")
+                except Exception as rollback_exc:
+                    logger.add_log(f"Profile transition rollback failed: {rollback_exc}")
+            logger.add_log(f"Profile transition to {profile_name} failed: {exc}")
+            return False
+        cm.current_profile = profile_name
+        dpg.set_value("profile_dropdown", profile_name)
         profile_revision += 1
         observer = globals().get("_acceptance_runtime")
         if observer is not None:
@@ -386,6 +439,17 @@ def _load_profile_on_gui(profile_name):
         gpu_values = []
         cpu_values = []
         idle_state = False
+        if cm.tray is not None:
+            try:
+                cm.tray.update_hover_text()
+            except Exception as exc:
+                logger.add_log(f"Profile transition tray refresh failed: {exc}")
+        return True
+
+
+# Install before initial dropdown and startup profile loading.
+_profile_gui_thread = threading.get_ident()
+cm.profile_transition_hook = _request_profile_transition
 
 
 def _update_legend_labels(gpu_label, fps_label, cap_label, cpu_label):
@@ -458,7 +522,7 @@ def monitoring_loop(captured_session):
                     # switch to Global profile and keep monitoring running.
                     if current_profile != "Global" and fg_process != current_profile:
                         logger.add_log(f"AutoPilot: Active process changed to '{fg_process}'; switching to 'Global' profile and keeping monitoring.")
-                        _gui_submit(_load_profile_on_gui, "Global")
+                        _gui_submit(_load_profile_on_gui, "Global", captured_session, captured_profile_revision)
 
             if process_name and process_name != last_process_name:
                 last_process_name = process_name
@@ -469,7 +533,7 @@ def monitoring_loop(captured_session):
 
             if current_profile == "Global" and cm.autopilot and process_name and process_name in profiles:
                 logger.add_log(f"AutoPilot: Switching from 'Global' to profile '{process_name}' (detected running process).")
-                _gui_submit(_load_profile_on_gui, process_name)
+                _gui_submit(_load_profile_on_gui, process_name, captured_session, captured_profile_revision)
 
             # Sample outside the lock; only an admitted pass may update histories.
             gpuUsage = gpu_monitor.gpu_percentile
@@ -1097,6 +1161,8 @@ if _acceptance_runtime is None:
 
 # GUI setup: Main Window
 dpg.create_context()
+# Profile/config callbacks may refresh UI; execute them on the render owner.
+dpg.configure_app(manual_callback_management=True)
 themes_manager.create_themes()
 
 # Create fonts using ThemesManager
@@ -1495,7 +1561,12 @@ tray.set_gui_queue(gui_queue)
 # functions above reference _gui_submit at call time, so defining it here (before
 # any thread starts) is sufficient.
 def _gui_submit(fn, *args, **kwargs):
-    gui_queue.submit(fn, *args, **kwargs)
+    if fn == cm.load_profile_callback:
+        with session_lock:
+            session, revision = session_number, profile_revision
+        gui_queue.submit(_load_profile_on_gui, args[1], session, revision)
+    else:
+        gui_queue.submit(fn, *args, **kwargs)
 
 lhm_sensor.set_gui_queue(gui_queue)
 
@@ -1565,6 +1636,11 @@ if _acceptance_runtime is not None:
 
 while dpg.is_dearpygui_running():
     dpg.render_dearpygui_frame()
+    for job in dpg.get_callback_queue() or []:
+        try:
+            dpg.run_callbacks([job])
+        except Exception:
+            logging.error("Native callback failed", exc_info=True)
     try:
         gui_queue.drain()
     except Exception:

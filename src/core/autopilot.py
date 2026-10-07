@@ -54,6 +54,13 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
         else:
             fn(*args, **kwargs)
 
+    def _select_profile(profile):
+        # The app hook owns membership validation and the dropdown publication.
+        # Legacy standalone callers keep their existing UI selection behavior.
+        if getattr(cm, "profile_transition_hook", None) is None:
+            _gui(dpg.set_value, "profile_dropdown", profile)
+        _gui(cm.load_profile_callback, None, profile, None)
+
     result = rtss_manager.get_fps_for_active_window()
     if not result or len(result) < 2:
         return
@@ -74,23 +81,20 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
     if cm.autopilot_only_profiles:
         # Legacy behavior: only act when a specific profile matches the active process
         if matched_profile:
-            _gui(dpg.set_value, "profile_dropdown", matched_profile)
-            _gui(cm.load_profile_callback, None, matched_profile, None)
+            _select_profile(matched_profile)
             if not running:
                 logger.add_log(f"AutoPilot: Switched to profile '{matched_profile}' and started monitoring.")
                 _gui(start_stop_callback, None, None, cm)
     else:
         # New default: start with detected specific profile if present; otherwise start with Global
         if matched_profile:
-            _gui(dpg.set_value, "profile_dropdown", matched_profile)
-            _gui(cm.load_profile_callback, None, matched_profile, None)
+            _select_profile(matched_profile)
             if not running:
                 logger.add_log(f"AutoPilot: Switched to profile '{matched_profile}' and started monitoring.")
                 _gui(start_stop_callback, None, None, cm)
         else:
             # No specific profile for the active process -> start with Global when not running
             if not running:
-                _gui(dpg.set_value, "profile_dropdown", "Global")
-                _gui(cm.load_profile_callback, None, "Global", None)
+                _select_profile("Global")
                 logger.add_log("AutoPilot: No specific profile detected; starting with 'Global' profile.")
                 _gui(start_stop_callback, None, None, cm)

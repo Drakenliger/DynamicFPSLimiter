@@ -165,6 +165,7 @@ class ConfigManager:
         }
 
         self.current_profile = "Global"
+        self.profile_transition_hook = None
         self.current_method = "ratio"
         self.Default_settings = {
             key: self.get_setting(key, self.key_type_map.get(key, int))
@@ -486,18 +487,20 @@ class ConfigManager:
         self.dpg.configure_item("profile_dropdown", items=profiles)
 
         if select_first and profiles:
-            self.dpg.set_value("profile_dropdown", profiles[0])  # Set combo selection
+            self.load_profile_callback(None, profiles[0], None)
 
         current_profile = self.dpg.get_value("profile_dropdown")
         self.dpg.set_value("game_name", current_profile)
 
     def load_profile_callback(self, sender, app_data, user_data):
-        
-        self.current_profile = app_data
-        profile_name = app_data
+        if self.profile_transition_hook is not None:
+            return self.profile_transition_hook(app_data)
+        return self.load_profile_raw(app_data)
 
+    def load_profile_raw(self, profile_name, *, publish=True):
+        """GUI-only loader beneath the session-serialized transition hook."""
         if profile_name not in self.profiles_config:
-            return
+            return False
         for key in self.input_field_keys:
             value = self.profiles_config[profile_name].get(key, self.Default_settings_original[key])
             parsed_value = self.parse_input_value(key, value)
@@ -507,7 +510,11 @@ class ConfigManager:
         self.dpg.set_value("game_name", profile_name)
 
         #self.dpg.configure_item("game_name", label=profile_name)
+        if publish:
+            self.current_profile = profile_name
+            self.dpg.set_value("profile_dropdown", profile_name)
         self.refresh_ui_callbacks()
+        return True
 
     def save_profile(self, profile_name):
         self.profiles_config[profile_name] = {}
@@ -519,7 +526,6 @@ class ConfigManager:
         with open(self.profiles_path, 'w') as f:
             self.profiles_config.write(f)
         self.update_profile_dropdown()
-        self.dpg.set_value("profile_dropdown", profile_name)
         self.load_profile_callback(None, profile_name, None)
 
     def add_new_profile_callback(self):
@@ -546,6 +552,9 @@ class ConfigManager:
             self.logger.add_log("Cannot delete the default 'Global' profile.")
             return
         if profile_to_delete in self.profiles_config:
+            if profile_to_delete == self.current_profile:
+                if self.load_profile_callback(None, "Global", None) is False:
+                    return
             self.profiles_config.remove_section(profile_to_delete)
             with open(self.profiles_path, 'w') as f:
                 self.profiles_config.write(f)
@@ -557,23 +566,10 @@ class ConfigManager:
             except Exception as e:
                 self.logger.add_log(f"Error resetting RTSS cap for profile '{profile_to_delete}': {e}")
 
-            self.update_profile_dropdown(select_first=True)
-
-            # Reset input fields to the "Global" profile values
-            if "Global" in self.profiles_config:
-                for key in self.profiles_config["Global"]:
-                    try:
-                        value = self.profiles_config["Global"][key]
-                        parsed_value = self.parse_input_value(key, value)
-                        self.dpg.set_value(f"input_{key}", parsed_value)
-                    except Exception as e:
-                        self.logger.add_log(f"Error: Unable to convert value for key '{key}': {e}")
-                self.update_global_variables()  # Ensure global variables are updated
-            else:
-                self.logger.add_log("Error: 'Global' profile not found in configuration.")
-
+            self.update_profile_dropdown()
+            self.dpg.set_value("profile_dropdown", self.current_profile)
+            self.dpg.set_value("game_name", self.current_profile)
             self.logger.add_log(f"Deleted profile: {profile_to_delete}")
-            self.current_profile = "Global"
         self.refresh_ui_callbacks()
 
     # Function to sync settings with variables
@@ -623,11 +619,9 @@ class ConfigManager:
         profile_name = self.settings_config["GlobalSettings"].get("profileonstartup_name", "Global")
         if self.profileonstartup:
             if profile_name in self.profiles_config:
-                self.dpg.set_value("profile_dropdown", profile_name)
                 self.load_profile_callback(None, profile_name, None)
             else:
                 self.logger.add_log(f"Profile '{profile_name}' not found. Defaulting to 'Global'.")
-                self.dpg.set_value("profile_dropdown", "Global")
                 self.load_profile_callback(None, "Global", None)
 
     def current_method_callback(self, sender=None, app_data=None, user_data=None):

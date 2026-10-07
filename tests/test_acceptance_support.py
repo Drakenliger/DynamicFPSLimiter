@@ -368,7 +368,11 @@ def test_actual_driver_twenty_stop_start_restarts_keep_replacement_running(tmp_p
     ns['time'] = SimpleNamespace(time=time.time, sleep=lambda seconds: time.sleep(.002))
     ns['fps_utils'].current_stepped_limits = lambda: [30,45,60]
     ns['fps_utils'].evaluate_cap_change = lambda *args: (False,False)
-    ns['cm'].load_profile_callback = lambda *args: None
+    def load_profile_raw(profile, *, publish=True):
+        if publish:
+            ns['cm'].current_profile = profile
+        return True
+    ns['cm'].load_profile_raw = load_profile_raw
     ns['gui_queue'] = SimpleNamespace(_on_error=lambda *args: None)
     ns['rtss_manager'].get_fps_for_active_window = lambda: (60, 'pythonw.exe')
     cap = [60]

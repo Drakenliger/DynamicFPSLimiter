@@ -29,7 +29,7 @@ def test_global_to_detected_profile_switch():
 
     ns['monitoring_loop'](1)
 
-    expected_action = (ns['_load_profile_on_gui'], "GameA.exe")
+    expected_action = (ns['_load_profile_on_gui'], "GameA.exe", 1, 0)
     actions = get_autopilot_actions(ns, submitted)
 
     # Assert exact single action sequence
@@ -62,7 +62,7 @@ def test_no_profile_fallback_global():
 
     ns['monitoring_loop'](1)
 
-    expected_action = (ns['_load_profile_on_gui'], "Global")
+    expected_action = (ns['_load_profile_on_gui'], "Global", 1, 0)
     actions = get_autopilot_actions(ns, submitted)
 
     # Assert exact single action sequence
@@ -102,7 +102,7 @@ def test_only_profiles_stop():
     assert actions == [expected_action]
 
     # Demonstrate in-memory mutations (contradictory opposite action or duplicate) fail exact assertion
-    opposite_action = (ns['_load_profile_on_gui'], "Global")
+    opposite_action = (ns['_load_profile_on_gui'], "Global", 1, 0)
     with pytest.raises(AssertionError):
         assert actions + [opposite_action] == [expected_action]
 
@@ -132,4 +132,4 @@ def test_autopilot_disabled_no_action():
 
     # Demonstrate in-memory mutation fails exact empty assertion
     with pytest.raises(AssertionError):
-        assert actions + [(ns['_load_profile_on_gui'], "Global")] == []
+        assert actions + [(ns['_load_profile_on_gui'], "Global", 1, 0)] == []

@@ -253,11 +253,14 @@ def test_profile_switch_during_real_evaluator_pins_backend_and_continues():
             reads.append(original_get(tag))
         return original_get(tag)
     ns['dpg'].get_value = get_value
-    def load_profile(_, name, __):
-        ns['cm'].current_profile = name
+    ns['cm'].profiles_config.add_section('LegacyGame')
+    def load_profile(name, *, publish=True):
+        if publish:
+            ns['cm'].current_profile = name
         values['input_monitoring_method'] = 'Legacy'
         ns['gpu_monitor'].gpu_percentile = 95
-    ns['cm'].load_profile_callback = load_profile
+        return True
+    ns['cm'].load_profile_raw = load_profile
     def trace(frame, event, arg):
         if frame.f_code.co_name == 'evaluate_cap_change' and event == 'call':
             calls.append((frame.f_locals.get('monitoring_method'), list(frame.f_locals['gpu_values'])))
@@ -280,10 +283,11 @@ def test_profile_switch_during_real_evaluator_pins_backend_and_continues():
     try:
         assert paused.wait(5)
         assert calls[1][1] == [None, None]
-        ns['_load_profile_on_gui']('LegacyGame')
+        assert ns['_load_profile_on_gui']('LegacyGame') is True
         assert ns['gpu_values'] == ns['cpu_values'] == ns['fps_values'] == []
         assert ns['CurrentFPSOffset'] == ns['fps_mean'] == 0
-        assert not writes
+        assert [w[1] for w in writes] == [('Global', Decimal(90)),
+                                         ('LegacyGame', Decimal(90))]
     finally:
         release.set()
     finish(thread, errors)
@@ -292,4 +296,6 @@ def test_profile_switch_during_real_evaluator_pins_backend_and_continues():
     assert reads == ['LibreHM', 'LibreHM', 'Legacy', 'Legacy']
     assert ns['gpu_values'] == ns['cpu_values'] == ns['fps_values'] == []
     assert ns['fps_mean'] == 0
-    assert [w[1] for w in writes] == [('LegacyGame', Decimal(60))]
+    assert [w[1] for w in writes] == [('Global', Decimal(90)),
+                                     ('LegacyGame', Decimal(90)),
+                                     ('LegacyGame', Decimal(60))]
