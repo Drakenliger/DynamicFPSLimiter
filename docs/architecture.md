@@ -127,7 +127,7 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 3. **On window change** — log it, update the "Last process" field, `gpu_monitor.reinitialize()`.
 4. **Fill rolling buffers** — `fps_values` (last 3 → `fps_mean`), `gpu_values`/`cpu_values`
    (Legacy percentiles) or read LHM per-sensor percentiles.
-5. **Idle check** — `monitor_idle(cm.idle_fps_delay)` (seconds since last input).
+5. **Idle check** — `monitor_idle(cm.idle_fps_delay)` (boolean whether idle threshold met, False on error).
 6. **Cap decision** (only when GPU usage is valid and the active window isn't DFL itself):
    - **Active**: `fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)` →
      `(should_decrease, should_increase)`.
@@ -219,8 +219,10 @@ Config lives in `<app dir>/config/` (`src/config/` in dev, next to the exe when 
 - RTSS missing → dedicated popup + exit (by design).
 - LHM load failure is caught (F2 fix) — `LHMLoadError` degrades to Legacy with no fallback crash.
 - Most per-sensor / per-counter read failures are logged and skipped; daemon polling and
-  monitoring loops catch pass exceptions, invalidate stale readings, and log the failure
-  to recover on the next iteration.
+  monitoring loops catch pass exceptions, log the failure, and recover on the next iteration.
+  `GPUUsageMonitor` invalidates readings, LHM polling invalidates, and a failed monitoring pass
+  clears decision evidence, whereas `cpu_monitor.cpu_run` catches psutil errors and logs but
+  retains old samples/percentile.
 - INI writes are non-atomic; a crash mid-write can corrupt `settings.ini`/`profiles.ini`
   (flaw #14).
 
