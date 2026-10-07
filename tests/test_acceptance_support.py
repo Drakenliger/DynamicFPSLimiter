@@ -618,3 +618,106 @@ def test_finish_accepts_admitted_monitor_drop_before_real_exit_only(tmp_path, mo
         assert [(r['reason'], int(r['session_number']), float(r['new_cap']))
                 for r in runtime.rows[4:]] == [('decrease', 1, 24), ('exit', 2, 48), ('exit_refresh', 2, 48)]
         assert runtime.rows[-1]['profile'] == 'pythonw.exe'
+
+
+@pytest.mark.parametrize('fault', ['none', 'missing_assignment', 'missing_observer'])
+def test_actual_monitor_reset_observed_once_before_valid_next_sample(tmp_path, monkeypatch, fault):
+    import acceptance_windows as driver
+    import test_app_session as app_tests
+    if fault == 'missing_assignment':
+        source = app_tests.APP.read_text()
+        assignment = 'gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()'
+        original_source = source
+        source = source.replace('_write_cap(current_profile, next_fps, "decrease")\n'
+                                '                                    ' + assignment,
+                                '_write_cap(current_profile, next_fps, "decrease")')
+        assert source != original_source
+        mutated = tmp_path / 'app.py'
+        mutated.write_text(source)
+        monkeypatch.setattr(app_tests, 'APP', mutated)
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch, cap=48)
+    ns['_acceptance_runtime'] = runtime
+    ns['rtss'].get_framerate_limit = lambda *a, **kw: float(state['cap'])
+    if fault == 'missing_observer':
+        monkeypatch.setattr(runtime, 'reset_observed', lambda *a: None)
+    observed = [] if fault == 'missing_observer' else [fault == 'none']
+    runtime.rows.clear()
+    runtime.revisions.clear()
+    ns['dpg'].get_value = lambda _: 'LibreHM'
+    clock, decisions, passes = [100.], [0], [0]
+    ns['time'].time = lambda: clock[0]
+    monkeypatch.setattr(driver.time, 'time', lambda: clock[0])
+    def decide(*args):
+        decisions[0] += 1
+        return decisions[0] == 1, False
+    ns['fps_utils'].evaluate_cap_change = decide
+    runtime.due = driver.time.monotonic() + 100
+    def next_tick(_):
+        passes[0] += 1
+        clock[0] += .01
+        runtime.frame(ns)
+        if passes[0] == 1:
+            assert runtime.clear_observations == observed
+        else:
+            assert ns['fps_values'] and ns['gpu_values'] and ns['cpu_values']
+            assert ns['fps_mean'] == 95
+            assert runtime.clear_observations == observed
+            runtime.reset_observed(1, 0, (0, 0))
+            assert runtime.clear_observations == observed
+            ns['running'] = False
+        clock[0] += .09
+    ns['time'].sleep = next_tick
+    ns['monitoring_loop'](1)
+    assert state['cap'] == 36 and passes[0] == 2
+    assert runtime.clear_write_indices == (set() if fault == 'missing_observer' else {0})
+    runtime.finish(ns)
+    assert runtime.evidence['cleared'] is (fault == 'none')
+
+
+@pytest.mark.parametrize('fault', ['none', 'prefix_old', 'prefix_cap', 'prefix_reason',
+                                  'exit_old', 'refresh_old', 'missing_prefix'])
+def test_actual_monitor_raise_to_max_before_real_exit_requires_continuous_chain(tmp_path, monkeypatch, fault):
+    from decimal import Decimal
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch, cap=36)
+    ns['CurrentFPSOffset'] = Decimal(-12)
+    ns['dpg'].get_value = lambda _: 'LibreHM'
+    ns['fps_utils'].evaluate_cap_change = lambda *a: (False, True)
+    class EndPass(Exception):
+        pass
+    ns['time'].sleep = lambda _: (_ for _ in ()).throw(EndPass())
+    record = ns['cap_change_log'].record
+    def corrupt(row):
+        row = list(row)
+        if row[5] == 'increase':
+            if fault == 'missing_prefix':
+                return
+            if fault == 'prefix_old':
+                row[3] = 24
+            elif fault == 'prefix_cap':
+                row[4] = 36
+            elif fault == 'prefix_reason':
+                row[5] = 'decrease'
+        elif row[5] == 'exit' and fault == 'exit_old':
+            row[3] = 36
+        elif row[5] == 'exit_refresh' and fault == 'refresh_old':
+            row[3] = 36
+        record(row)
+    ns['cap_change_log'].record = corrupt
+    real_exit = ns['exit_gui']
+    def exit_with_pending_raise():
+        try:
+            ns['monitoring_loop'](1)
+        except EndPass:
+            pass
+        assert state['cap'] == 48 and ns['session_number'] == 1 and ns['running']
+        real_exit()
+    ns['exit_gui'] = exit_with_pending_raise
+    runtime.finish(ns)
+    assert runtime.evidence['exit_pre_cap'] == 36
+    assert runtime.evidence['exit_readback'] == 48
+    assert ns['session_number'] == 2 and not ns['running']
+    assert expectations(runtime.evidence)[SCENARIOS[4]]['status'] == ('PASS' if fault == 'none' else 'FAIL')
+    if fault == 'none':
+        assert [(r['reason'], int(r['session_number']), float(r['old_cap']), float(r['new_cap']))
+                for r in runtime.rows[4:]] == [('increase', 1, 36, 48), ('exit', 2, 48, 48),
+                                             ('exit_refresh', 2, 48, 48)]
