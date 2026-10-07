@@ -7,34 +7,147 @@ import contextlib
 import pytest
 
 
+_SCOPED_MODULES = (
+    "clr", "winreg", "numpy",
+    "core.config_manager", "core.librehardwaremonitor", "core.lhm_loader",
+)
+_MISSING = object()
+
+
 @contextlib.contextmanager
 def isolated_config_manager_import():
-    """Context manager that temporarily patches sys.modules with stub modules
-    required for importing core.config_manager on non-Windows platforms without
-    leaving any stubs in sys.modules or parent package attributes afterward."""
-    orig_modules = sys.modules.copy()
-    stubs_created = []
-
-    for mod_name in ["clr", "winreg", "numpy"]:
-        if mod_name not in sys.modules:
-            m = types.ModuleType(mod_name)
-            m._is_test_stub = True
-            if mod_name == "numpy":
-                m.array = lambda *a, **k: []
-            sys.modules[mod_name] = m
-            stubs_created.append(mod_name)
-
+    """Import the actual class and restore only its temporary dependency scope."""
+    saved_modules = {name: sys.modules.get(name, _MISSING) for name in _SCOPED_MODULES}
+    parent = sys.modules.get("core")
+    saved_attrs = {
+        name.rsplit(".", 1)[1]: (
+            vars(parent).get(name.rsplit(".", 1)[1], _MISSING)
+            if parent is not None else _MISSING
+        )
+        for name in _SCOPED_MODULES if name.startswith("core.")
+    }
     try:
+        # Setup must unwind even if only some stubs were created.
+        for name in ("clr", "winreg", "numpy"):
+            if name not in sys.modules:
+                stub = types.ModuleType(name)
+                stub._is_test_stub = True
+                if name == "numpy":
+                    stub.array = lambda *a, **k: []
+                sys.modules[name] = stub
         from core.config_manager import ConfigManager
         yield ConfigManager
     finally:
-        # Restore sys.modules
-        for mod_name in stubs_created:
-            sys.modules.pop(mod_name, None)
-        # Restore any modified modules
-        for mod_name, mod in list(sys.modules.items()):
-            if mod_name not in orig_modules:
-                sys.modules.pop(mod_name, None)
+        # Keep a fresh core package but clear its fake-dependent children.
+        current_parent = sys.modules.get("core")
+        for attr, original in saved_attrs.items():
+            if current_parent is not None:
+                vars(current_parent).pop(attr, None)
+            if parent is not None:
+                if original is _MISSING:
+                    vars(parent).pop(attr, None)
+                else:
+                    setattr(parent, attr, original)
+        for name, original in saved_modules.items():
+            if original is _MISSING:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
+
+
+@pytest.fixture
+def fresh_import_scope(monkeypatch):
+    for name in (*_SCOPED_MODULES, "core"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+
+@pytest.mark.parametrize("fail_in_body", [False, True])
+def test_context_cleans_fresh_parent(fresh_import_scope, monkeypatch, fail_in_body):
+    import importlib
+
+    monkeypatch.delitem(sys.modules, "fractions", raising=False)
+    try:
+        with isolated_config_manager_import() as manager_class:
+            parent = sys.modules["core"]
+            assert parent.config_manager.ConfigManager is manager_class
+            assert parent.librehardwaremonitor.np._is_test_stub
+            assert parent.lhm_loader.clr._is_test_stub
+            unrelated = importlib.import_module("fractions")
+            if fail_in_body:
+                raise RuntimeError("body failed")
+    except RuntimeError as exc:
+        assert fail_in_body and str(exc) == "body failed"
+    assert sys.modules["fractions"] is unrelated
+    assert sys.modules["core"] is parent
+    for name in _SCOPED_MODULES:
+        assert name not in sys.modules
+        if name.startswith("core."):
+            assert name.rsplit(".", 1)[1] not in vars(parent)
+
+
+def test_context_restores_existing_identity(fresh_import_scope, monkeypatch):
+    with isolated_config_manager_import() as manager_class:
+        cached = {name: sys.modules[name] for name in _SCOPED_MODULES}
+        parent = sys.modules["core"]
+    attrs = {}
+    for name, module in cached.items():
+        monkeypatch.setitem(sys.modules, name, module)
+        if name.startswith("core."):
+            attr = name.rsplit(".", 1)[1]
+            attrs[attr] = object()  # Parent attributes can differ from the cache.
+            monkeypatch.setattr(parent, attr, attrs[attr], raising=False)
+    with pytest.raises(RuntimeError, match="body failed"):
+        with isolated_config_manager_import() as actual_class:
+            assert actual_class is manager_class
+            for name in _SCOPED_MODULES:
+                sys.modules.pop(name)
+            for attr in attrs:
+                setattr(parent, attr, object())
+            raise RuntimeError("body failed")
+    for name, module in cached.items():
+        assert sys.modules[name] is module
+    for attr, original in attrs.items():
+        assert vars(parent)[attr] is original
+
+
+def test_context_unwinds_setup_failure(fresh_import_scope, monkeypatch):
+    module_type = types.ModuleType
+
+    def fail_on_winreg(name):
+        if name == "winreg":
+            raise RuntimeError("setup failed")
+        return module_type(name)
+
+    monkeypatch.setattr(types, "ModuleType", fail_on_winreg)
+    with pytest.raises(RuntimeError, match="setup failed"):
+        with isolated_config_manager_import():
+            pytest.fail("setup should fail before yielding")
+    for name in _SCOPED_MODULES:
+        assert name not in sys.modules
+
+
+def test_context_unwinds_import_failure(fresh_import_scope, monkeypatch):
+    import builtins
+    original_import = builtins.__import__
+    parents = []
+
+    def fail_after_dependencies(name, *args, **kwargs):
+        if name == "core.config_manager":
+            original_import("core.librehardwaremonitor", fromlist=["get_all_sensor_infos"])
+            parents.append(sys.modules["core"])
+            assert parents[-1].librehardwaremonitor.np._is_test_stub
+            raise ImportError("config import failed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fail_after_dependencies)
+    with pytest.raises(ImportError, match="config import failed"):
+        with isolated_config_manager_import():
+            pytest.fail("import should fail before yielding")
+    assert sys.modules["core"] is parents[0]
+    for name in _SCOPED_MODULES:
+        assert name not in sys.modules
+        if name.startswith("core."):
+            assert name.rsplit(".", 1)[1] not in vars(parents[0])
 
 
 def test_collection_leaves_sys_modules_unchanged():
