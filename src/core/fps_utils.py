@@ -307,16 +307,7 @@ class FPSUtils:
                     if lower is not None:
                         increase_checks.append(value <= lower)
 
-            eval_decision = getattr(self, "evaluate_librehm_decision", None) or globals().get("evaluate_librehm_decision")
-            if eval_decision is None:
-                def eval_decision(has_enabled, dec_checks, inc_checks, has_missing):
-                    if not has_enabled:
-                        return (False, False)
-                    s_dec = any(dec_checks) if dec_checks else False
-                    s_inc = False if has_missing else (all(inc_checks) if inc_checks else False)
-                    return (s_dec, s_inc)
-
-            should_decrease, should_increase = eval_decision(
+            should_decrease, should_increase = evaluate_librehm_decision(
                 has_enabled_sensors, decrease_checks, increase_checks, has_missing_enabled_data
             )
 

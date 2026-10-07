@@ -61,109 +61,99 @@ def make_fps_utils(sensor_infos, dpg_values, gpu_percentiles=None, gpu_history=N
     )
     logger = MockLogger()
 
-    # Instantiate FPSUtils bypassing get_types / LHMLoadError
     utils = FPSUtils.__new__(FPSUtils)
     utils.cm = cm
     utils.lhm_sensor = lhm_sensor
     utils.logger = logger
     utils.dpg = dpg
     utils.HardwareType = SimpleNamespace(Cpu="Cpu", Gpu="Gpu")
-    utils.SensorType = SimpleNamespace(Load="Load")
+    utils.SensorType = SimpleNamespace(Load="Load", Temperature="Temperature")
     return utils
 
 
-def test_evaluator_missing_enabled_sensor_blocks_increase():
-    # Healthy sensor (temp_1): 50 <= lower=70
-    # Missing sensor (temp_2): percentile is None
+@pytest.mark.parametrize("hw_type", ["Cpu", "Gpu"])
+@pytest.mark.parametrize("case,expected", [
+    ("none_value", (False, False)),
+    ("empty_history", (False, False)),
+    ("disabled_missing", (False, True)),
+    ("valid_overload", (True, False)),
+    ("no_enabled", (False, False)),
+])
+def test_evaluator_canonical_identifier_cases(hw_type, case, expected):
+    prefix = "cpu" if hw_type == "Cpu" else "gpu"
+    id1 = f"/{prefix}/0/load/1"
+    id2 = f"/{prefix}/0/load/2"
+
     sensor_infos = [
-        {"parameter_id": "temp_1", "sensor_type": "Temperature", "sensor_name": "GPU Temp 1", "hw_type": "Gpu", "hw_name": "GPU"},
-        {"parameter_id": "temp_2", "sensor_type": "Temperature", "sensor_name": "GPU Temp 2", "hw_type": "Gpu", "hw_name": "GPU"},
+        {"parameter_id": "s1", "sensor_type": "Load", "sensor_name": "Core #1", "hw_type": hw_type, "hw_name": "HW1", "identifier": id1},
+        {"parameter_id": "s2", "sensor_type": "Load", "sensor_name": "Core #2", "hw_type": hw_type, "hw_name": "HW1", "identifier": id2},
+    ]
+
+    if case == "none_value":
+        dpg_values = {
+            "input_s1_enable": True, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
+            "input_s2_enable": True, "input_s2_upper": 90.0, "input_s2_lower": 70.0,
+        }
+        percentiles = {id1: 50.0, id2: None}
+        history = {id1: [50.0, 50.0], id2: [50.0, 50.0]}
+    elif case == "empty_history":
+        dpg_values = {
+            "input_s1_enable": True, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
+            "input_s2_enable": True, "input_s2_upper": 90.0, "input_s2_lower": 70.0,
+        }
+        percentiles = {id1: 50.0, id2: 50.0}
+        history = {id1: [50.0, 50.0], id2: []}
+    elif case == "disabled_missing":
+        dpg_values = {
+            "input_s1_enable": True, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
+            "input_s2_enable": False, "input_s2_upper": 90.0, "input_s2_lower": 70.0,
+        }
+        percentiles = {id1: 50.0, id2: None}
+        history = {id1: [50.0, 50.0], id2: []}
+    elif case == "valid_overload":
+        dpg_values = {
+            "input_s1_enable": True, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
+            "input_s2_enable": True, "input_s2_upper": 90.0, "input_s2_lower": 70.0,
+        }
+        percentiles = {id1: 95.0, id2: None}
+        history = {id1: [95.0, 95.0], id2: []}
+    elif case == "no_enabled":
+        dpg_values = {
+            "input_s1_enable": False, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
+            "input_s2_enable": False, "input_s2_upper": 90.0, "input_s2_lower": 70.0,
+        }
+        percentiles = {id1: 50.0, id2: 50.0}
+        history = {id1: [50.0, 50.0], id2: [50.0, 50.0]}
+
+    p_dict = {"cpu_percentiles": percentiles, "cpu_history": history} if hw_type == "Cpu" else {"gpu_percentiles": percentiles, "gpu_history": history}
+    utils = make_fps_utils(sensor_infos, dpg_values, **p_dict)
+    assert utils.evaluate_cap_change([], [], "LibreHM") == expected
+
+
+@pytest.mark.parametrize("hw_type", ["Cpu", "Gpu"])
+def test_healthy_tuple_alias_must_not_override_missing_canonical_identity(hw_type):
+    prefix = "cpu" if hw_type == "Cpu" else "gpu"
+    canonical_id = f"/{prefix}/0/load/1"
+
+    sensor_infos = [
+        {"parameter_id": "s1", "sensor_type": "Load", "sensor_name": "Core #1", "hw_type": hw_type, "hw_name": "HW1", "identifier": canonical_id},
     ]
     dpg_values = {
-        "input_temp_1_enable": True, "input_temp_1_upper": 90.0, "input_temp_1_lower": 70.0,
-        "input_temp_2_enable": True, "input_temp_2_upper": 90.0, "input_temp_2_lower": 70.0,
+        "input_s1_enable": True, "input_s1_upper": 90.0, "input_s1_lower": 70.0,
     }
-    gpu_percentiles = {("Temperature", "GPU Temp 1"): 50.0, ("Temperature", "GPU Temp 2"): None}
-    gpu_history = {("Temperature", "GPU Temp 1"): [50.0, 50.0], ("Temperature", "GPU Temp 2"): [50.0, 50.0]}
 
-    utils = make_fps_utils(sensor_infos, dpg_values, gpu_percentiles, gpu_history)
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (False, False)
+    # Percentiles dict maps tuple alias key ("Load", "Core #1") to healthy 50.0,
+    # but canonical_id is None / missing.
+    percentiles = {("Load", "Core #1"): 50.0, canonical_id: None}
+    history = {("Load", "Core #1"): [50.0, 50.0], canonical_id: []}
 
+    p_dict = {"cpu_percentiles": percentiles, "cpu_history": history} if hw_type == "Cpu" else {"gpu_percentiles": percentiles, "gpu_history": history}
+    utils = make_fps_utils(sensor_infos, dpg_values, **p_dict)
 
-def test_evaluator_empty_history_blocks_increase():
-    # Healthy sensor (temp_1): 50 <= lower=70
-    # Sensor with empty history (temp_2): history is []
-    sensor_infos = [
-        {"parameter_id": "temp_1", "sensor_type": "Temperature", "sensor_name": "GPU Temp 1", "hw_type": "Gpu", "hw_name": "GPU"},
-        {"parameter_id": "temp_2", "sensor_type": "Temperature", "sensor_name": "GPU Temp 2", "hw_type": "Gpu", "hw_name": "GPU"},
-    ]
-    dpg_values = {
-        "input_temp_1_enable": True, "input_temp_1_upper": 90.0, "input_temp_1_lower": 70.0,
-        "input_temp_2_enable": True, "input_temp_2_upper": 90.0, "input_temp_2_lower": 70.0,
-    }
-    gpu_percentiles = {("Temperature", "GPU Temp 1"): 50.0, ("Temperature", "GPU Temp 2"): 50.0}
-    gpu_history = {("Temperature", "GPU Temp 1"): [50.0, 50.0], ("Temperature", "GPU Temp 2"): []}
-
-    utils = make_fps_utils(sensor_infos, dpg_values, gpu_percentiles, gpu_history)
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (False, False)
-
-
-def test_evaluator_disabled_missing_sensor_does_not_block():
-    # Enabled healthy sensor (temp_1): 50 <= lower=70
-    # Disabled missing sensor (temp_2): enable=False, percentile=None
-    sensor_infos = [
-        {"parameter_id": "temp_1", "sensor_type": "Temperature", "sensor_name": "GPU Temp 1", "hw_type": "Gpu", "hw_name": "GPU"},
-        {"parameter_id": "temp_2", "sensor_type": "Temperature", "sensor_name": "GPU Temp 2", "hw_type": "Gpu", "hw_name": "GPU"},
-    ]
-    dpg_values = {
-        "input_temp_1_enable": True, "input_temp_1_upper": 90.0, "input_temp_1_lower": 70.0,
-        "input_temp_2_enable": False, "input_temp_2_upper": 90.0, "input_temp_2_lower": 70.0,
-    }
-    gpu_percentiles = {("Temperature", "GPU Temp 1"): 50.0, ("Temperature", "GPU Temp 2"): None}
-    gpu_history = {("Temperature", "GPU Temp 1"): [50.0, 50.0], ("Temperature", "GPU Temp 2"): []}
-
-    utils = make_fps_utils(sensor_infos, dpg_values, gpu_percentiles, gpu_history)
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (False, True)
-
-
-def test_evaluator_valid_overload_can_still_decrease_with_missing_sensor():
-    # Overloaded sensor (temp_1): 95 >= upper=90
-    # Missing sensor (temp_2): percentile is None
-    sensor_infos = [
-        {"parameter_id": "temp_1", "sensor_type": "Temperature", "sensor_name": "GPU Temp 1", "hw_type": "Gpu", "hw_name": "GPU"},
-        {"parameter_id": "temp_2", "sensor_type": "Temperature", "sensor_name": "GPU Temp 2", "hw_type": "Gpu", "hw_name": "GPU"},
-    ]
-    dpg_values = {
-        "input_temp_1_enable": True, "input_temp_1_upper": 90.0, "input_temp_1_lower": 70.0,
-        "input_temp_2_enable": True, "input_temp_2_upper": 90.0, "input_temp_2_lower": 70.0,
-    }
-    gpu_percentiles = {("Temperature", "GPU Temp 1"): 95.0, ("Temperature", "GPU Temp 2"): None}
-    gpu_history = {("Temperature", "GPU Temp 1"): [95.0, 95.0], ("Temperature", "GPU Temp 2"): []}
-
-    utils = make_fps_utils(sensor_infos, dpg_values, gpu_percentiles, gpu_history)
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (True, False)
-
-
-def test_evaluator_no_enabled_sensors_returns_no_decision():
-    sensor_infos = [
-        {"parameter_id": "temp_1", "sensor_type": "Temperature", "sensor_name": "GPU Temp 1", "hw_type": "Gpu", "hw_name": "GPU"},
-    ]
-    dpg_values = {
-        "input_temp_1_enable": False, "input_temp_1_upper": 90.0, "input_temp_1_lower": 70.0,
-    }
-    gpu_percentiles = {("Temperature", "GPU Temp 1"): 50.0}
-    gpu_history = {("Temperature", "GPU Temp 1"): [50.0, 50.0]}
-
-    utils = make_fps_utils(sensor_infos, dpg_values, gpu_percentiles, gpu_history)
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (False, False)
+    # Must resolve via canonical identifier (None) and NOT fall back to healthy tuple alias
+    assert utils.evaluate_cap_change([], [], "LibreHM") == (False, False)
 
 
 def test_evaluator_empty_sensor_infos_returns_no_decision():
     utils = make_fps_utils([], {})
-    decision = utils.evaluate_cap_change([], [], "LibreHM")
-    assert decision == (False, False)
+    assert utils.evaluate_cap_change([], [], "LibreHM") == (False, False)
