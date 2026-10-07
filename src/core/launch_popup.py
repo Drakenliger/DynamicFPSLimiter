@@ -1,6 +1,5 @@
 import sys
 import os
-import configparser
 
 # Add the src directory to the Python path for imports
 _this_dir = os.path.abspath(os.path.dirname(__file__))
@@ -8,6 +7,7 @@ _src_dir = os.path.dirname(_this_dir)  # Gets src directory
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
+from core.config_io import new_config, read_config
 from core.ui_scale import ScaledDPG, enable_native_dpi, primary_monitor_dpi, resolve_scale, pixels, titlebar_hit
 from core import tray_functions
 from core.themes import ThemesManager
@@ -155,9 +155,9 @@ def show_loading_popup(message="Loading...", width=300, height=50, title="Dynami
     try:
         parent_dir = os.path.dirname(Base_dir)
         settings_path = os.path.join(parent_dir, "config", "settings.ini")
-        cfg = configparser.ConfigParser()
+        cfg = new_config()
         if os.path.exists(settings_path):
-            cfg.read(settings_path)
+            read_config(cfg, settings_path)
             hide_popup = cfg.getboolean("Preferences", "hide_loading_popup", fallback=False)
             if hide_popup:
                 return  # user preference requests no loading popup

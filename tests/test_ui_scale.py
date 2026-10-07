@@ -1,6 +1,5 @@
 """Execute production UI calls on Linux; expected geometry is independent."""
 import ast
-import configparser
 import contextlib
 import ctypes
 from collections import defaultdict
@@ -204,7 +203,8 @@ def test_actual_texture_loader_preserves_raw_data():
 
 
 def test_old_config_default_and_persisted_choice(tmp_path):
-    cfg = configparser.ConfigParser()
+    from core.config_io import new_config
+    cfg = new_config()
     cfg.read_string('[Preferences]\nshowtooltip=True\n[GlobalSettings]\nminvalidfps=14\n')
     ns = functions('src/core/config_manager.py', {'load_preferences', 'update_ui_scale_preference'},
                    {'normalize_preference': normalize_preference})
@@ -533,7 +533,8 @@ def test_actual_config_and_startup_raw_scale(tmp_path, monkeypatch, stored, expe
     assert restarted.ui_scale == read_preference(path) == expected
     assert restarted.showtooltip is True
     restarted.update_ui_scale_preference(None, '150%')
-    assert 'ui_scale = 150%%' in path.read_text()
+    assert 'ui_scale = 150%' in path.read_text()
+    assert 'ui_scale = 150%%' not in path.read_text()
     assert read_preference(path) == '150%'
     restarted.load_preferences()
     assert restarted.ui_scale == '150%'

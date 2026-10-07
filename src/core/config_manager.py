@@ -1,5 +1,5 @@
 import os
-import configparser
+from core.config_io import new_config, read_config, merge_defaults
 from core.ui_scale import normalize_preference
 from decimal import Decimal, InvalidOperation
 from core.librehardwaremonitor import get_all_sensor_infos
@@ -45,8 +45,8 @@ class ConfigManager:
             'lhwmonitoringsamples': 20,
             'profileonstartup_name': 'Global',
         }
-        self.settings_config = configparser.ConfigParser()
-        self.profiles_config = configparser.ConfigParser()
+        self.settings_config = new_config()
+        self.profiles_config = new_config()
         self.load_or_init_configs()
         self.load_preferences()
         self.sensor_infos = get_all_sensor_infos(base_dir, self.logger)
@@ -55,65 +55,66 @@ class ConfigManager:
         self.ui_initialized = False
 
     def load_or_init_configs(self):
-        # Settings
-        if os.path.exists(self.settings_path):
-            self.settings_config.read(self.settings_path)
-        else:
-            self.settings_config["Preferences"] = {
-                'showtooltip': 'True',
-                'globallimitonexit': 'False',
-                'idle_mode': 'False',
-                'profileonstartup': 'True',
-                'launchonstartup': 'False',
-                'minimizeonstartup': 'False',
-                'autopilot': 'False',
-                'hide_unselected': 'False',
-                'autopilot_only_profiles': 'False',
-                'first_launch_done': 'False',
-                'hide_loading_popup': 'False',
-                'ui_scale': 'Auto'
-            }
-            self.settings_config["GlobalSettings"] = {
-                'minvalidgpu': '14',
-                'minvalidfps': '14',
-                'globallimitonexit_fps': '98',
-                'idle_fps_cap': '30',
-                'idle_fps_delay': '15',
-                'cpupercentile': '70',
-                'cpupollinginterval': '100',
-                'cpupollingsamples': '20',
-                'gpupercentile': '70',
-                'gpupollinginterval': '100',
-                'gpupollingsamples': '20',
-                'lhwmonitorpercentile': '70',
-                'lhwmonitorpollinginterval': '100',
-                'lhwmonitoringsamples': '20',
-                'profileonstartup_name': 'Global',
-            }
-            with open(self.settings_path, 'w') as f:
-                self.settings_config.write(f)
-        # Profiles
-        if os.path.exists(self.profiles_path):
-            self.profiles_config.read(self.profiles_path)
-        else:
-            self.profiles_config["Global"] = {
-                'maxcap': '114',
-                'mincap': '40',
-                'capratio': '10',
-                'capstep': '5',
-                'gpucutofffordecrease': '85',
-                'gpucutoffforincrease': '70',
-                'cpucutofffordecrease': '105',
-                'cpucutoffforincrease': '101',
-                'delaybeforedecrease': '2',
-                'delaybeforeincrease': '10',
-                'capmethod': 'ratio',
-                'customfpslimits': '30.01, 45.00, 59.99',
-                'monitoring_method': 'LibreHM'
-            }
-            with open(self.profiles_path, 'w') as f:
-                self.profiles_config.write(f)
-        
+        settings_defaults = {}
+        settings_defaults["Preferences"] = {
+            'showtooltip': 'True',
+            'globallimitonexit': 'False',
+            'idle_mode': 'False',
+            'profileonstartup': 'True',
+            'launchonstartup': 'False',
+            'minimizeonstartup': 'False',
+            'autopilot': 'False',
+            'hide_unselected': 'False',
+            'autopilot_only_profiles': 'False',
+            'first_launch_done': 'False',
+            'hide_loading_popup': 'False',
+            'ui_scale': 'Auto'
+        }
+        settings_defaults["GlobalSettings"] = {
+            'minvalidgpu': '14',
+            'minvalidfps': '14',
+            'globallimitonexit_fps': '98',
+            'idle_fps_cap': '30',
+            'idle_fps_delay': '15',
+            'cpupercentile': '70',
+            'cpupollinginterval': '100',
+            'cpupollingsamples': '20',
+            'gpupercentile': '70',
+            'gpupollinginterval': '100',
+            'gpupollingsamples': '20',
+            'lhwmonitorpercentile': '70',
+            'lhwmonitorpollinginterval': '100',
+            'lhwmonitoringsamples': '20',
+            'profileonstartup_name': 'Global',
+        }
+        profiles_defaults = {}
+        profiles_defaults["Global"] = {
+            'maxcap': '114',
+            'mincap': '40',
+            'capratio': '10',
+            'capstep': '5',
+            'gpucutofffordecrease': '85',
+            'gpucutoffforincrease': '70',
+            'cpucutofffordecrease': '105',
+            'cpucutoffforincrease': '101',
+            'delaybeforedecrease': '2',
+            'delaybeforeincrease': '10',
+            'capmethod': 'ratio',
+            'customfpslimits': '30.01, 45.00, 59.99',
+            'monitoring_method': 'LibreHM'
+        }
+        for config, path, defaults in (
+            (self.settings_config, self.settings_path, settings_defaults),
+            (self.profiles_config, self.profiles_path, profiles_defaults),
+        ):
+            exists = os.path.exists(path)
+            if exists:
+                read_config(config, path)
+            merge_defaults(config, defaults)
+            if not exists:
+                with open(path, "w", encoding="utf-8") as stream:
+                    config.write(stream)
+
         self.input_field_keys = ["maxcap", "mincap", "capstep", "capratio",
                 "gpucutofffordecrease", "gpucutoffforincrease", "cpucutofffordecrease", "cpucutoffforincrease",
                 "capmethod", "customfpslimits", "delaybeforedecrease", "delaybeforeincrease",
@@ -344,8 +345,8 @@ class ConfigManager:
         self.ui_scale = normalize_preference(app_data)
         if not self.settings_config.has_section("Preferences"):
             self.settings_config.add_section("Preferences")
-        self.settings_config["Preferences"]["ui_scale"] = self.ui_scale.replace("%", "%%")
-        with open(self.settings_path, "w") as stream:
+        self.settings_config["Preferences"]["ui_scale"] = self.ui_scale
+        with open(self.settings_path, "w", encoding="utf-8") as stream:
             self.settings_config.write(stream)
         self.logger.add_log("UI scale saved; restart required")
 
@@ -477,7 +478,7 @@ class ConfigManager:
                 # Store as string for config file
                 self.profiles_config[selected_profile][key] = str(parsed_value)
             
-            with open(self.profiles_path, "w") as configfile:
+            with open(self.profiles_path, "w", encoding="utf-8") as configfile:
                 self.profiles_config.write(configfile)
 
             self.logger.add_log(f"Settings saved to profile: {selected_profile}")
@@ -523,7 +524,7 @@ class ConfigManager:
             value = self.dpg.get_value(f"input_{key}")
             parsed_value = self.parse_input_value(key, value)
             self.profiles_config[profile_name][key] = str(parsed_value)
-        with open(self.profiles_path, 'w') as f:
+        with open(self.profiles_path, 'w', encoding="utf-8") as f:
             self.profiles_config.write(f)
         self.update_profile_dropdown()
         self.load_profile_callback(None, profile_name, None)
@@ -556,7 +557,7 @@ class ConfigManager:
                 if self.load_profile_callback(None, "Global", None) is False:
                     return
             self.profiles_config.remove_section(profile_to_delete)
-            with open(self.profiles_path, 'w') as f:
+            with open(self.profiles_path, 'w', encoding="utf-8") as f:
                 self.profiles_config.write(f)
 
             try:
@@ -744,7 +745,7 @@ class ConfigManager:
         """
         setattr(self, key, app_data)
         self.settings_config["Preferences"][key] = str(app_data)
-        with open(self.settings_path, 'w') as f:
+        with open(self.settings_path, 'w', encoding="utf-8") as f:
             self.settings_config.write(f)
         self.logger.add_log(f"{key.replace('_', ' ').title()} set to: {getattr(self, key)}")
 
@@ -761,7 +762,7 @@ class ConfigManager:
             setattr(self, key, new_value)
             self.settings[key] = new_value
             self.settings_config["GlobalSettings"][key] = str(new_value)
-            with open(self.settings_path, 'w') as f:
+            with open(self.settings_path, 'w', encoding="utf-8") as f:
                 self.settings_config.write(f)
             self.logger.add_log(f"{key} set to: {getattr(self, key)}")
         else:
@@ -778,6 +779,6 @@ class ConfigManager:
         current_profile = self.dpg.get_value("profile_dropdown")
         self.dpg.set_value("profileonstartup_name", current_profile)
         self.settings_config["GlobalSettings"]["profileonstartup_name"] = current_profile
-        with open(self.settings_path, 'w') as f:
+        with open(self.settings_path, 'w', encoding="utf-8") as f:
             self.settings_config.write(f)
         self.logger.add_log(f"Profile on Startup set to: {self.profileonstartup_name}")

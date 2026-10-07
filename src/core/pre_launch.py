@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import glob
-import configparser
+from core.config_io import new_config, read_config
 
 def _settings_path_for_base(base):
     config_dir = os.path.join(base, "config")
@@ -11,11 +11,11 @@ def _settings_path_for_base(base):
 def _is_first_launch(base):
     """Return True if settings.ini missing or first_launch_done is False."""
     _, settings_path = _settings_path_for_base(base)
-    config = configparser.ConfigParser()
+    config = new_config()
     if not os.path.exists(settings_path):
         return True
     try:
-        config.read(settings_path)
+        read_config(config, settings_path)
         #print(config.get("Preferences", "first_launch_done", fallback=False))
         return not config.getboolean("Preferences", "first_launch_done", fallback=False)
     except Exception:
