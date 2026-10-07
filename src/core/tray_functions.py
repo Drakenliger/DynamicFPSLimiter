@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import ctypes
+from core.ui_scale import titlebar_hit
 from PIL import Image
 from pystray import Icon, MenuItem, Menu
 
@@ -50,7 +51,10 @@ def is_window_minimized():
 def get_mouse_screen_pos():
     """Returns the mouse position as (x, y) in screen coordinates using Windows API."""
     pt = ctypes.wintypes.POINT()
-    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    get_cursor = ctypes.windll.user32.GetCursorPos
+    get_cursor.argtypes = [ctypes.POINTER(ctypes.wintypes.POINT)]
+    get_cursor.restype = ctypes.wintypes.BOOL
+    get_cursor(ctypes.byref(pt))
     return (pt.x, pt.y)
 
 def is_left_mouse_button_down():
@@ -108,6 +112,8 @@ class TrayManager:
             tuple: (x_pos, y_pos) coordinates for centering the viewport
         """
         user32 = ctypes.windll.user32
+        user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+        user32.GetSystemMetrics.restype = ctypes.c_int
         screen_width = user32.GetSystemMetrics(0)
         screen_height = user32.GetSystemMetrics(1)
         
@@ -152,7 +158,10 @@ class TrayManager:
         mouse_pos_app = self.dpg.get_mouse_pos(local=False)
         mouse_y = mouse_pos_app[1]
         mouse_x = mouse_pos_app[0]
-        if mouse_y < 40 and self.dpg.is_mouse_button_down(0) and mouse_x < (self.viewport_width - 75):
+        scale = getattr(self.dpg, "scale", 1)
+        if not isinstance(scale, (int, float)):
+            scale = 1
+        if titlebar_hit((mouse_x, mouse_y), self.viewport_width, scale) and self.dpg.is_mouse_button_down(0):
             self._dragging_viewport = True
             self._drag_start_mouse_pos = mouse_pos_global
             self._drag_start_viewport_pos = self.dpg.get_viewport_pos()

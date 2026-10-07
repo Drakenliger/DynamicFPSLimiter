@@ -54,5 +54,5 @@ def test_rtss_functions_has_no_launch_popup_reference():
 
 
 def test_app_injects_rtss_error_handler():
-    src = (SRC_DIR / "core" / "app.py").read_text(encoding="utf-8")
-    assert "error_handler=show_rtss_error_and_exit" in src
+    from test_app_rtss_wiring import assert_app_rtss_wiring
+    assert_app_rtss_wiring()

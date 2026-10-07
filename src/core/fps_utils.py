@@ -118,10 +118,22 @@ class FPSUtils:
         if not fps_limits or len(fps_limits) < 2:
             return
 
-        if fps_limits == self.last_fps_limits:
+        # The viewport getter is physical; convert once before logical drawing.
+        scale = getattr(dpg, "scale", 1)
+        if not isinstance(scale, (int, float)):
+            scale = 1
+        actual_width = dpg.get_viewport_width()
+        if not isinstance(actual_width, (int, float)) or actual_width <= 0:
+            actual_width = Viewport_width
+        Viewport_width = actual_width / scale
+        geometry = (actual_width, scale)
+        if (fps_limits == self.last_fps_limits
+                and geometry == getattr(self, "_last_ladder_geometry", None)
+                and dpg.does_item_exist("Foreground")):
             return
 
         self.last_fps_limits = fps_limits.copy()
+        self._last_ladder_geometry = geometry
         dpg.delete_item("Foreground")
         with dpg.draw_layer(tag="Foreground", parent="fps_cap_drawlist"):
             draw_width = Viewport_width - 67
@@ -131,7 +143,8 @@ class FPSUtils:
             max_fps = max(fps_limits)
             fps_range = max_fps - min_fps
             for cap in fps_limits:
-                x_pos = margin + int((cap - min_fps) / fps_range * (draw_width - margin))
+                # Project to drawing coordinates only; retain Decimal cap values.
+                x_pos = margin + int(float((cap - min_fps) / fps_range) * (draw_width - margin))
                 y_pos = layer2_height // 2
                 dpg.draw_circle(
                     (x_pos, y_pos),

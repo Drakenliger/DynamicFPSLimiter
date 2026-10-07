@@ -322,11 +322,16 @@ def test_actual_startup_skips_popup_ini_read_and_needs_no_early_context(tmp_path
             value = MagicMock(name=key)
             self[key] = value
             return value
+    from core.ui_scale import (ScaledDPG, enable_native_dpi, primary_monitor_dpi,
+                               read_preference, resolve_scale, pixels)
     app_path = driver.ROOT / 'src/core/app.py'
     env = Environment(__builtins__=__builtins__, __file__=str(app_path), os=os, sys=sys,
         csv=__import__('csv'), logging=logging, threading=threading, time=__import__('time'),
         Decimal=Decimal, InvalidOperation=InvalidOperation, dpg=dpg,
         ConfigManager=config_module.ConfigManager,
+        ScaledDPG=ScaledDPG, enable_native_dpi=enable_native_dpi,
+        primary_monitor_dpi=primary_monitor_dpi, read_preference=read_preference,
+        resolve_scale=resolve_scale, pixels=pixels,
         _acceptance_runtime=SimpleNamespace(configure_logging=lambda: None,
             config_factory=driver.generated_configs(generated), error_log_file=str(generated / 'limiter.log')))
     popup_path = driver.ROOT / 'src/core/launch_popup.py'

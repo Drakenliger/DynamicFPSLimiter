@@ -8,9 +8,29 @@ _src_dir = os.path.dirname(_this_dir)  # Gets src directory
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
+from core.ui_scale import ScaledDPG, enable_native_dpi, primary_monitor_dpi, resolve_scale, pixels, titlebar_hit
+from core import tray_functions
 from core.themes import ThemesManager
 from core.tray_functions import TrayManager
 from core.drag_helper import ViewportDragHandler
+
+class ScaledPopupDragHandler(ViewportDragHandler):
+    def on_mouse_click(self, sender, app_data, user_data):
+        scale = self.dpg.scale
+        if titlebar_hit(self.dpg.get_mouse_pos(local=False), self.viewport_width, scale) and self.dpg.is_mouse_button_down(0):
+            self._dragging_viewport = True
+            self._drag_start_mouse_pos = tray_functions.get_mouse_screen_pos()
+            self._drag_start_viewport_pos = self.dpg.get_viewport_pos()
+        else:
+            self.on_mouse_release(sender, app_data, user_data)
+
+
+def _scaled_popup_dpg(dpg):
+    if isinstance(dpg, ScaledDPG):
+        return dpg
+    enable_native_dpi()
+    return ScaledDPG(dpg, resolve_scale("Auto", primary_monitor_dpi()))
+
 
 # True while the loading popup owns a live DearPyGui context. DPG 2.0.0 cannot
 # call setup_dearpygui() twice on the same context (it crashes), so any code
@@ -22,9 +42,9 @@ def _default_dpg():
     return dpg
 
 def show_missing_rtss_popup(message="Could not find RTSSHooks64.dll. Please ensure RivaTuner Statistics Server is installed before running this app.", exit_callback=None, themes_manager=None, dpg=None):
-    dpg_mod = dpg if dpg is not None else _default_dpg()
+    dpg_mod = _scaled_popup_dpg(dpg if dpg is not None else _default_dpg())
     # Create drag handler for the popup
-    drag_handler = ViewportDragHandler(viewport_width=420, dpg=dpg_mod)
+    drag_handler = ScaledPopupDragHandler(viewport_width=pixels(420, dpg_mod.scale), dpg=dpg_mod)
     
     with dpg_mod.window(label="Error", modal=True, no_close=True, tag="Primary Window"):
         # Split the message to handle "Error:" separately
@@ -84,7 +104,7 @@ def show_rtss_error_and_exit(rtss_path, dpg=None):
     This function handles the complete workflow and exits the application.
     """
     global _loading_popup_active
-    dpg_mod = dpg if dpg is not None else _default_dpg()
+    dpg_mod = _scaled_popup_dpg(dpg if dpg is not None else _default_dpg())
     # Get the base directory for themes manager
     Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     
@@ -114,7 +134,7 @@ def show_rtss_error_and_exit(rtss_path, dpg=None):
     # Calculate center position for the viewport
     viewport_width = 420
     viewport_height = 320
-    x_pos, y_pos = TrayManager.get_centered_viewport_position(viewport_width, viewport_height)
+    x_pos, y_pos = TrayManager.get_centered_viewport_position(pixels(viewport_width, dpg_mod.scale), pixels(viewport_height, dpg_mod.scale))
     
     dpg_mod.create_viewport(title="Dynamic FPS Limiter - Error", width=viewport_width, height=viewport_height, 
                        resizable=False, decorated=False, x_pos=x_pos, y_pos=y_pos)
@@ -130,7 +150,7 @@ def show_loading_popup(message="Loading...", width=300, height=50, title="Dynami
     This is self-contained so it can be shown early and later completely destroyed
     with hide_loading_popup() before the main GUI context is created.
     """ 
-    dpg_mod = dpg if dpg is not None else _default_dpg()
+    dpg_mod = _scaled_popup_dpg(dpg if dpg is not None else _default_dpg())
 
     try:
         parent_dir = os.path.dirname(Base_dir)
@@ -177,7 +197,7 @@ def show_loading_popup(message="Loading...", width=300, height=50, title="Dynami
             pass
 
     # Center viewport on screen
-    x_pos, y_pos = TrayManager.get_centered_viewport_position(width, height)
+    x_pos, y_pos = TrayManager.get_centered_viewport_position(pixels(width, dpg_mod.scale), pixels(height, dpg_mod.scale))
     try:
         dpg_mod.create_viewport(title=title, width=width, height=height,
                             resizable=False, decorated=False, x_pos=x_pos, y_pos=y_pos)
@@ -205,7 +225,7 @@ def hide_loading_popup(dpg=None):
     """
     global _loading_popup_active
     _loading_popup_active = False
-    dpg_mod = dpg if dpg is not None else _default_dpg()
+    dpg_mod = _scaled_popup_dpg(dpg if dpg is not None else _default_dpg())
     # Destroy the temporary loading DPG context. destroy_viewport() does not exist
     # in DearPyGui 2.x (the viewport is destroyed implicitly with the context), so
     # only destroy_context() is meaningful here.
@@ -221,7 +241,7 @@ if __name__ == "__main__":
     # Get the base directory
     Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     
-    dpg_mod = _default_dpg()
+    dpg_mod = _scaled_popup_dpg(_default_dpg())
     # Create context and apply fonts/themes
     dpg_mod.create_context()
     themes_manager = ThemesManager(Base_dir, dpg_mod)
@@ -242,7 +262,7 @@ if __name__ == "__main__":
     # Calculate center position for the viewport
     viewport_width = 420
     viewport_height = 320
-    x_pos, y_pos = TrayManager.get_centered_viewport_position(viewport_width, viewport_height)
+    x_pos, y_pos = TrayManager.get_centered_viewport_position(pixels(viewport_width, dpg_mod.scale), pixels(viewport_height, dpg_mod.scale))
     
     dpg_mod.create_viewport(title="Dynamic FPS Limiter - Error", width=viewport_width, height=viewport_height, 
                        resizable=False, decorated=False, x_pos=x_pos, y_pos=y_pos)
