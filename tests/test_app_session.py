@@ -16,7 +16,7 @@ from core.session_policy import session_is_current
 APP = Path(__file__).resolve().parents[1] / 'src/core/app.py'
 
 
-def load_app(*, lockless=False):
+def load_app(*, lockless=False, transform=None):
     tree = ast.parse(APP.read_text())
     names = {'_write_cap', 'start_stop_callback', 'monitoring_loop', 'plotting_loop', 'exit_gui', '_load_profile_on_gui'}
     selected = ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[])
@@ -28,6 +28,8 @@ def load_app(*, lockless=False):
                     return node.body
                 return node
         selected = RemoveSessionLock().visit(selected)
+    if transform is not None:
+        selected = transform(selected)
     noop = lambda *a, **kw: None
     writes, submitted, spawned = [], [], []
     class ThreadStub:
@@ -151,18 +153,21 @@ def test_pause_after_admission_before_rtss_call(lockless):
         def __exit__(self, *args):
             self.lock.release()
     ns['session_lock'] = ObservedLock()
-    ns['time'].sleep = lambda _: restarted.wait(5)
+    def sleep(_):
+        assert restarted.wait(5)
+    ns['time'].sleep = sleep
     def trace(frame, event, arg):
         if frame.f_code.co_name == 'monitoring_loop' and event == 'line' and frame.f_lineno == call_line and not paused.is_set():
             paused.set()
             assert release.wait(5)
         return trace
     def run():
+        previous_trace = sys.gettrace()
         sys.settrace(trace)
         try:
             ns['monitoring_loop'](1)
         finally:
-            sys.settrace(None)
+            sys.settrace(previous_trace)
     def invalidate():
         restart(ns)
         restarted.set()
@@ -276,7 +281,9 @@ def test_idle_write_and_state_are_atomic_with_restart():
                 assert release.wait(5)
             self.lock.release()
     ns['session_lock'] = ObservedLock()
-    ns['time'].sleep = lambda _: restarted.wait(5)
+    def sleep(_):
+        assert restarted.wait(5)
+    ns['time'].sleep = sleep
     thread, errors = worker(lambda: ns['monitoring_loop'](1))
     restart_errors = []
     def invalidate():
