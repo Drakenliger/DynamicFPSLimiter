@@ -101,24 +101,35 @@ def _detect_dotnet_core():
         return max_ver
     return None
 
+def _get_lhm_package_dir(base_dir):
+    """Return the path to the LHM package folder inside assets (e.g. assets/LHM_0.9.6_lib or assets)."""
+    if not base_dir:
+        return None
+    assets_root = os.path.join(base_dir, "assets")
+    if not os.path.isdir(assets_root):
+        return None
+    pkg_dir = os.path.join(assets_root, "LHM_0.9.6_lib")
+    if os.path.isdir(pkg_dir):
+        return pkg_dir
+    # check if assets itself contains variant directories directly or a single subfolder
+    children = [n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n))]
+    if len(children) == 1:
+        nested = os.path.join(assets_root, children[0])
+        nested_children = [n for n in os.listdir(nested) if os.path.isdir(os.path.join(nested, n))]
+        if nested_children:
+            return nested
+    return assets_root
+
+
 def _choose_asset_variant(base_dir):
     """
-    Pick best asset variant folder name (e.g. 'net472', 'net6.0', 'netstandard2.0').
+    Pick best asset variant folder name (e.g. 'net472', 'net8.0', 'netstandard2.0').
     Returns folder name (string) or None.
     """
-    assets_root = os.path.join(base_dir, "assets") if base_dir else None
-    # available variants are folders under assets
+    pkg_dir = _get_lhm_package_dir(base_dir)
     available = set()
-    if assets_root and os.path.isdir(assets_root):
-        # if assets contains a single package folder (like LHM_0.9.6_lib), descend into it
-        children = [n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n))]
-        if len(children) == 1:
-            nested = os.path.join(assets_root, children[0])
-            # check for variant folders inside nested
-            nested_children = [n for n in os.listdir(nested) if os.path.isdir(os.path.join(nested, n))]
-            if nested_children:
-                assets_root = nested
-        available = set(n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n)))
+    if pkg_dir and os.path.isdir(pkg_dir):
+        available = set(n for n in os.listdir(pkg_dir) if os.path.isdir(os.path.join(pkg_dir, n)))
 
     # prefer modern .NET runtimes if present
     core_ver = _detect_dotnet_core()
@@ -174,12 +185,13 @@ def ensure_loaded(base_dir=None, logger=None):
             # swallow logger errors to avoid breaking loading
             pass
 
+    pkg_dir = _get_lhm_package_dir(base_dir) or os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib')
     if variant:
-        dll_path = os.path.join(base_dir, 'assets', variant, 'LibreHardwareMonitorLib.dll')
+        dll_path = os.path.join(pkg_dir, variant, 'LibreHardwareMonitorLib.dll')
         if not os.path.isfile(dll_path):
-            dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')  # fallback
+            dll_path = os.path.join(pkg_dir, 'net472', 'LibreHardwareMonitorLib.dll')  # fallback
     else:
-        dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')
+        dll_path = os.path.join(pkg_dir, 'net472', 'LibreHardwareMonitorLib.dll')
 
     if clr is None:
         if isinstance(_clr_import_error, (ImportError, ModuleNotFoundError)):
