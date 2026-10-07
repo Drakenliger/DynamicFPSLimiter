@@ -1085,7 +1085,11 @@ def load_and_create_textures(image_names, base_dir, dpg_module):
     with dpg_module.texture_registry():
         for image_name in image_names:
             image_path = os.path.join(base_dir, f"assets/{image_name}")
-            width, height, channels, data = dpg_module.load_image(image_path)
+            res = dpg_module.load_image(image_path)
+            if res is None:
+                width, height, data = 1, 1, [1.0, 1.0, 1.0, 1.0]
+            else:
+                width, height, channels, data = res
             base = os.path.splitext(image_name)[0]  # e.g., "close_button"
             tag = f"{base}_texture"
             textures[base] = dpg_module.add_static_texture(width, height, data, tag=tag)
