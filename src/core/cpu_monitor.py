@@ -25,9 +25,11 @@ class CPUUsageMonitor:
     def cpu_run(self):
         
         while self.looping:
-            if self._running():
-                with self._lock:
-                    start_reset_count = self._reset_count
+            with self._lock:
+                is_running = self._running()
+                start_reset_count = self._reset_count
+
+            if is_running:
                 try:
                     self.core_usages = psutil.cpu_percent(percpu=True)
                     highest_usage = max(self.core_usages)
