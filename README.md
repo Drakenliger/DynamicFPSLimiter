@@ -76,3 +76,5 @@ older settings files) follows Windows DPI on the primary launch monitor. Choose
 100%, 125%, 150%, 175%, 200%, 250%, or 300% to override it. Changes are saved
 and require restarting the app. Moving the app to another monitor does not
 change its scale until the next launch.
+
+Controller-only input may not reset the Windows idle timer. Disable Idle Mode for controller-only play to avoid the idle FPS cap.

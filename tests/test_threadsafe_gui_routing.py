@@ -80,7 +80,7 @@ def _run_autopilot(fake_dpg, submit=None, *, process="GameA", running=False,
         starts.append(user_data)
 
     autopilot_on_check(cm, rtss, fake_dpg, logger, running, start_stop_callback,
-                       gui_submit=submit)
+                       gui_submit=submit, foreground_reader=lambda: rtss._result[1])
     return cm, logger, starts, start_stop_callback
 
 
@@ -142,7 +142,7 @@ def test_autopilot_skips_start_when_already_running(fake_dpg, stub_logger):
         starts.append(user_data)
 
     autopilot_on_check(cm, rtss, fake_dpg, stub_logger, True, start_stop_callback,
-                       gui_submit=submit)
+                       gui_submit=submit, foreground_reader=lambda: rtss._result[1])
     # Profile switch is queued, but start/stop is NOT (already running).
     assert [s[0] for s in submit.calls] == [fake_dpg.set_value, cm.load_profile_callback]
     assert starts == []
@@ -208,7 +208,7 @@ def test_app_wires_gui_submit_through_loops():
         "_gui_submit(fps_utils.update_summary_statistics)",
         "_gui_submit(_update_idle_ui)",
         "_gui_submit(_force_open_headers)",
-        "gui_submit=_gui_submit",
+        "_gui_submit(_autopilot_start_on_gui",
         "lhm_sensor.set_gui_queue(gui_queue)",
     ):
         assert needle in src, needle
