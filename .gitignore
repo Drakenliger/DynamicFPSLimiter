@@ -26,3 +26,5 @@ src/core/video2gif.py
 src/core/backup_snippets.py
 opencode.json
 docs/AGENTS.md
+# Local acceptance results are transferred to the private results repository
+results/
