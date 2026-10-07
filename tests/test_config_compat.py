@@ -144,3 +144,27 @@ def test_utf8_first_and_no_parse_on_decode_failure(tmp_path, monkeypatch):
     with pytest.raises(UnicodeDecodeError):
         read_config(cfg, path)
     assert cfg.sections() == ['Extra']
+
+
+@pytest.mark.parametrize('explicit', [None, '39'])
+@pytest.mark.parametrize('key,value,expected', [
+    ('minvalidfps', '27', 27),
+    ('idle_fps_cap', '29', 29),
+    ('profileonstartup_name', 'Game100%.exe', 'Game100%.exe'),
+])
+def test_defaults_preserve_legacy_global_setting(manager, tmp_path, key, value, expected, explicit):
+    directory = tmp_path / 'config'
+    directory.mkdir()
+    settings = directory / 'settings.ini'
+    profiles = directory / 'profiles.ini'
+    text = '[Preferences]\nshowtooltip=True\n[GlobalSettings]\n'
+    if explicit is not None:
+        text += key + '=' + explicit + '\n'
+    settings.write_text(text, encoding='utf-8')
+    profiles.write_text('[Global]\n' + key + '=' + value + '\n', encoding='utf-8')
+    before = (settings.read_bytes(), profiles.read_bytes())
+    cm = manager()
+    wanted = cm.key_type_map[key](explicit) if explicit is not None else expected
+    assert cm.Default_settings[key] == wanted
+    assert cm.profiles_config['Global'][key] == value
+    assert before == (settings.read_bytes(), profiles.read_bytes())
