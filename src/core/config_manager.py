@@ -568,6 +568,7 @@ class ConfigManager:
 
             self.update_profile_dropdown()
             self.dpg.set_value("profile_dropdown", self.current_profile)
+            self.dpg.set_value("game_name", self.current_profile)
             self.logger.add_log(f"Deleted profile: {profile_to_delete}")
         self.refresh_ui_callbacks()
 

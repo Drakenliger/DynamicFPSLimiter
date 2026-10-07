@@ -1636,7 +1636,11 @@ if _acceptance_runtime is not None:
 
 while dpg.is_dearpygui_running():
     dpg.render_dearpygui_frame()
-    dpg.run_callbacks(dpg.get_callback_queue())
+    for job in dpg.get_callback_queue() or []:
+        try:
+            dpg.run_callbacks([job])
+        except Exception:
+            logging.error("Native callback failed", exc_info=True)
     try:
         gui_queue.drain()
     except Exception:
