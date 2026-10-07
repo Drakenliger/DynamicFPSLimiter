@@ -5,6 +5,24 @@ import statistics
 from core.cap_policy import evaluate_legacy_cap_change
 from collections import deque
 
+def evaluate_librehm_decision(has_enabled_sensors, decrease_checks, increase_checks, has_missing_enabled_data):
+    """
+    Pure decision helper for LibreHM monitoring method.
+    Returns (should_decrease, should_increase).
+    - If no sensors are enabled, returns (False, False).
+    - Decrease: True if any enabled sensor with valid data exceeds upper threshold.
+    - Increase: True only if all enabled sensors have valid data and all meet lower threshold.
+                If any enabled sensor is missing data (None value or empty history), increase is non-qualifying (False).
+    """
+    if not has_enabled_sensors:
+        return (False, False)
+    should_decrease = any(decrease_checks) if decrease_checks else False
+    if has_missing_enabled_data:
+        should_increase = False
+    else:
+        should_increase = all(increase_checks) if increase_checks else False
+    return (should_decrease, should_increase)
+
 class FPSUtils:
     def __init__(self, cm, lhm_sensor, logger=None, dpg=None, viewport_width=610, base_dir=None):
         self.cm = cm
@@ -181,6 +199,9 @@ class FPSUtils:
                 gpu_hist_snap = {k: list(v) for k, v in getattr(lhm_sensor, "gpu_history_long", {}).items()}
                 gpu_hw_names_snap = list(getattr(lhm_sensor, "gpu_hw_names", [])) if hasattr(lhm_sensor, "gpu_hw_names") else []
 
+            has_enabled_sensors = False
+            has_missing_enabled_data = False
+
             for sensor in sensor_infos:
                 param_id = sensor.get("parameter_id")
                 enable_tag = f"input_{param_id}_enable"
@@ -195,6 +216,8 @@ class FPSUtils:
                         continue
                 except Exception:
                     continue
+
+                has_enabled_sensors = True
 
                 # read thresholds; if invalid, skip corresponding check
                 upper = None
@@ -271,19 +294,31 @@ class FPSUtils:
                     )
                 except Exception:
                     # skip sensors that fail stats computation
-                    continue
+                    pass
 
                 # Log once per sensor
                 self.logger.add_log(f"LibreHM check {hw_name}/{sensor_type}/{sensor_name}: value={value} lower={lower} upper={upper}")
 
-                if value is not None:
+                if value is None or not values_long:
+                    has_missing_enabled_data = True
+                else:
                     if upper is not None:
                         decrease_checks.append(value >= upper)
                     if lower is not None:
                         increase_checks.append(value <= lower)
 
-            should_decrease = any(decrease_checks) if decrease_checks else False
-            should_increase = all(increase_checks) if increase_checks else False
+            eval_decision = getattr(self, "evaluate_librehm_decision", None) or globals().get("evaluate_librehm_decision")
+            if eval_decision is None:
+                def eval_decision(has_enabled, dec_checks, inc_checks, has_missing):
+                    if not has_enabled:
+                        return (False, False)
+                    s_dec = any(dec_checks) if dec_checks else False
+                    s_inc = False if has_missing else (all(inc_checks) if inc_checks else False)
+                    return (s_dec, s_inc)
+
+            should_decrease, should_increase = eval_decision(
+                has_enabled_sensors, decrease_checks, increase_checks, has_missing_enabled_data
+            )
 
             # Sort sensor summary lines alphabetically (case-insensitive) before showing
             if groups:
