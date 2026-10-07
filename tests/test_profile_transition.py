@@ -301,3 +301,43 @@ def test_actual_autopilot_startup_load_is_deferred_and_validated(app):
     queue.drain()
     assert [e[0] for e in events] == ['write', 'load', 'write']
     assert cm.current_profile == 'gameA' and ns['profile_revision'] == 1
+
+
+def test_unselected_delete_keeps_active_profile_label(app):
+    ns, cm, dpg, _, caps, _, _ = app
+    cm.load_profile_raw('gameA')
+    cm.apply_current_input_values()
+    dpg.set_value('profile_dropdown', 'gameB')
+    cm.rtss.set_profile_property = lambda *args, **kwargs: True
+    cm.delete_selected_profile_callback()
+    assert cm.current_profile == dpg.get_value('profile_dropdown') == 'gameA'
+    assert dpg.get_value('game_name') == 'gameA'
+
+
+def test_render_owner_callback_failure_keeps_later_jobs_and_frames(app, tmp_path, caplog):
+    import logging
+    ns, cm, dpg, queue, _, _, _ = app
+    # Real profile-save callback fails at its persistence boundary (e.g. unavailable disk).
+    cm.profiles_path = str(tmp_path)
+    callback_jobs = [[lambda: cm.save_profile('new')], [lambda: events.append('later-callback')]]
+    events = []
+    frames = []
+    dpg.is_dearpygui_running = lambda: len(frames) < 2
+    dpg.render_dearpygui_frame = lambda: frames.append(None)
+    dpg.get_callback_queue = lambda: callback_jobs if len(frames) == 1 else None
+    def run_callbacks(jobs):
+        for job in jobs or []:
+            job[0](*job[1:])
+    dpg.run_callbacks = run_callbacks
+    queue.submit(events.append, 'queued')
+    ns.update(logging=logging, gui_queue=queue, _acceptance_runtime=None)
+    tree = ast.parse(APP.read_text())
+    loop = next(n for n in tree.body if isinstance(n, ast.While)
+                and isinstance(n.test, ast.Call)
+                and isinstance(n.test.func, ast.Attribute)
+                and n.test.func.attr == 'is_dearpygui_running')
+    with caplog.at_level(logging.ERROR):
+        exec(compile(ast.Module(body=[loop], type_ignores=[]), str(APP), 'exec'), ns)
+    assert len(frames) == 2
+    assert events == ['later-callback', 'queued']
+    assert any(record.exc_info for record in caplog.records)
