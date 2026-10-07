@@ -1,5 +1,6 @@
 import os
 import configparser
+from core.ui_scale import normalize_preference
 from decimal import Decimal, InvalidOperation
 from core.librehardwaremonitor import get_all_sensor_infos
 
@@ -69,7 +70,8 @@ class ConfigManager:
                 'hide_unselected': 'False',
                 'autopilot_only_profiles': 'False',
                 'first_launch_done': 'False',
-                'hide_loading_popup': 'False'
+                'hide_loading_popup': 'False',
+                'ui_scale': 'Auto'
             }
             self.settings_config["GlobalSettings"] = {
                 'minvalidgpu': '14',
@@ -337,7 +339,17 @@ class ConfigManager:
 
         return result
 
+    def update_ui_scale_preference(self, sender, app_data, user_data=None):
+        self.ui_scale = normalize_preference(app_data)
+        if not self.settings_config.has_section("Preferences"):
+            self.settings_config.add_section("Preferences")
+        self.settings_config["Preferences"]["ui_scale"] = self.ui_scale.replace("%", "%%")
+        with open(self.settings_path, "w") as stream:
+            self.settings_config.write(stream)
+        self.logger.add_log("UI scale saved; restart required")
+
     def load_preferences(self):
+        self.ui_scale = normalize_preference(self.settings_config.get("Preferences", "ui_scale", fallback="Auto"))
         for key in self.settings_config["Preferences"]:
             value = self.settings_config["Preferences"][key]
             value_type = self.key_type_map.get(key, str)
@@ -346,6 +358,7 @@ class ConfigManager:
             else:
                 value = value_type(value)
             setattr(self, key, value)
+        self.ui_scale = normalize_preference(self.ui_scale)
 
     def parse_input_value(self, key, value):
         value_type = self.key_type_map.get(key, int)

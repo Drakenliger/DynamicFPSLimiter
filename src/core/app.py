@@ -21,6 +21,9 @@ if _root not in sys.path:
 Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(Base_dir)
 
+from core.ui_scale import (ScaledDPG, UI_SCALE_CHOICES, enable_native_dpi,
+                           primary_monitor_dpi, read_preference, resolve_scale, pixels)
+
 from core.pre_launch import _unblock_alternate_data_streams, mark_first_launch_done
 _acceptance_runtime = globals().get("_acceptance_runtime")
 if _acceptance_runtime is not None:
@@ -52,6 +55,14 @@ from core.launch_popup import show_loading_popup, hide_loading_popup, show_rtss_
 from core.idle_timer import monitor_idle
 from core.version import display_version
 
+# The frozen entry point is this file; awareness must precede loading/main HWNDs.
+enable_native_dpi()
+_launch_dpi = primary_monitor_dpi()
+_launch_preference = (read_preference(os.path.join(parent_dir, "config", "settings.ini"))
+                      if _acceptance_runtime is None else "Auto")
+dpg = ScaledDPG(dpg, resolve_scale(_launch_preference, _launch_dpi))
+logger.set_dpg(dpg)
+
 if _acceptance_runtime is None:
     show_loading_popup(f"Loading Dynamic FPS Limiter {display_version()}...", Base_dir=Base_dir, dpg=dpg)
 
@@ -59,11 +70,24 @@ if _acceptance_runtime is None:
 Viewport_width = 610
 Viewport_height = 700
 
-rtss = RTSSController(logger, error_handler=show_rtss_error_and_exit)
+rtss = RTSSController(logger, error_handler=lambda path: show_rtss_error_and_exit(path, dpg=dpg))
 themes_manager = ThemesManager(Base_dir, dpg)
 _config_factory = (ConfigManager if _acceptance_runtime is None
                    else _acceptance_runtime.config_factory)
 cm = _config_factory(logger, dpg, rtss, None, themes_manager, Base_dir)
+
+
+def configure_ui_scale(dpg_module, config, themes, dpi):
+    """Acceptance uses only its injected config factory, never real settings."""
+    scaled = ScaledDPG(dpg_module, resolve_scale(getattr(config, "ui_scale", "Auto"), dpi))
+    config.dpg = scaled
+    themes.dpg = scaled
+    return scaled
+
+
+dpg = configure_ui_scale(dpg, cm, themes_manager, _launch_dpi)
+logger.set_dpg(dpg)
+
 
 # Paths to configuration files
 error_log_file = os.path.join(parent_dir, "error_log.txt")
@@ -125,7 +149,7 @@ lhm_sensor = LHMSensor(lambda: running, logger, dpg, themes_manager,
                        max_samples=cm.lhwmonitoringsamples, 
                        percentile=cm.lhwmonitorpercentile,
                        base_dir=Base_dir)
-fps_utils = FPSUtils(cm, lhm_sensor, logger, dpg, Viewport_width, base_dir=Base_dir)
+fps_utils = FPSUtils(cm, lhm_sensor, logger, dpg, pixels(Viewport_width, dpg.scale), base_dir=Base_dir)
 
 
 def _write_cap(profile, cap, reason, *, direct=False):
@@ -781,7 +805,7 @@ tray = TrayManager(
     icon_path,
     on_restore=lambda: tray.restore_from_tray(),
     on_exit=exit_gui,
-    viewport_width=Viewport_width,
+    viewport_width=pixels(Viewport_width, dpg.scale),
     config_manager_instance=cm,  # Pass ConfigManager instance
     hover_text=app_title,
     start_stop_callback=start_stop_callback,  # Pass the callback
@@ -942,6 +966,11 @@ def build_settings_window():
             with dpg.tab_bar():
                 with dpg.tab(label="  Preferences", tag="tab2"): 
                     with dpg.child_window(height=tab_height):
+                        dpg.add_combo(UI_SCALE_CHOICES, label="UI scale (restart required)",
+                                      tag="ui_scale_preference", width=160,
+                                      default_value=getattr(cm, "ui_scale", "Auto"),
+                                      callback=cm.update_ui_scale_preference)
+                        dpg.add_text("Auto follows launch monitor DPI. Restart required after a change.", wrap=540)
                         with dpg.group(horizontal=True):
                             with dpg.drawlist(width=15, height=15):
                                 dpg.draw_line((0, 13), (15, 13), color=(180,180,180), thickness=1)
@@ -1377,7 +1406,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
 build_readings_window()
 build_settings_window()
 
-viewport_x_pos, viewport_y_pos = TrayManager.get_centered_viewport_position(Viewport_width, Viewport_height)
+viewport_x_pos, viewport_y_pos = TrayManager.get_centered_viewport_position(pixels(Viewport_width, dpg.scale), pixels(Viewport_height, dpg.scale))
 
 dpg.create_viewport(title="Dynamic FPS Limiter", 
                     width=Viewport_width, height=Viewport_height, 

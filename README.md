@@ -70,3 +70,9 @@ This project is currently licensed under the Apache License 2.0. See the [LICENS
 Previously licensed under the MIT License. The project was relicensed to Apache 2.0 on April 25, 2025 to provide clearer legal protections and attribution requirements.
 
 <!-- ## Miscellaneous -->
+
+UI scale is available in Settings → Preferences. Auto (the default, including
+older settings files) follows Windows DPI on the primary launch monitor. Choose
+100%, 125%, 150%, 175%, 200%, 250%, or 300% to override it. Changes are saved
+and require restarting the app. Moving the app to another monitor does not
+change its scale until the next launch.

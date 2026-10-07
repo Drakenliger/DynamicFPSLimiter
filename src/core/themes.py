@@ -33,6 +33,14 @@ class ThemesManager:
     def create_themes(self):
         with self.dpg.theme() as main_theme:
             with self.dpg.theme_component(self.dpg.mvAll):
+                # Scale pixel defaults that otherwise remain at ImGui's native size.
+                for style, values in (("ItemInnerSpacing", (4, 4)), ("WindowRounding", (0,)),
+                                      ("ScrollbarSize", (14,)), ("ScrollbarRounding", (9,)),
+                                      ("GrabMinSize", (12,)), ("GrabRounding", (0,)),
+                                      ("IndentSpacing", (21,)), ("CellPadding", (4, 2)),
+                                      ("WindowMinSize", (32, 32)), ("PopupRounding", (0,)),
+                                      ("PopupBorderSize", (1,))):
+                    self.dpg.add_theme_style(getattr(self.dpg, "mvStyleVar_" + style), *values)
                 self.dpg.add_theme_color(self.dpg.mvThemeCol_Separator, (0, 200, 255, 255))  # Cyan, RGBA
                 self.dpg.add_theme_style(self.dpg.mvStyleVar_FrameRounding, 3.0)
                 self.dpg.add_theme_color(self.dpg.mvThemeCol_Button, (51, 51, 55))
@@ -73,6 +81,19 @@ class ThemesManager:
 
                 self.dpg.add_theme_color(self.dpg.mvThemeCol_TableHeaderBg, bg_colour_3_button)
 
+                # Pixel defaults from ImPlot (alpha/alignment/fit fractions stay untouched).
+                for style, values in (("LineWeight", (1,)), ("MarkerSize", (4,)),
+                                      ("MarkerWeight", (1,)), ("ErrorBarSize", (5,)),
+                                      ("ErrorBarWeight", (1,)), ("DigitalBitHeight", (8,)),
+                                      ("DigitalBitGap", (4,)), ("PlotPadding", (10, 10)), ("LegendPadding", (10, 10)),
+                                      ("LegendInnerPadding", (5, 5)), ("LegendSpacing", (5, 0)),
+                                      ("AnnotationPadding", (2, 2)), ("MinorTickLen", (2.5, 2.5)),
+                                      ("MajorTickSize", (1, 1)), ("MinorTickSize", (1, 1)),
+                                      ("MajorGridSize", (1, 1)), ("MinorGridSize", (1, 1)),
+                                      ("MousePosPadding", (10, 10)), ("PlotDefaultSize", (400, 300)),
+                                      ("PlotMinSize", (200, 150))):
+                    self.dpg.add_theme_style(getattr(self.dpg, "mvPlotStyleVar_" + style), *values,
+                                             category=self.dpg.mvThemeCat_Plots)
                 # Plot-specific styles
                 self.dpg.add_theme_style(self.dpg.mvPlotStyleVar_PlotBorderSize, 0, category=self.dpg.mvThemeCat_Plots)
                 self.dpg.add_theme_style(self.dpg.mvPlotStyleVar_MinorAlpha, 0.20, category=self.dpg.mvThemeCat_Plots)
@@ -307,7 +328,11 @@ class ThemesManager:
         except Exception as e:
             if logger:
                 logger.add_log(f"Failed to load system font: {e}")
-            # Will use DearPyGui's default font as fallback
+            # If the regular font loaded, retain its native-sized rasterization.
+            if self.fonts.get("default_font"):
+                self.dpg.bind_font(self.fonts["default_font"])
+            else:
+                self.dpg.set_global_font_scale(getattr(self.dpg, "scale", 1))
             return self.fonts
 
     def get_font(self, font_name):
