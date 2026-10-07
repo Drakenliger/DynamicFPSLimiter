@@ -630,6 +630,12 @@ class ConfigManager:
 
         profile_name = self.settings_config["GlobalSettings"].get("profileonstartup_name", "Global")
         if self.profileonstartup:
+            # Legacy interpolating INI values escaped literal '%' as '%%'.
+            # Prefer the literal section name; try one collapse only if absent.
+            if profile_name not in self.profiles_config:
+                legacy_name = profile_name.replace("%%", "%")
+                if legacy_name in self.profiles_config:
+                    profile_name = legacy_name
             if profile_name in self.profiles_config:
                 self.load_profile_callback(None, profile_name, None)
             else:

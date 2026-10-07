@@ -168,3 +168,54 @@ def test_defaults_preserve_legacy_global_setting(manager, tmp_path, key, value, 
     assert cm.Default_settings[key] == wanted
     assert cm.profiles_config['Global'][key] == value
     assert before == (settings.read_bytes(), profiles.read_bytes())
+
+
+@pytest.mark.parametrize('stored_name,profile_names,enabled,expected', [
+    ('Game100%%.exe', ['Game100%.exe'], True, 'Game100%.exe'),
+    ('Game%%100%%.exe', ['Game%100%.exe'], True, 'Game%100%.exe'),
+    ('Game100%%.exe', ['Game100%%.exe', 'Game100%.exe'], True, 'Game100%%.exe'),
+    ('Game100%%.exe', ['Game100%%.exe'], True, 'Game100%%.exe'),
+    ('Game100%.exe', ['Game100%.exe'], True, 'Game100%.exe'),
+    ('Game100%%%%.exe', ['Game100%%.exe'], True, 'Game100%%.exe'),
+    ('Game100%%%%.exe', ['Game100%.exe'], True, 'Global'),
+    ('Game100%%.exe', ['Other.exe'], True, 'Global'),
+    ('Missing.exe', ['Other.exe'], True, 'Global'),
+    ('Game100%%.exe', ['game100%.exe'], True, 'Global'),
+    ('Game100%%.exe', ['Game100%.exe'], False, None),
+    ('Game100%%.exe', ['Game100%%.exe', 'Game100%.exe'], False, None),
+    ('Missing.exe', ['Other.exe'], False, None),
+])
+def test_actual_startup_selection_legacy_percent(
+        manager, tmp_path, stub_logger, stored_name, profile_names, enabled, expected):
+    """Run the real ConfigManager startup method against on-disk legacy INIs.
+
+    The manager fixture uses runpy and a restored monkeypatch for sensors;
+    only the downstream loading callback is replaced to record selection.
+    """
+    directory = tmp_path / 'config'
+    directory.mkdir()
+    settings = directory / 'settings.ini'
+    profiles = directory / 'profiles.ini'
+    settings.write_text(
+        f'[Preferences]\nprofileonstartup={enabled}\nunknown=keep%%\n'
+        f'[GlobalSettings]\nprofileonstartup_name={stored_name}\n', encoding='utf-8')
+    profiles.write_text(
+        '[Global]\nmaxcap=60\n' + ''.join(
+            f'[{name}]\nmaxcap=48\nunknown=keep%%\n' for name in profile_names),
+        encoding='utf-8')
+    before = (settings.read_bytes(), profiles.read_bytes())
+    cm = manager()
+    selected = []
+    cm.load_profile_callback = lambda sender, profile, data: selected.append(profile)
+
+    cm.startup_profile_selection()
+
+    assert selected == ([] if expected is None else [expected])
+    assert cm.settings_config['GlobalSettings']['profileonstartup_name'] == stored_name
+    assert cm.settings_config['Preferences']['unknown'] == 'keep%%'
+    assert cm.profiles_config.sections() == ['Global', *profile_names]
+    for name in profile_names:
+        assert cm.profiles_config[name]['unknown'] == 'keep%%'
+    assert before == (settings.read_bytes(), profiles.read_bytes())
+    fallback_message = f"Profile '{stored_name}' not found. Defaulting to 'Global'."
+    assert (fallback_message in stub_logger.messages) is (expected == 'Global')
