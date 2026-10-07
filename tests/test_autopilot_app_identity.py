@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 from core.gui_queue import GuiQueue
 from test_app_session import load_app, worker, finish, restart
-from test_app_profile import setup_profile
+from test_app_profile import setup_profile, LADDERS
 
 
 def app(current='Global', only=False, foreground='gameA', running=True):
@@ -229,3 +229,59 @@ def test_reserved_global_alias_selects_game(only, stored):
     assert len(actions(ns, submitted)) == 1
     assert actions(ns, submitted)[0][0] is ns['_load_profile_on_gui']
     assert actions(ns, submitted)[0][1] == 'gameA'
+
+
+@pytest.mark.parametrize('stored', ['global', 'GLOBAL'])
+def test_reserved_global_alias_switch_from_game(stored):
+    ns, writes, submitted, queue, errors = app('gameA', only=False, foreground='desktop.exe')
+    ns['fps_utils'].current_stepped_limits = lambda: LADDERS.get(ns['cm'].current_profile, LADDERS['Global'])
+    ns['cm'].profiles_config.remove_section('Global')
+    ns['cm'].profiles_config.add_section(stored)
+    one_pass(ns)
+    assert len(actions(ns, submitted)) == 1
+    assert actions(ns, submitted)[0][0] is ns['_load_profile_on_gui']
+    assert actions(ns, submitted)[0][1] == stored
+    queue.drain()
+    assert not errors
+    assert ns['cm'].current_profile == stored
+    assert ns['running'] is True
+    assert [w[1][0] for w in writes] == ['gameA', stored]
+
+
+def test_startup_check_aborts_when_rtss_not_running():
+    ns, writes, submitted, queue, errors = app(foreground='gameA', running=False)
+    ns['rtss_manager'].is_rtss_running = lambda: False
+    ns['_autopilot_start_check']()
+    assert actions(ns, submitted) == []
+    queue.drain()
+    assert not errors and not ns['running']
+
+
+@pytest.mark.parametrize('stored', ['global', 'GLOBAL'])
+def test_startup_check_uses_reserved_global_alias(stored):
+    ns, writes, submitted, queue, errors = app(foreground='desktop.exe', running=False)
+    ns['fps_utils'].current_stepped_limits = lambda: LADDERS.get(ns['cm'].current_profile, LADDERS['Global'])
+    ns['cm'].profiles_config.remove_section('Global')
+    ns['cm'].profiles_config.add_section(stored)
+    ns['cm'].current_profile = stored
+    ns['_autopilot_start_check']()
+    assert len(actions(ns, submitted)) == 1
+    assert actions(ns, submitted)[0][0] is ns['_autopilot_start_on_gui']
+    assert actions(ns, submitted)[0][1] == stored
+    queue.drain()
+    assert not errors
+    assert ns['running'] is True
+    assert ns['cm'].current_profile == stored
+    assert [w[1][0] for w in writes] == [stored, stored]
+
+
+def test_autopilot_start_aborts_if_profile_load_fails():
+    ns, writes, submitted, queue, errors = app(foreground='gameA', running=False)
+    ns['cm'].load_profile_raw = lambda name, **kw: False
+    ns['_autopilot_start_check']()
+    assert len(actions(ns, submitted)) == 1
+    queue.drain()
+    assert not errors
+    assert ns['running'] is False
+    assert not writes
+

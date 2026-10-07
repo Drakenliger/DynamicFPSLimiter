@@ -168,3 +168,97 @@ def test_defaults_preserve_legacy_global_setting(manager, tmp_path, key, value, 
     assert cm.Default_settings[key] == wanted
     assert cm.profiles_config['Global'][key] == value
     assert before == (settings.read_bytes(), profiles.read_bytes())
+
+
+def test_read_config_missing_file_and_types(tmp_path):
+    cfg = new_config()
+    read_config(cfg, tmp_path / 'does_not_exist.ini')
+    assert cfg.sections() == []
+    read_config(cfg, str(tmp_path / 'still_does_not_exist.ini'))
+    assert cfg.sections() == []
+
+
+def test_merge_defaults_types_and_existing_empty_value():
+    cfg = new_config()
+    cfg.read_string('[Section]\nempty=\nexisting=123\n')
+    defaults = {
+        'Section': {'empty': 'default_empty', 'existing': 'default_existing', 'new_int': 42, 'new_bool': True},
+        'NewSection': {'key': 'val'},
+    }
+    merge_defaults(cfg, defaults)
+    assert cfg['Section']['empty'] == ''
+    assert cfg['Section']['existing'] == '123'
+    assert cfg['Section']['new_int'] == '42'
+    assert cfg['Section']['new_bool'] == 'True'
+    assert cfg['NewSection']['key'] == 'val'
+
+
+def test_partial_config_creation_seeds_legacy_global(manager, tmp_path):
+    directory = tmp_path / 'config'
+    directory.mkdir()
+    settings_path = directory / 'settings.ini'
+    profiles_path = directory / 'profiles.ini'
+    profiles_path.write_text(
+        '[Global]\nminvalidfps=21\nidle_fps_cap=35\nprofileonstartup_name=LegacyGame.exe\nmaxcap=100\n',
+        encoding='utf-8',
+    )
+    profiles_before = profiles_path.read_bytes()
+    assert not settings_path.exists()
+    cm = manager()
+    assert settings_path.exists()
+    assert profiles_path.read_bytes() == profiles_before
+    assert cm.Default_settings['minvalidfps'] == 21
+    assert cm.Default_settings['idle_fps_cap'] == 35
+    assert cm.Default_settings['profileonstartup_name'] == 'LegacyGame.exe'
+    assert cm.profiles_config['Global']['maxcap'] == '100'
+    settings_content = settings_path.read_text(encoding='utf-8')
+    assert 'minvalidfps = 21' in settings_content or 'minvalidfps=21' in settings_content
+    assert 'idle_fps_cap = 35' in settings_content or 'idle_fps_cap=35' in settings_content
+    assert 'profileonstartup_name = LegacyGame.exe' in settings_content or 'profileonstartup_name=LegacyGame.exe' in settings_content
+    restarted = manager()
+    assert restarted.Default_settings['minvalidfps'] == 21
+    assert restarted.Default_settings['idle_fps_cap'] == 35
+    assert restarted.Default_settings['profileonstartup_name'] == 'LegacyGame.exe'
+
+
+def test_partial_config_creation_missing_profiles(manager, tmp_path):
+    directory = tmp_path / 'config'
+    directory.mkdir()
+    settings_path = directory / 'settings.ini'
+    profiles_path = directory / 'profiles.ini'
+    settings_path.write_text('[Preferences]\nshowtooltip=False\n[GlobalSettings]\nminvalidfps=31\n', encoding='utf-8')
+    settings_before = settings_path.read_bytes()
+    assert not profiles_path.exists()
+    cm = manager()
+    assert profiles_path.exists()
+    assert settings_path.read_bytes() == settings_before
+    assert cm.showtooltip is False
+    assert cm.Default_settings['minvalidfps'] == 31
+    assert cm.profiles_config.has_section('Global')
+    assert cm.profiles_config['Global']['maxcap'] == '114'
+
+
+def test_pre_launch_and_ui_scale_missing_and_corrupt(tmp_path):
+    base = tmp_path / 'core'
+    assert _is_first_launch(base) is True
+    assert read_preference(base / 'config' / 'settings.ini') == 'Auto'
+    directory = base / 'config'
+    directory.mkdir(parents=True)
+    settings = directory / 'settings.ini'
+    settings.write_text('[Other]\nkey=val\n', encoding='utf-8')
+    assert _is_first_launch(base) is True
+    assert read_preference(settings) == 'Auto'
+    settings.write_text('[Preferences]\nui_scale=invalid%\nfirst_launch_done=invalid\n', encoding='utf-8')
+    assert _is_first_launch(base) is True
+    assert read_preference(settings) == 'Auto'
+    settings.write_text('[Preferences]\nui_scale=125%%\nfirst_launch_done=False\n', encoding='utf-8')
+    assert _is_first_launch(base) is True
+    assert read_preference(settings) == '125%'
+    settings.write_bytes(b'[Preferences]\nui_scale=\xff\n')
+    assert _is_first_launch(base) is True
+    with pytest.raises(UnicodeDecodeError):
+        read_preference(settings)
+    settings.write_text('[Preferences]\nfirst_launch_done=True\nui_scale=200%\n', encoding='utf-8')
+    assert _is_first_launch(base) is False
+    assert read_preference(settings) == '200%'
+
