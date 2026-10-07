@@ -504,6 +504,9 @@ def monitoring_loop(captured_session):
                                     CurrentFPSOffset = next_fps - current_maxcap
                                     _write_cap(current_profile, next_fps, "decrease")
                                     gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                    observer = globals().get("_acceptance_runtime")
+                                    if observer is not None:
+                                        observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                     should_decrease = should_increase = False
 
                         # --- COOLDOWN LOGIC ---
@@ -540,6 +543,9 @@ def monitoring_loop(captured_session):
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        observer = globals().get("_acceptance_runtime")
+                                        if observer is not None:
+                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
                             except ValueError:
@@ -559,6 +565,9 @@ def monitoring_loop(captured_session):
                                         CurrentFPSOffset = next_fps - current_maxcap
                                         _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                        observer = globals().get("_acceptance_runtime")
+                                        if observer is not None:
+                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                         should_decrease = should_increase = False
                                         increase_cooldown = cm.delaybeforeincrease  # Start cooldown
             else:

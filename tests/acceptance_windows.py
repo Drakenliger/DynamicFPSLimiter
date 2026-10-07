@@ -97,6 +97,7 @@ class Runtime:
         self.due = 0
         self.switches = []
         self.clear_observations = []
+        self.clear_write_indices = set()
         self.lock = threading.Lock()
         self.gui_thread = threading.get_ident()
         self.transitions = {}
@@ -227,6 +228,23 @@ class Runtime:
             self.errors.append('retired worker appended history')
         self.samples.append((session, revision))
 
+    def reset_observed(self, session, revision, history):
+        # Called under the session lock immediately after actual state assignment.
+        with self.lock:
+            index = len(self.rows) - 1
+            if index < 0 or index in self.clear_write_indices:
+                return
+            row = self.rows[index]
+            if (row['reason'] not in ('decrease', 'increase')
+                    or int(row['session_number']) != session
+                    or self.revisions.get(row['time']) != revision):
+                return
+            self.clear_write_indices.add(index)
+            self.clear_observations.append(
+                not self.app['fps_values'] and not self.app['gpu_values']
+                and not self.app['cpu_values'] and self.app['fps_mean'] == 0
+                and history == (0, 0))
+
     def release_barriers(self):
         for _, _, release in self.barriers:
             release.set()
@@ -252,15 +270,27 @@ class Runtime:
         pending = []
         while exit_rows and int(exit_rows[0]['session_number']) == exit_session - 1:
             pending.append(exit_rows.pop(0))
-        self.evidence['exit_restored'] = controlled and all(
-            r['profile'] == 'pythonw.exe' and r['reason'] in ('decrease', 'increase')
-            and 24 <= float(r['new_cap']) <= 48 for r in pending
-        ) and len(exit_rows) == 2 and [r['reason'] for r in exit_rows] == ['exit', 'exit_refresh'] and all(
+        chain_cap = self.evidence['exit_pre_cap']
+        chain_valid = chain_cap is not None and 24 <= float(chain_cap) < 48
+        for row in pending:
+            old, new = row.get('old_cap'), float(row['new_cap'])
+            chain_valid = (chain_valid and row['profile'] == 'pythonw.exe'
+                           and old not in (None, '') and float(old) == float(chain_cap)
+                           and new in (24, 36, 48)
+                           and ((row['reason'] == 'decrease' and new < float(old))
+                                or (row['reason'] == 'increase' and new > float(old))))
+            chain_cap = new
+        self.evidence['exit_restored'] = controlled and chain_valid and len(exit_rows) == 2 and [
+            r['reason'] for r in exit_rows] == ['exit', 'exit_refresh'] and all(
             r['profile'] == 'pythonw.exe' and int(r['session_number']) == exit_session
             and float(r['new_cap']) == 48 for r in exit_rows
-        ) and exit_rows[0].get('old_cap') not in (None, '') and 24 <= float(exit_rows[0]['old_cap']) < 48
+        ) and exit_rows[0].get('old_cap') not in (None, '') and float(
+            exit_rows[0]['old_cap']) == float(chain_cap) and exit_rows[1].get('old_cap') not in (
+                None, '') and float(exit_rows[1]['old_cap']) == 48
         self.evidence['exit_readback'] = float(app['rtss'].get_framerate_limit('pythonw.exe', True))
-        self.evidence['cleared'] = bool(self.clear_observations) and all(self.clear_observations)
+        self.evidence['cleared'] = (bool(self.clear_observations) and all(self.clear_observations)
+                                    and self.clear_write_indices == {i for i, row in enumerate(self.rows)
+                                        if row['reason'] in ('decrease', 'increase')})
         with self.lock:
             rows = list(self.rows)
             decisions = list(self.decisions)
@@ -296,12 +326,6 @@ class Runtime:
             self.errors.append('scenario deadline exceeded')
             self.finish(app)
             return False
-        with app['session_lock']:
-            if self.rows and self.rows[-1]['reason'] in ('decrease', 'increase'):
-                row = self.rows[-1]
-                if time.time()-float(row['time']) < .25:
-                    empty = not app['fps_values'] and not app['gpu_values'] and not app['cpu_values'] and app['fps_mean'] == 0
-                    self.clear_observations.append(empty)
         if now < self.due:
             return
         if self.stage == 'restart_start':
