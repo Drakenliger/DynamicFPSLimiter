@@ -235,7 +235,7 @@ class TrayManager:
         for m in methods:
             def make_callback(method_name):
                 def _do():
-                    self.dpg.set_value("input_capmethod", method_name)
+                    self.dpg.set_value("input_capmethod", method_name.capitalize())
                     self._select_method_from_tray(method_name)
                 return lambda icon, item: self._run_on_main(_do)
             yield MenuItem(
