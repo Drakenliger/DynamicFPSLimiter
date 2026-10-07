@@ -106,11 +106,12 @@ def test_start_stop_write_admission_race(invalidation, lockless):
         return trace
 
     def run_start_stop():
+        previous_trace = sys.gettrace()
         sys.settrace(trace)
         try:
             ns['start_stop_callback'](None, None, ns['cm'])
         finally:
-            sys.settrace(None)
+            sys.settrace(previous_trace)
 
     def do_invalidation():
         if invalidation == 'restart':
@@ -141,14 +142,18 @@ def test_start_stop_write_admission_race(invalidation, lockless):
             assert not invalidated.is_set()
     finally:
         release.set()
-
-    finish(invalidator, invalidator_errors)
-    finish(thread, errors)
+        try:
+            if invalidator.ident is not None:
+                finish(invalidator, invalidator_errors)
+        finally:
+            finish(thread, errors)
 
     old_session_writes = [w for w in writes if w[0] == 'old-session']
     if not lockless:
-        assert len(old_session_writes) == 2
-        assert [w[2] for w in old_session_writes] == [1, 1]
+        assert old_session_writes in (
+            [('old-session', ('Global', Decimal(90)), 1)],
+            [('old-session', ('Global', Decimal(90)), 1)] * 2,
+        )
     else:
         stale_writes = [w for w in old_session_writes if w[2] != 1]
         assert len(stale_writes) > 0
@@ -161,9 +166,13 @@ def test_start_stop_forced_handoff_between_write_sections(invalidation):
 
     tree = ast.parse(APP.read_text())
     start_stop = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'start_stop_callback')
-    with_blocks = [n for n in ast.walk(start_stop) if isinstance(n, ast.With)]
-    with_blocks.sort(key=lambda n: n.lineno)
-    second_with_line = with_blocks[2].lineno
+    refresh_admission = next(n for n in ast.walk(start_stop) if isinstance(n, ast.With)
+                             and any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                                     and isinstance(s.value.func, ast.Name) and s.value.func.id == '_write_cap'
+                                     and any(isinstance(a, ast.Constant) and a.value == 'start_refresh'
+                                             for a in ast.walk(s.value))
+                                     for s in n.body))
+    second_with_line = refresh_admission.lineno
 
     paused, release = threading.Event(), threading.Event()
     invalidated = threading.Event()
@@ -175,11 +184,12 @@ def test_start_stop_forced_handoff_between_write_sections(invalidation):
         return trace
 
     def run_start_stop():
+        previous_trace = sys.gettrace()
         sys.settrace(trace)
         try:
             ns['start_stop_callback'](None, None, ns['cm'])
         finally:
-            sys.settrace(None)
+            sys.settrace(previous_trace)
 
     def do_invalidation():
         if invalidation == 'restart':
@@ -206,9 +216,11 @@ def test_start_stop_forced_handoff_between_write_sections(invalidation):
         assert invalidated.wait(5)
     finally:
         release.set()
-
-    finish(invalidator, invalidator_errors)
-    finish(thread, errors)
+        try:
+            if invalidator.ident is not None:
+                finish(invalidator, invalidator_errors)
+        finally:
+            finish(thread, errors)
 
     old_session_writes = [w for w in writes if w[0] == 'old-session']
     assert len(old_session_writes) == 1

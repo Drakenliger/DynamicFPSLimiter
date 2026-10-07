@@ -1,11 +1,13 @@
 """Profile switches within an existing monitoring session, without app import."""
+import ast
 from decimal import Decimal
+import sys
 import threading
 
 import pytest
 
 from core.cap_policy import build_cap_model
-from test_app_session import load_app, worker, finish
+from test_app_session import load_app, worker, finish, APP
 
 LADDERS = {
     'Global': [Decimal(60), Decimal(90), Decimal(120)],
@@ -112,11 +114,7 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
                 return result
             ns['next_cap_on_decrease'] = cap
         elif scenario == 'increase':
-            def custom_eval(*args):
-                res = (False, True)
-                pause()
-                return res
-            ns['fps_utils'].evaluate_cap_change = custom_eval
+            lookup_line, _ = increase_locations(ast.parse(APP.read_text()), 'ladder')
         else:
             def decision(_):
                 pause()
@@ -127,7 +125,12 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
         ns['running'] = False
     ns['time'].sleep = sleep
 
-    thread, errors = worker(lambda: ns['monitoring_loop'](1))
+    def run():
+        if scenario == 'increase' and pause_at == 'cap':
+            run_at_lookup(ns, lookup_line, pause)
+        else:
+            ns['monitoring_loop'](1)
+    thread, errors = worker(run)
     history_before = None
     try:
         assert paused.wait(5)
@@ -145,11 +148,12 @@ def test_paused_old_profile_pass_cannot_admit_state_or_cap(scenario, pause_at):
         assert ns['running'] is True
     finally:
         release.set()
-
-    finish(thread, errors)
+        finish(thread, errors)
     assert not any(w[1][0] == 'Global' for w in writes)
     history_after = (list(ns['fps_values']), list(ns['gpu_values']), list(ns['cpu_values']), ns['fps_mean'])
     assert history_after == history_before
+    if scenario == 'increase':
+        assert ns['CurrentFPSOffset'] == -5
 
 
 def test_profile_change_discards_idle_cached_active_cap():
@@ -257,7 +261,9 @@ def test_profile_switch_waits_for_admitted_cap_write():
             assert release.wait(5)
         original_write(*args)
     ns['rtss'].set_fractional_framerate = write
-    ns['time'].sleep = lambda _: switched.wait(5)
+    def sleep(_):
+        assert switched.wait(5)
+    ns['time'].sleep = sleep
     switch_errors = []
     def switch():
         try:
@@ -283,3 +289,95 @@ def test_profile_switch_waits_for_admitted_cap_write():
     finish(thread, errors)
     assert [w[1] for w in writes] == [('Global', Decimal(90))]
     assert ns['CurrentFPSOffset'] == 0
+
+
+def increase_locations(tree, arm):
+    """Locate the actual lookup and its write admission by semantic context."""
+    monitor = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                   and n.name == 'monitoring_loop')
+    increase_try = next(n for n in ast.walk(monitor) if isinstance(n, ast.Try)
+                        and any(isinstance(h.type, ast.Name) and h.type.id == 'ValueError'
+                                for h in n.handlers))
+    body = increase_try.body if arm == 'ladder' else increase_try.handlers[0].body
+    nodes = [n for statement in body for n in ast.walk(statement)]
+    lookup = next(n for n in nodes if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == 'next_fps' for t in n.targets)
+                  and isinstance(n.value, ast.Subscript)
+                  and isinstance(n.value.value, ast.Name)
+                  and n.value.value.id == 'fps_limit_list')
+    admission = next(n for n in nodes if isinstance(n, ast.With)
+                     and any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                             and isinstance(s.value.func, ast.Name) and s.value.func.id == '_write_cap'
+                             for s in n.body))
+    return lookup.lineno, admission
+
+
+def run_at_lookup(ns, line, pause):
+    def trace(frame, event, arg):
+        if (frame.f_globals is ns and frame.f_code.co_name == 'monitoring_loop'
+                and event == 'line' and frame.f_lineno == line):
+            pause()
+        return trace
+    previous_trace = sys.gettrace()
+    sys.settrace(trace)
+    try:
+        ns['monitoring_loop'](1)
+    finally:
+        sys.settrace(previous_trace)
+
+
+@pytest.mark.parametrize('arm', ['ladder', 'non-ladder'])
+@pytest.mark.parametrize('remove_guard', [False, True], ids=['protected', 'actual-guard-removed'])
+def test_increase_lookup_profile_handoff(arm, remove_guard):
+    """Each final increase guard prevents an actual suspended old-model write."""
+    def transform(tree):
+        _, admission = increase_locations(tree, arm)
+        if remove_guard:
+            guard = next(n for n in admission.body if isinstance(n, ast.If)
+                         and ast.unparse(n.test) == 'captured_profile_revision != profile_revision')
+            admission.body.remove(guard)
+        return tree
+    ns, writes, _, _ = load_app(transform=transform)
+    setup_profile(ns, 'Global')
+    ns['CurrentFPSOffset'] = -30 if arm == 'ladder' else -25
+    ns['fps_utils'].evaluate_cap_change = lambda *_: (False, True)
+    lookup_line, _ = increase_locations(ast.parse(APP.read_text()), arm)
+    paused, release = threading.Event(), threading.Event()
+    def pause():
+        assert not paused.is_set()
+        paused.set()
+        assert release.wait(5)
+    ns['time'].sleep = lambda _: ns.update(running=False)
+    samples = 0
+    def sample():
+        nonlocal samples
+        samples += 1
+        if samples > 1:
+            ns['running'] = False
+        return Decimal(95), 'game'
+    ns['rtss_manager'].get_fps_for_active_window = sample
+    thread, errors = worker(lambda: run_at_lookup(ns, lookup_line, pause))
+    try:
+        assert paused.wait(5)
+        assert not writes
+        ns['_load_profile_on_gui']('gameB')
+        ns['CurrentFPSOffset'] = -5
+        ns['fps_values'][:] = [Decimal(45)]
+        ns['gpu_values'][:] = [25]
+        ns['cpu_values'][:] = [15]
+        ns['fps_mean'] = Decimal(45)
+        before = (list(ns['fps_values']), list(ns['gpu_values']),
+                  list(ns['cpu_values']), ns['fps_mean'])
+    finally:
+        release.set()
+        finish(thread, errors)
+    after = (list(ns['fps_values']), list(ns['gpu_values']),
+             list(ns['cpu_values']), ns['fps_mean'])
+    if remove_guard:
+        assert writes == [('old-session', ('Global', Decimal(120)), 1)]
+        assert ns['CurrentFPSOffset'] == 0
+        assert after == ([], [], [], 0)
+    else:
+        assert writes == []
+        assert ns['CurrentFPSOffset'] == -5
+        assert after == before
