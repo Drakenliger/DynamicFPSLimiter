@@ -1,5 +1,5 @@
 """Logical UI pixels → native pixels. No DPG import or Windows import side effects."""
-import configparser
+from core.config_io import new_config, read_config
 import ctypes
 from ctypes import wintypes
 
@@ -32,8 +32,8 @@ def titlebar_hit(point_xy, width, scale):
 
 
 def read_preference(path):
-    cfg = configparser.ConfigParser()
-    cfg.read(path)
+    cfg = new_config()
+    read_config(cfg, path)
     return normalize_preference(cfg.get("Preferences", "ui_scale", raw=True, fallback="Auto"))
 
 

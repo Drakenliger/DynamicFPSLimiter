@@ -274,10 +274,10 @@ def test_actual_startup_skips_popup_ini_read_and_needs_no_early_context(tmp_path
     """Execute every top-level startup statement through the main create_context.
 
     OS/GUI/hardware imports are faked; actual popup and ConfigManager code run.
-    The parser spy rejects every non-generated INI read, including popup reads.
+    The byte-read spy rejects every non-generated INI read, including popup reads.
     """
     import ast
-    import configparser
+    from core.config_io import new_config, read_config
     import os
     import runpy
     import threading
@@ -294,15 +294,13 @@ def test_actual_startup_skips_popup_ini_read_and_needs_no_early_context(tmp_path
     monkeypatch.setitem(sys.modules, 'core.config_manager', config_module)
     generated = tmp_path / 'generated'
     generated.mkdir()
-    real_read = configparser.ConfigParser.read
+    real_read = Path.read_bytes
     reads = []
-    def read(parser, filenames, *args, **kwargs):
-        paths = [filenames] if isinstance(filenames, (str, Path)) else filenames
-        for path in paths:
-            assert Path(path).parent == generated, f'real INI read: {path}'
-            reads.append(Path(path))
-        return real_read(parser, filenames, *args, **kwargs)
-    monkeypatch.setattr(configparser.ConfigParser, 'read', read)
+    def read(path):
+        assert path.parent == generated, f'real INI read: {path}'
+        reads.append(path)
+        return real_read(path)
+    monkeypatch.setattr(Path, 'read_bytes', read)
     # ConfigManager's constructor calls makedirs before its overridable loader.
     makedirs = os.makedirs
     monkeypatch.setattr(os, 'makedirs', lambda path, **kw: makedirs(path, **kw) if Path(path) == generated else None)
@@ -335,7 +333,7 @@ def test_actual_startup_skips_popup_ini_read_and_needs_no_early_context(tmp_path
         _acceptance_runtime=SimpleNamespace(configure_logging=lambda: None,
             config_factory=driver.generated_configs(generated), error_log_file=str(generated / 'limiter.log')))
     popup_path = driver.ROOT / 'src/core/launch_popup.py'
-    popup_env = dict(configparser=configparser, os=os, sys=sys, _loading_popup_active=False)
+    popup_env = dict(new_config=new_config, read_config=read_config, os=os, sys=sys, _loading_popup_active=False)
     popup_functions = [n for n in ast.parse(popup_path.read_text()).body if isinstance(n, ast.FunctionDef)]
     exec(compile(ast.Module(body=popup_functions, type_ignores=[]), str(popup_path), 'exec'), popup_env)
     env.update({name: popup_env[name] for name in ('show_loading_popup', 'hide_loading_popup', 'show_rtss_error_and_exit')})
