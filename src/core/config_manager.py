@@ -349,8 +349,10 @@ class ConfigManager:
         self.logger.add_log("UI scale saved; restart required")
 
     def load_preferences(self):
-        self.ui_scale = normalize_preference(self.settings_config.get("Preferences", "ui_scale", fallback="Auto"))
+        self.ui_scale = normalize_preference(self.settings_config.get("Preferences", "ui_scale", raw=True, fallback="Auto"))
         for key in self.settings_config["Preferences"]:
+            if key == "ui_scale":
+                continue
             value = self.settings_config["Preferences"][key]
             value_type = self.key_type_map.get(key, str)
             if value_type is bool:

@@ -143,7 +143,8 @@ class FPSUtils:
             max_fps = max(fps_limits)
             fps_range = max_fps - min_fps
             for cap in fps_limits:
-                x_pos = margin + int((cap - min_fps) / fps_range * (draw_width - margin))
+                # Project to drawing coordinates only; retain Decimal cap values.
+                x_pos = margin + int(float((cap - min_fps) / fps_range) * (draw_width - margin))
                 y_pos = layer2_height // 2
                 dpg.draw_circle(
                     (x_pos, y_pos),

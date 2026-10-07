@@ -241,7 +241,7 @@ if __name__ == "__main__":
     # Get the base directory
     Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     
-    dpg_mod = _default_dpg()
+    dpg_mod = _scaled_popup_dpg(_default_dpg())
     # Create context and apply fonts/themes
     dpg_mod.create_context()
     themes_manager = ThemesManager(Base_dir, dpg_mod)

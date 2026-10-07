@@ -7,6 +7,7 @@ UI_SCALE_CHOICES = ("Auto", "100%", "125%", "150%", "175%", "200%", "250%", "300
 
 
 def normalize_preference(value):
+    value = value.replace("%%", "%") if isinstance(value, str) else value
     return value if value in UI_SCALE_CHOICES else "Auto"
 
 
@@ -33,7 +34,7 @@ def titlebar_hit(point_xy, width, scale):
 def read_preference(path):
     cfg = configparser.ConfigParser()
     cfg.read(path)
-    return normalize_preference(cfg.get("Preferences", "ui_scale", fallback="Auto"))
+    return normalize_preference(cfg.get("Preferences", "ui_scale", raw=True, fallback="Auto"))
 
 
 def _prototype(function, args, result):
@@ -140,10 +141,25 @@ class ScaledDPG:
                 if not kwargs.get("width_stretch", False) and "init_width_or_weight" in kwargs:
                     kwargs["init_width_or_weight"] = pixels(kwargs["init_width_or_weight"], self.scale)
             elif name == "add_theme_style":
-                style = args[0]
-                keys = ["mvStyleVar_" + s for s in _STYLES] + ["mvPlotStyleVar_" + s for s in _PLOT_STYLES]
-                if any(style == getattr(self.raw, key, None) for key in keys):
-                    args[1:] = [v * self.scale for v in args[1:]]
+                style = args[0] if args else kwargs.get("target")
+                category = kwargs.get("category", getattr(self.raw, "mvThemeCat_Core", 0))
+                if category == getattr(self.raw, "mvThemeCat_Core", 0):
+                    keys = ["mvStyleVar_" + s for s in _STYLES]
+                elif category == getattr(self.raw, "mvThemeCat_Plots", 1):
+                    keys = ["mvPlotStyleVar_" + s for s in _PLOT_STYLES]
+                else:
+                    keys = []
+                pixel_ids = {getattr(self.raw, key, None) for key in keys}
+                pixel_ids.discard(None)
+                if style in pixel_ids:
+                    # DPG target/x/y may be positional; category is keyword-only.
+                    # Negative y retains DPG's unspecified/default sentinel.
+                    for index, key in ((1, "x"), (2, "y")):
+                        if len(args) > index:
+                            if key != "y" or args[index] >= 0:
+                                args[index] *= self.scale
+                        elif key in kwargs and (key != "y" or kwargs[key] >= 0):
+                            kwargs[key] *= self.scale
             elif name.startswith("set_viewport_max_"):
                 args[0] = pixels(args[0], self.scale)
             else:

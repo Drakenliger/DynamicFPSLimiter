@@ -327,39 +327,40 @@ def test_awareness_precedes_actual_loading_call_and_acceptance_reads_no_real_pre
 
 
 def test_actual_scaled_popup_contexts_and_hit_test(monkeypatch):
-    import sys
-    import types
-    # Only OS tray imports are replaced, never popup implementation or DPG calls.
-    pystray = types.ModuleType('pystray')
-    pystray.Icon = pystray.MenuItem = pystray.Menu = lambda *a, **k: None
-    monkeypatch.setitem(sys.modules, 'pystray', pystray)
-    from core import launch_popup as lp
-    monkeypatch.setenv('WINDIR', '/windows')
-    centers = []
-    monkeypatch.setattr(lp.TrayManager, 'get_centered_viewport_position',
-                        staticmethod(lambda w, h: centers.append((w, h)) or (100, 200)))
-    monkeypatch.setattr(lp.tray_functions, 'get_mouse_screen_pos', lambda: (500, 100))
-    raw = RecordingDPG()
-    dpg = ScaledDPG(raw, 2)
-    lp._loading_popup_active = False
-    lp.show_loading_popup('loading', Base_dir='/not-real', dpg=dpg)
-    assert centers[-1] == (600, 100)
-    loading = next(k for n,a,k in raw.calls if n == 'create_viewport')
-    assert (loading['width'], loading['height'], loading['x_pos']) == (600,100,100)
-    with pytest.raises(SystemExit):
-        lp.show_rtss_error_and_exit('/not-real.dll', dpg=dpg)
-    names = [n for n,a,k in raw.calls]
-    assert names.index('destroy_context') < names.index('create_context', names.index('create_context') + 1)
-    assert centers[-1] == (840,640)
-    handler = lp.ScaledPopupDragHandler(840, dpg)
-    raw.get_mouse_pos = lambda **kw: (600,79)
-    raw.is_mouse_button_down = lambda _: True
-    raw.get_viewport_pos = lambda: (100,200)
-    handler.on_mouse_click(None,None,None)
-    assert handler._dragging_viewport
-    raw.get_mouse_pos = lambda **kw: (690,79)
-    handler.on_mouse_click(None,None,None)
-    assert not handler._dragging_viewport
+    with isolated_popup_modules(), monkeypatch.context() as monkeypatch:
+        import sys
+        import types
+        # Only OS tray imports are replaced, never popup implementation or DPG calls.
+        pystray = types.ModuleType('pystray')
+        pystray.Icon = pystray.MenuItem = pystray.Menu = lambda *a, **k: None
+        monkeypatch.setitem(sys.modules, 'pystray', pystray)
+        from core import launch_popup as lp
+        monkeypatch.setenv('WINDIR', '/windows')
+        centers = []
+        monkeypatch.setattr(lp.TrayManager, 'get_centered_viewport_position',
+                            staticmethod(lambda w, h: centers.append((w, h)) or (100, 200)))
+        monkeypatch.setattr(lp.tray_functions, 'get_mouse_screen_pos', lambda: (500, 100))
+        raw = RecordingDPG()
+        dpg = ScaledDPG(raw, 2)
+        lp._loading_popup_active = False
+        lp.show_loading_popup('loading', Base_dir='/not-real', dpg=dpg)
+        assert centers[-1] == (600, 100)
+        loading = next(k for n,a,k in raw.calls if n == 'create_viewport')
+        assert (loading['width'], loading['height'], loading['x_pos']) == (600,100,100)
+        with pytest.raises(SystemExit):
+            lp.show_rtss_error_and_exit('/not-real.dll', dpg=dpg)
+        names = [n for n,a,k in raw.calls]
+        assert names.index('destroy_context') < names.index('create_context', names.index('create_context') + 1)
+        assert centers[-1] == (840,640)
+        handler = lp.ScaledPopupDragHandler(840, dpg)
+        raw.get_mouse_pos = lambda **kw: (600,79)
+        raw.is_mouse_button_down = lambda _: True
+        raw.get_viewport_pos = lambda: (100,200)
+        handler.on_mouse_click(None,None,None)
+        assert handler._dragging_viewport
+        raw.get_mouse_pos = lambda **kw: (690,79)
+        handler.on_mouse_click(None,None,None)
+        assert not handler._dragging_viewport
 
 
 def test_actual_new_config_defaults_auto(tmp_path, monkeypatch):
@@ -379,3 +380,192 @@ def test_actual_new_config_defaults_auto(tmp_path, monkeypatch):
     restarted = config_class(NS(add_log=lambda *a: None), RecordingDPG(), NS(), None,
                              NS(themes={}), str(tmp_path / 'core'))
     assert restarted.ui_scale == '200%'
+
+
+@contextlib.contextmanager
+def isolated_popup_modules():
+    """Fresh popup imports, restoring exact cached modules and package attributes."""
+    import sys
+    import core
+    names = ('tray_functions', 'drag_helper', 'launch_popup')
+    absent = object()
+    modules = {name: sys.modules.get('core.' + name, absent) for name in names}
+    attrs = {name: vars(core).get(name, absent) for name in names}
+    try:
+        for name in names:
+            sys.modules.pop('core.' + name, None)
+            vars(core).pop(name, None)
+        yield
+    finally:
+        for name in names:
+            if modules[name] is absent:
+                sys.modules.pop('core.' + name, None)
+            else:
+                sys.modules['core.' + name] = modules[name]
+            if attrs[name] is absent:
+                vars(core).pop(name, None)
+            else:
+                setattr(core, name, attrs[name])
+
+
+@pytest.mark.parametrize('preloaded', [False, True])
+def test_popup_import_cleanup_and_later_import(preloaded, monkeypatch):
+    import sys
+    import types
+    import core
+    import importlib
+    with isolated_popup_modules(), monkeypatch.context() as mp:
+        originals = {}
+        if preloaded:
+            dependency = types.ModuleType('pystray')
+            dependency.Icon = dependency.MenuItem = dependency.Menu = type('OriginalMenu', (), {})
+            mp.setitem(sys.modules, 'pystray', dependency)
+            for name in ('tray_functions', 'drag_helper', 'launch_popup'):
+                module = importlib.import_module('core.' + name)
+                originals[name] = module
+            originals['launch_popup']._loading_popup_active = True
+        original_globals = {name: dict(vars(module)) for name, module in originals.items()}
+        test_actual_scaled_popup_contexts_and_hit_test(monkeypatch)
+        for name in ('tray_functions', 'drag_helper', 'launch_popup'):
+            if preloaded:
+                assert sys.modules['core.' + name] is originals[name]
+                assert getattr(core, name) is originals[name]
+                assert vars(originals[name]) == original_globals[name]
+            else:
+                assert 'core.' + name not in sys.modules
+                assert name not in vars(core)
+        # Later imports execute the production tray source with the new dependency,
+        # rather than retaining the previous test's lambda Menu.
+        with isolated_popup_modules():
+            dependency = types.ModuleType('pystray')
+            class Menu:
+                pass
+            dependency.Menu = dependency.Icon = dependency.MenuItem = Menu
+            with monkeypatch.context() as later:
+                later.setitem(sys.modules, 'pystray', dependency)
+                tray = importlib.import_module('core.tray_functions')
+                assert tray.Menu is Menu
+
+
+@pytest.mark.parametrize('scale,width,expected', [
+    (1, 610, [10, 285, 543]), (1.5, 915, [15, 428, 814]),
+    (2, 1220, [20, 570, 1086]), (3, 1830, [30, 855, 1629])])
+def test_actual_decimal_parser_and_ladder(scale, width, expected, monkeypatch):
+    import runpy
+    import sys
+    import types
+    from decimal import Decimal
+    hardware = types.ModuleType('core.librehardwaremonitor')
+    hardware.get_all_sensor_infos = lambda *a: []
+    monkeypatch.setitem(sys.modules, 'core.librehardwaremonitor', hardware)
+    cls = runpy.run_path(str(ROOT / 'src/core/config_manager.py'))['ConfigManager']
+    cm = cls.__new__(cls)
+    cm.logger = NS(add_log=lambda *a: None)
+    raw = RecordingDPG()
+    raw.width = width
+    raw.values.update(input_maxcap=60, input_mincap=30, input_capstep=5,
+                      input_capratio=10, input_capmethod='Custom',
+                      input_customfpslimits='30, 45.5, 59.99')
+    ns = functions('src/core/fps_utils.py',
+                   {'current_stepped_limits', 'update_fps_cap_visualization'}, {})
+    fps = NS(cm=cm, dpg=ScaledDPG(raw, scale), viewport_width=610, last_fps_limits=[])
+    fps.current_stepped_limits = lambda: ns['current_stepped_limits'](fps)
+    caps = fps.current_stepped_limits()
+    assert caps == [Decimal('30.00'), Decimal('45.50'), Decimal('59.99')]
+    assert all(isinstance(cap, Decimal) for cap in caps)
+    ns['update_fps_cap_visualization'](fps)
+    assert [a[0][0] for n,a,k in raw.calls if n == 'draw_circle'] == expected
+    assert fps.last_fps_limits == caps
+    assert [a[1] for n,a,k in raw.calls if n == 'draw_text'] == ['30.00', '45.50', '59.99']
+
+
+class NumericStyleDPG(RecordingDPG):
+    # DPG 2.0 values from its pinned ImGui/ImPlot enums.
+    mvThemeCat_Core, mvThemeCat_Plots, mvThemeCat_Nodes = 0, 1, 2
+    mvStyleVar_Alpha = mvPlotStyleVar_LineWeight = 0
+    mvStyleVar_PopupBorderSize = mvPlotStyleVar_MinorAlpha = 10
+    mvStyleVar_WindowPadding = 2
+    mvPlotStyleVar_Marker = 1
+    mvPlotStyleVar_FitPadding = 24
+    mvPlotStyleVar_MajorTickSize = 13
+    mvPlotStyleVar_MajorGridSize = 15
+
+
+def test_numeric_style_categories_and_real_call_forms():
+    raw = NumericStyleDPG()
+    dpg = ScaledDPG(raw, 2)
+    for target, value, category in [(0, .5, 0), (10, .2, 1), (24, .25, 1), (1, 3, 1), (10, 4, 2)]:
+        dpg.add_theme_style(target, value, category=category)
+        assert raw.calls[-1][1] == (target, value)
+    dpg.add_theme_style(0, 2, -1, category=1)
+    assert raw.calls[-1][1] == (0, 4, -1)
+    dpg.add_theme_style(target=24, x=.1, y=.2, category=1)
+    assert raw.calls[-1][2] == dict(target=24, x=.1, y=.2, category=1)
+    dpg.add_theme_style(target=10, x=3, y=-1)
+    assert raw.calls[-1][2] == dict(target=10, x=6, y=-1)
+    dpg.add_theme_style(2, x=10, y=8)
+    assert raw.calls[-1][1] == (2,)
+    assert raw.calls[-1][2] == dict(x=20, y=16)
+    dpg.add_theme_style(target=13, x=1, y=2, category=1)
+    assert raw.calls[-1][2] == dict(target=13, x=2, y=4, category=1)
+    dpg.add_theme_style(15, 1, 2, category=1)
+    assert raw.calls[-1][1] == (15, 2, 4)
+
+
+@pytest.mark.parametrize('stored,expected', [('150%', '150%'), ('150%%', '150%'),
+                                            ('unknown', 'Auto'), (None, 'Auto')])
+def test_actual_config_and_startup_raw_scale(tmp_path, monkeypatch, stored, expected):
+    import runpy
+    import sys
+    import types
+    hardware = types.ModuleType('core.librehardwaremonitor')
+    hardware.get_all_sensor_infos = lambda *a: []
+    monkeypatch.setitem(sys.modules, 'core.librehardwaremonitor', hardware)
+    cls = runpy.run_path(str(ROOT / 'src/core/config_manager.py'))['ConfigManager']
+    cm = cls(NS(add_log=lambda *a: None), RecordingDPG(), NS(), None,
+             NS(themes={}), str(tmp_path / 'core'))
+    path = Path(cm.settings_path)
+    text = path.read_text()
+    text = text.replace('ui_scale = Auto', '' if stored is None else 'ui_scale = ' + stored)
+    path.write_text(text)
+    restarted = cls(NS(add_log=lambda *a: None), RecordingDPG(), NS(), None,
+                    NS(themes={}), str(tmp_path / 'core'))
+    assert restarted.ui_scale == read_preference(path) == expected
+    assert restarted.showtooltip is True
+    restarted.update_ui_scale_preference(None, '150%')
+    assert 'ui_scale = 150%%' in path.read_text()
+    assert read_preference(path) == '150%'
+    restarted.load_preferences()
+    assert restarted.ui_scale == '150%'
+
+
+def test_actual_popup_main_block(monkeypatch):
+    import sys
+    with isolated_popup_modules(), monkeypatch.context() as mp:
+        import types
+        dependency = types.ModuleType('pystray')
+        dependency.Icon = dependency.MenuItem = dependency.Menu = lambda *a, **k: None
+        mp.setitem(sys.modules, 'pystray', dependency)
+        from core import launch_popup as lp
+        mp.setenv('WINDIR', '/windows')
+        raw = RecordingDPG()
+        events = []
+        mp.setattr(lp, 'enable_native_dpi', lambda: events.append('dpi'))
+        mp.setattr(lp, 'primary_monitor_dpi', lambda: 192)
+        centers = []
+        mp.setattr(lp.TrayManager, 'get_centered_viewport_position',
+                   staticmethod(lambda w,h: centers.append((w,h)) or (123,456)))
+        ns = dict(vars(lp), __name__='__main__', _default_dpg=lambda: raw)
+        tree = ast.parse((ROOT / 'src/core/launch_popup.py').read_text())
+        main = next(n for n in tree.body if isinstance(n, ast.If)
+                    and isinstance(n.test, ast.Compare)
+                    and isinstance(n.test.left, ast.Name) and n.test.left.id == '__name__')
+        exec(compile(ast.Module(body=[main], type_ignores=[]), 'launch_popup.py', 'exec'), ns)
+        assert events == ['dpi']
+        assert isinstance(ns['dpg_mod'], ScaledDPG)
+        assert centers == [(840, 640)]
+        viewport = next(k for n,a,k in raw.calls if n == 'create_viewport')
+        assert (viewport['width'], viewport['height']) == (840,640)
+        assert (viewport['x_pos'], viewport['y_pos']) == (123,456)
+        assert next(n for n,a,k in raw.calls) == 'create_context'
+        assert [a[1] for n,a,k in raw.calls if n == 'add_font'] == [36,36,28,48]
