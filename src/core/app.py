@@ -437,8 +437,7 @@ def _load_profile_on_gui(profile_name, expected_session=None, expected_revision=
                 logger.add_log(f"Profile rollback UI refresh failed: {refresh_exc}")
             if restored:
                 try:
-                    if _write_cap(outgoing, outgoing_cap, "profile_rollback") is False:
-                        logger.add_log("Profile transition rollback cap write failed.")
+                    _write_cap(outgoing, outgoing_cap, "profile_rollback")
                 except Exception as rollback_exc:
                     logger.add_log(f"Profile transition rollback failed: {rollback_exc}")
             logger.add_log(f"Profile transition to {profile_name} failed: {exc}")
