@@ -494,6 +494,55 @@ def test_actual_finish_requires_new_controlled_exit_restoration(tmp_path, monkey
         assert runtime.evidence['exit_readback'] == 48
 
 
+@pytest.mark.parametrize('fault', ['none', 'missing_prefix', 'wrong_drop_old', 'wrong_drop_cap',
+                                  'missing_restore', 'missing_refresh', 'wrong_refresh'])
+def test_finish_snapshot_includes_real_monitor_drop_at_session_lock_release(tmp_path, monkeypatch, fault):
+    from decimal import Decimal
+    runtime, ns, state = exit_runtime(tmp_path, monkeypatch, cap=36)
+    ns['CurrentFPSOffset'] = Decimal(-12)
+    ns['dpg'].get_value = lambda _: 'LibreHM'
+    class EndPass(Exception):
+        pass
+    ns['time'].sleep = lambda _: (_ for _ in ()).throw(EndPass())
+    record = ns['cap_change_log'].record
+    def observe(row):
+        row = list(row)
+        if (row[5], fault) in [('decrease', 'missing_prefix'), ('exit', 'missing_restore'),
+                               ('exit_refresh', 'missing_refresh')]:
+            return
+        if row[5] == 'decrease' and fault == 'wrong_drop_old':
+            row[3] = 48
+        elif row[5] == 'decrease' and fault == 'wrong_drop_cap':
+            row[4] = 36
+        elif row[5] == 'exit_refresh' and fault == 'wrong_refresh':
+            row[4] = 36
+        record(row)
+    ns['cap_change_log'].record = observe
+    real_lock = ns['session_lock']
+    class SnapshotBoundary:
+        armed = True
+        def __enter__(self):
+            real_lock.acquire()
+        def __exit__(self, *args):
+            real_lock.release()
+            if self.armed:
+                self.armed = False
+                with pytest.raises(EndPass):
+                    ns['monitoring_loop'](1)
+                assert state['cap'] == 24 and ns['session_number'] == 1 and ns['running']
+    ns['session_lock'] = SnapshotBoundary()
+    runtime.finish(ns)
+    assert runtime.evidence['exit_pre_cap'] == 36
+    assert runtime.evidence['exit_readback'] == state['cap'] == 48
+    assert ns['session_number'] == 2 and not ns['running']
+    assert runtime.evidence['exit_restored'] is (fault == 'none')
+    assert expectations(runtime.evidence)[SCENARIOS[4]]['status'] == ('PASS' if fault == 'none' else 'FAIL')
+    if fault == 'none':
+        assert [(r['reason'], int(r['session_number']), float(r['old_cap']), float(r['new_cap']))
+                for r in runtime.rows[4:]] == [('decrease', 1, 36, 24), ('exit', 2, 24, 48),
+                                             ('exit_refresh', 2, 48, 48)]
+
+
 @pytest.mark.parametrize('cap', [48, None, 0])
 def test_actual_frame_final_drop_timeout_is_explicit(tmp_path, monkeypatch, cap):
     from acceptance_support import final_results

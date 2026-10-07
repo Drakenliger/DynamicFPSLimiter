@@ -254,14 +254,14 @@ class Runtime:
         self.evidence['switch_ladders'] = self.switches
         self.evidence['live_rtss_samples'] = self.live_rtss_samples
         # Release the non-reentrant session lock before exit_gui acquires it.
-        with app.get('session_lock', self.lock):
+        with app.get('session_lock', threading.Lock()):
             self.evidence['exit_running'] = app['running']
             self.evidence['exit_pre_cap'] = app['rtss'].get_framerate_limit('pythonw.exe', True)
             exit_session = app.get('session_number', -2) + 1
             controlled = (app.get('cm') is not None and app['cm'].current_profile == 'pythonw.exe'
                           and self.models.get(app.get('profile_revision')) == ('pythonw.exe', [24, 36, 48]))
-        with self.lock:
-            exit_start = len(self.rows)
+            with self.lock:
+                exit_start = len(self.rows)
         app['exit_gui']()
         with self.lock:
             exit_rows = list(self.rows[exit_start:])
