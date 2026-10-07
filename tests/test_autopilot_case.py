@@ -63,7 +63,7 @@ def test_case_insensitive_match_only_profiles_mode():
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values.get("profile_dropdown") == "Game.exe"
     assert cm.loaded_profiles == [(None, "Game.exe", None)]
@@ -78,7 +78,7 @@ def test_case_insensitive_match_default_mode():
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values.get("profile_dropdown") == "Cyberpunk2077.exe"
     assert cm.loaded_profiles == [(None, "Cyberpunk2077.exe", None)]
@@ -99,7 +99,7 @@ def test_queued_gui_submit_preserves_original_profile_name():
         queued_calls.append((fn, args, kwargs))
 
     autopilot_on_check(
-        cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, gui_submit=gui_submit
+        cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, gui_submit=gui_submit, foreground_reader=lambda: rtss.active_process_name
     )
 
     assert len(queued_calls) == 3
@@ -115,7 +115,7 @@ def test_exact_match_priority_over_case_insensitive_collision_only_profiles_mode
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values.get("profile_dropdown") == "game.exe"
     assert cm.loaded_profiles == [(None, "game.exe", None)]
@@ -130,7 +130,7 @@ def test_exact_match_priority_over_case_insensitive_collision_default_mode():
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values.get("profile_dropdown") == "game.exe"
     assert cm.loaded_profiles == [(None, "game.exe", None)]
@@ -151,7 +151,7 @@ def test_queued_gui_submit_selects_exact_case_when_later_in_sections():
         queued_calls.append((fn, args, kwargs))
 
     autopilot_on_check(
-        cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, gui_submit=gui_submit
+        cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, gui_submit=gui_submit, foreground_reader=lambda: rtss.active_process_name
     )
 
     assert len(queued_calls) == 3
@@ -167,7 +167,7 @@ def test_unmatched_only_profiles_mode_does_nothing():
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values == {}
     assert cm.loaded_profiles == []
@@ -181,7 +181,7 @@ def test_unmatched_default_mode_uses_global():
     logger = DummyLogger()
     start_stop = DummyStartStopCallback()
 
-    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop)
+    autopilot_on_check(cm, rtss, dpg, logger, running=False, start_stop_callback=start_stop, foreground_reader=lambda: rtss.active_process_name)
 
     assert dpg.values.get("profile_dropdown") == "Global"
     assert cm.loaded_profiles == [(None, "Global", None)]

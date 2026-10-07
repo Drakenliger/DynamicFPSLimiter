@@ -51,7 +51,8 @@ from core.cap_change_log import CapChangeLog, make_row, run_path
 from core.profile_policy import profile_transition_kind, effective_max, profile_request_current
 from core.session_policy import session_is_current
 from core.tray_functions import TrayManager
-from core.autopilot import autopilot_on_check, get_foreground_process_name
+from core.autopilot import (get_foreground_process_name, autopilot_decision,
+                            autopilot_request_current)
 from core.launch_popup import show_loading_popup, hide_loading_popup, show_rtss_error_and_exit
 from core.idle_timer import monitor_idle
 from core.version import display_version
@@ -183,13 +184,16 @@ def _write_cap(profile, cap, reason, *, direct=False):
     return result
 
 
-def start_stop_callback(sender, app_data, user_data):
+def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
 
     cm = user_data
 
     global running, session_number
     global fps_values, CurrentFPSOffset, fps_mean, gpu_values, cpu_values, idle_state
     with session_lock:
+        if expected_autopilot is not None and not autopilot_request_current(
+                expected_autopilot, session_number, profile_revision, running, cm):
+            return
         session_number += 1
         running = not running
         captured_session = session_number
@@ -370,11 +374,15 @@ def _request_profile_transition(profile_name):
     return _load_profile_on_gui(profile_name)
 
 
-def _load_profile_on_gui(profile_name, expected_session=None, expected_revision=None):
+def _load_profile_on_gui(profile_name, expected_session=None, expected_revision=None,
+                         expected_autopilot=None):
     """Apply one GUI-thread handoff under the ordinary session lock."""
     global profile_revision, CurrentFPSOffset, fps_mean, idle_state
     global fps_values, gpu_values, cpu_values
     with session_lock:
+        if expected_autopilot is not None and not autopilot_request_current(
+                expected_autopilot, session_number, profile_revision, running, cm):
+            return False
         if expected_session is not None and not profile_request_current(
                 expected_session, expected_revision, session_number, profile_revision):
             return False
@@ -465,7 +473,6 @@ def monitoring_loop(captured_session):
     global max_points
 
     last_process_name = None
-    profiles = cm.profiles_config.sections() if hasattr(cm, "profiles_config") else []
 
     backend_initialized = False
 
@@ -509,20 +516,21 @@ def monitoring_loop(captured_session):
 
             #logger.add_log(f"get_foreground_process_name {get_foreground_process_name()}")
 
-            #TODO: Fix autopilot logic to handle changes to active window
             if cm.autopilot:
+                only_profiles = cm.autopilot_only_profiles
                 fg_process = get_foreground_process_name()
-                if cm.autopilot_only_profiles:
-                    # Legacy behavior: stop monitoring when the selected specific profile is no longer active
-                    if current_profile != "Global" and fg_process != current_profile and running:
-                        logger.add_log(f"AutoPilot: Active process changed to '{fg_process}' != selected profile '{current_profile}'; stopping (autopilot_only_profiles).")
-                        _gui_submit(start_stop_callback, None, None, cm)
-                else:
-                    # New default: if a specific profile was selected but the foreground process no longer matches,
-                    # switch to Global profile and keep monitoring running.
-                    if current_profile != "Global" and fg_process != current_profile:
-                        logger.add_log(f"AutoPilot: Active process changed to '{fg_process}'; switching to 'Global' profile and keeping monitoring.")
-                        _gui_submit(_load_profile_on_gui, "Global", captured_session, captured_profile_revision)
+                decision = autopilot_decision(
+                    fg_process, cm.profiles_config.sections(), current_profile,
+                    True, only_profiles)
+                if decision:
+                    action, target = decision
+                    expected = (captured_session, captured_profile_revision,
+                                True, only_profiles, target)
+                    if action == 'stop':
+                        _gui_submit(start_stop_callback, None, None, cm, expected)
+                    else:
+                        _gui_submit(_load_profile_on_gui, target, captured_session,
+                                    captured_profile_revision, expected)
 
             if process_name and process_name != last_process_name:
                 last_process_name = process_name
@@ -530,10 +538,6 @@ def monitoring_loop(captured_session):
                 if process_name != "DynamicFPSLimiter.exe":
                     _gui_submit(dpg.set_value, "LastProcess", last_process_name)
                 gpu_monitor.reinitialize()
-
-            if current_profile == "Global" and cm.autopilot and process_name and process_name in profiles:
-                logger.add_log(f"AutoPilot: Switching from 'Global' to profile '{process_name}' (detected running process).")
-                _gui_submit(_load_profile_on_gui, process_name, captured_session, captured_profile_revision)
 
             # Sample outside the lock; only an admitted pass may update histories.
             gpuUsage = gpu_monitor.gpu_percentile
@@ -846,12 +850,35 @@ def gui_update_loop():
             _gui_submit(_update_idle_ui)
         time.sleep(0.1)
 
+def _autopilot_start_on_gui(target, expected):
+    # Both callbacks own the ordinary lock; never call them while holding it.
+    if _load_profile_on_gui(target, expected[0], expected[1], expected):
+        start_stop_callback(None, None, cm, expected)
+
+
+def _autopilot_start_check():
+    with session_lock:
+        if running or not cm.autopilot:
+            return
+        session, revision = session_number, profile_revision
+        only_profiles = cm.autopilot_only_profiles
+        current = cm.current_profile
+    if not rtss_manager.is_rtss_running():
+        return
+    foreground = get_foreground_process_name()
+    decision = autopilot_decision(foreground, cm.profiles_config.sections(),
+                                  current, False, only_profiles)
+    if decision:
+        _, target = decision
+        expected = (session, revision, False, only_profiles, target)
+        _gui_submit(_autopilot_start_on_gui, target, expected)
+
+
 def autopilot_loop():
     global gui_running, running
     while gui_running:
-        if cm.autopilot and not running:
-            autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callback, gui_submit=_gui_submit)
-        time.sleep(1)  
+        _autopilot_start_check()
+        time.sleep(1)
 
 def exit_gui():
     global running, gui_running, rtss_manager, monitoring_thread, plotting_thread, session_number

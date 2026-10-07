@@ -296,7 +296,8 @@ def test_actual_autopilot_startup_load_is_deferred_and_validated(app):
     cm.autopilot_only_profiles = False
     calls = len(dpg.calls)
     autopilot_on_check(cm, rtss_manager, dpg, ns['logger'], True,
-                       ns['start_stop_callback'], gui_submit=ns['_gui_submit'])
+                       ns['start_stop_callback'], gui_submit=ns['_gui_submit'],
+                       foreground_reader=lambda: 'gameA')
     assert not events and len(dpg.calls) == calls and len(queue) == 1
     queue.drain()
     assert [e[0] for e in events] == ['write', 'load', 'write']

@@ -1,40 +1,91 @@
 import ctypes
-import os
+import ntpath
 
-def get_foreground_process_name():
-    """
-    Returns the process name of the currently focused (foreground) window.
-    Works for any application, not just 3D apps.
-    """
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-    psapi = ctypes.windll.psapi
+# Fixed-width Windows types, independent of the host's C long width.
+DWORD = ctypes.c_uint32
+BOOL = ctypes.c_int
+HANDLE = ctypes.c_void_p
 
-    hwnd = user32.GetForegroundWindow()
-    if not hwnd:
+
+def get_foreground_process_name(user32=None, kernel32=None):
+    """Read the foreground executable with limited query rights; failure is unknown."""
+    handle = None
+    try:
+        if user32 is None:
+            user32 = ctypes.windll.user32
+        if kernel32 is None:
+            kernel32 = ctypes.windll.kernel32
+        user32.GetForegroundWindow.argtypes = []
+        user32.GetForegroundWindow.restype = HANDLE
+        user32.GetWindowThreadProcessId.argtypes = [HANDLE, ctypes.POINTER(DWORD)]
+        user32.GetWindowThreadProcessId.restype = DWORD
+        kernel32.OpenProcess.argtypes = [DWORD, BOOL, DWORD]
+        kernel32.OpenProcess.restype = HANDLE
+        kernel32.QueryFullProcessImageNameW.argtypes = [HANDLE, DWORD, ctypes.POINTER(ctypes.c_wchar), ctypes.POINTER(DWORD)]
+        kernel32.QueryFullProcessImageNameW.restype = BOOL
+        kernel32.CloseHandle.argtypes = [HANDLE]
+        kernel32.CloseHandle.restype = BOOL
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = DWORD()
+        if not user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)) or not pid.value:
+            return None
+        handle = kernel32.OpenProcess(0x1000, False, pid.value)
+        if not handle:
+            return None
+        path = ctypes.create_unicode_buffer(32768)
+        size = DWORD(len(path))
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, path, ctypes.byref(size)):
+            return None
+        if not 0 < size.value < len(path):
+            return None
+        return ntpath.basename(path[:size.value]) or None
+    except Exception:
         return None
+    finally:
+        if handle:
+            kernel32.CloseHandle(handle)
 
-    pid = ctypes.c_ulong()
-    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-    process_id = pid.value
-    if not process_id:
+
+def canonical_profile(name, sections):
+    """Preserve stored spelling and exact-match priority."""
+    if not name:
         return None
+    if name in sections:
+        return name
+    return next((p for p in sections if p.lower() == name.lower()), None)
 
-    PROCESS_QUERY_INFORMATION = 0x0400
-    PROCESS_VM_READ = 0x0010
-    h_process = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, process_id)
-    if not h_process:
+
+def autopilot_decision(foreground, sections, current, running, only_profiles):
+    """Return at most one (action, target); unknown identity never acts."""
+    if not foreground:
         return None
-
-    exe_name = (ctypes.c_wchar * 260)()
-    if psapi.GetModuleBaseNameW(h_process, None, exe_name, 260) == 0:
-        kernel32.CloseHandle(h_process)
+    matched = canonical_profile(foreground, sections)
+    current = canonical_profile(current, sections)
+    if not running:
+        target = matched or (None if only_profiles else canonical_profile('Global', sections))
+        return ('start', target) if target else None
+    if current and current.lower() == 'global':
+        return ('select', matched) if matched and matched != current else None
+    if matched == current:
         return None
+    if only_profiles:
+        return ('stop', current) if current else None
+    target = canonical_profile('Global', sections)
+    return ('select', target) if target else None
 
-    kernel32.CloseHandle(h_process)
-    return os.path.basename(exe_name.value)
 
-def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callback, gui_submit=None):
+def autopilot_request_current(expected, session, revision, running, cm):
+    """Execution admission; caller holds the app session lock."""
+    old_session, old_revision, old_running, only_profiles, target = expected
+    return (session == old_session and revision == old_revision
+            and running == old_running and cm.autopilot
+            and cm.autopilot_only_profiles == only_profiles
+            and target in cm.profiles_config.sections())
+
+
+def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callback, gui_submit=None, foreground_reader=None):
     """
     Checks if the active process matches a profile and switches profile/running state if needed.
     Behavior depends on cm.autopilot_only_profiles:
@@ -61,11 +112,7 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
             _gui(dpg.set_value, "profile_dropdown", profile)
         _gui(cm.load_profile_callback, None, profile, None)
 
-    result = rtss_manager.get_fps_for_active_window()
-    if not result or len(result) < 2:
-        return
-
-    fps, process_name = result
+    process_name = (foreground_reader or get_foreground_process_name)()
     if not process_name:
         return
 
@@ -73,10 +120,7 @@ def autopilot_on_check(cm, rtss_manager, dpg, logger, running, start_stop_callba
     
     logger.add_log(f"Autopilot detected active process: {process_name}")
 
-    if process_name in profiles:
-        matched_profile = process_name
-    else:
-        matched_profile = next((p for p in profiles if p.lower() == process_name.lower()), None)
+    matched_profile = canonical_profile(process_name, profiles)
 
     if cm.autopilot_only_profiles:
         # Legacy behavior: only act when a specific profile matches the active process

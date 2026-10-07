@@ -140,7 +140,9 @@ def test_autopilot_running_session_not_toggled_off():
         logger=logger,
         running=True,
         start_stop_callback=dummy_start_stop_callback,
+        foreground_reader=lambda: 'GameApp',
     )
 
     # Must NOT call start_stop_callback when session is already running
     assert len(calls) == 0
+    assert cm.loaded_profiles == [(None, 'GameApp', None)]

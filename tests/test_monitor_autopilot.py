@@ -17,7 +17,7 @@ def test_global_to_detected_profile_switch():
     ns['cm'].autopilot = True
     ns['cm'].autopilot_only_profiles = False
     ns['cm'].current_profile = "Global"
-    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["GameA.exe", "GameB.exe"])
+    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["Global", "GameA.exe", "GameB.exe"])
 
     ns['get_foreground_process_name'] = lambda: "GameA.exe"
     ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal(60), "GameA.exe")
@@ -29,7 +29,7 @@ def test_global_to_detected_profile_switch():
 
     ns['monitoring_loop'](1)
 
-    expected_action = (ns['_load_profile_on_gui'], "GameA.exe", 1, 0)
+    expected_action = (ns['_load_profile_on_gui'], "GameA.exe", 1, 0, (1, 0, True, False, "GameA.exe"))
     actions = get_autopilot_actions(ns, submitted)
 
     # Assert exact single action sequence
@@ -50,7 +50,7 @@ def test_no_profile_fallback_global():
     ns['cm'].autopilot = True
     ns['cm'].autopilot_only_profiles = False
     ns['cm'].current_profile = "GameA.exe"
-    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["GameA.exe"])
+    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["Global", "GameA.exe"])
 
     ns['get_foreground_process_name'] = lambda: "Desktop.exe"
     ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal(60), "Desktop.exe")
@@ -62,7 +62,7 @@ def test_no_profile_fallback_global():
 
     ns['monitoring_loop'](1)
 
-    expected_action = (ns['_load_profile_on_gui'], "Global", 1, 0)
+    expected_action = (ns['_load_profile_on_gui'], "Global", 1, 0, (1, 0, True, False, "Global"))
     actions = get_autopilot_actions(ns, submitted)
 
     # Assert exact single action sequence
@@ -83,7 +83,7 @@ def test_only_profiles_stop():
     ns['cm'].autopilot = True
     ns['cm'].autopilot_only_profiles = True
     ns['cm'].current_profile = "GameA.exe"
-    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["GameA.exe"])
+    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["Global", "GameA.exe"])
 
     ns['get_foreground_process_name'] = lambda: "Desktop.exe"
     ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal(60), "Desktop.exe")
@@ -95,14 +95,14 @@ def test_only_profiles_stop():
 
     ns['monitoring_loop'](1)
 
-    expected_action = (ns['start_stop_callback'], None, None, ns['cm'])
+    expected_action = (ns['start_stop_callback'], None, None, ns['cm'], (1, 0, True, True, 'GameA.exe'))
     actions = get_autopilot_actions(ns, submitted)
 
     # Assert exact single action sequence
     assert actions == [expected_action]
 
     # Demonstrate in-memory mutations (contradictory opposite action or duplicate) fail exact assertion
-    opposite_action = (ns['_load_profile_on_gui'], "Global", 1, 0)
+    opposite_action = (ns['_load_profile_on_gui'], "Global", 1, 0, (1, 0, True, False, "Global"))
     with pytest.raises(AssertionError):
         assert actions + [opposite_action] == [expected_action]
 
@@ -115,7 +115,7 @@ def test_autopilot_disabled_no_action():
     ns, writes, submitted, spawned = load_app()
     ns['cm'].autopilot = False
     ns['cm'].current_profile = "GameA.exe"
-    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["GameA.exe"])
+    ns['cm'].profiles_config = SimpleNamespace(sections=lambda: ["Global", "GameA.exe"])
 
     ns['get_foreground_process_name'] = lambda: "Desktop.exe"
     ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal(60), "Desktop.exe")
@@ -132,4 +132,4 @@ def test_autopilot_disabled_no_action():
 
     # Demonstrate in-memory mutation fails exact empty assertion
     with pytest.raises(AssertionError):
-        assert actions + [(ns['_load_profile_on_gui'], "Global", 1, 0)] == []
+        assert actions + [(ns['_load_profile_on_gui'], "Global", 1, 0, (1, 0, True, False, "Global"))] == []
