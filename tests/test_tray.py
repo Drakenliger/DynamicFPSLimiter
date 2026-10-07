@@ -184,7 +184,7 @@ def test_method_menu_lambda_defers_to_queue(fake_dpg):
     set_value_calls = [c for c in fake_dpg.calls if c[0] == "set_value"]
     assert len(set_value_calls) == 1
     assert set_value_calls[0][1][0] == "input_capmethod"
-    assert set_value_calls[0][1][1] == "step"
+    assert set_value_calls[0][1][1] == "Step"
 
 
 def test_exit_app_defers_to_queue(fake_dpg):
