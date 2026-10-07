@@ -1,7 +1,6 @@
 # app.py
 # Dynamic FPS Limiter
 
-import dearpygui.dearpygui as dpg
 import threading
 import time
 
@@ -16,6 +15,11 @@ _this_dir = os.path.abspath(os.path.dirname(__file__))
 _root = os.path.dirname(_this_dir)  # Gets src directory
 if _root not in sys.path:
     sys.path.insert(0, _root)
+
+from core.single_instance import app_lease
+_instance_lease = app_lease(globals().get("_single_instance_handle"))
+
+import dearpygui.dearpygui as dpg
 
 # Always get absolute path to EXE or script location
 Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -1662,6 +1666,8 @@ if _acceptance_runtime is not None:
     _acceptance_runtime.initialized(globals())
 
 while dpg.is_dearpygui_running():
+    if _instance_lease is not None:
+        _instance_lease.poll_activation(tray)
     dpg.render_dearpygui_frame()
     for job in dpg.get_callback_queue() or []:
         try:

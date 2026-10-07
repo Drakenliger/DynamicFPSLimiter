@@ -415,10 +415,10 @@ class Runtime:
                 return False
 
 
-def child(directory, pid):
+def child(directory, pid, instance_handle):
     runtime = Runtime(directory, pid)
     try:
-        runpy.run_path(str(ROOT / 'src/core/app.py'), init_globals={'_acceptance_runtime': runtime})
+        runpy.run_path(str(ROOT / 'src/core/app.py'), init_globals={'_acceptance_runtime': runtime, '_single_instance_handle': instance_handle})
     except BaseException as exc:
         runtime.release_barriers()
         runtime.errors.append('limiter exception: ' + sanitize(exc))
@@ -494,6 +494,17 @@ def export_evidence(scratch, output, errors):
 
 
 def run():
+    from core.single_instance import app_lease
+    if sys.platform != "win32":
+        raise SystemExit("Windows only; real interactive desktop and RTSS required")
+    lease = app_lease()
+    try:
+        return _run_with_lease(lease)
+    finally:
+        lease.close()
+
+
+def _run_with_lease(lease):
     if sys.platform != 'win32':
         raise SystemExit('Windows only; real interactive desktop and RTSS required')
     sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -541,9 +552,16 @@ def run():
             wait_ready(game, scratch / 'ready.json', 20)
             # Give even the first limiter write a full pre-write telemetry window.
             time.sleep(3)
-            limiter = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--child',
-                str(scratch), '--game-pid', str(game.pid)], cwd=ROOT,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            startup = subprocess.STARTUPINFO()
+            startup.lpAttributeList = {'handle_list': [lease.handle]}
+            lease.inheritable(True)
+            try:
+                limiter = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--child',
+                    str(scratch), '--game-pid', str(game.pid), '--instance-handle', str(lease.handle)],
+                    cwd=ROOT, startupinfo=startup, close_fds=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            finally:
+                lease.inheritable(False)
             try:
                 limiter.wait(timeout=145)
             except subprocess.TimeoutExpired:
@@ -630,5 +648,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--child', type=Path)
     parser.add_argument('--game-pid', type=int)
+    parser.add_argument('--instance-handle', type=int)
     args = parser.parse_args()
-    sys.exit(child(args.child, args.game_pid) if args.child else run())
+    sys.exit(child(args.child, args.game_pid, args.instance_handle) if args.child else run())
