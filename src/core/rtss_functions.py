@@ -1,18 +1,8 @@
 import ctypes
 import os
 import threading
-try:
-    import winreg
-except ImportError:
-    winreg = None
+import winreg
 from decimal import Decimal, InvalidOperation
-
-try:
-    import codecs
-    codecs.lookup("mbcs")
-    PROFILE_ENCODING = "mbcs"
-except LookupError:
-    PROFILE_ENCODING = "latin1"
 
 class RTSSController:
     RTSSHOOKSFLAG_LIMITER_DISABLED = 4
@@ -74,46 +64,40 @@ class RTSSController:
 #        self.GetFlags.restype = ctypes.c_uint
 
     def get_rtss_install_path(self):
-        if winreg is not None:
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Unwinder\RTSS")
+            path, _ = winreg.QueryValueEx(key, "InstallPath")
+            winreg.CloseKey(key)
+        except FileNotFoundError:
             try:
-                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Unwinder\RTSS")
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Unwinder\RTSS")
                 path, _ = winreg.QueryValueEx(key, "InstallPath")
                 winreg.CloseKey(key)
-                if path.lower().endswith("rtss.exe"):
-                    path = os.path.dirname(path)
-                return path
             except FileNotFoundError:
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Unwinder\RTSS")
-                    path, _ = winreg.QueryValueEx(key, "InstallPath")
-                    winreg.CloseKey(key)
-                    if path.lower().endswith("rtss.exe"):
-                        path = os.path.dirname(path)
-                    return path
-                except FileNotFoundError:
-                    pass
-        return r"C:\Program Files (x86)\RivaTuner Statistics Server"
+                path = r"C:\Program Files (x86)\RivaTuner Statistics Server"
+        if path.lower().endswith("rtss.exe"):
+            path = os.path.dirname(path)
+        return path
 
     def delete_profile(self, profile_name):
-        self.DeleteProfile(profile_name.encode(PROFILE_ENCODING))
+        self.DeleteProfile(profile_name.encode('ascii'))
 
     def reset_profile(self, profile_name):
-        self.ResetProfile(profile_name.encode(PROFILE_ENCODING))
+        self.ResetProfile(profile_name.encode('ascii'))
 
     def get_profile_property(self, profile_name, property_name, size=4):
-        with self._profile_lock:
-            self.LoadProfile(profile_name.encode(PROFILE_ENCODING))
-            buf = (ctypes.c_byte * size)()
-            success = self.GetProfileProperty(property_name.encode(PROFILE_ENCODING), ctypes.byref(buf), size)
-            if not success:
-                return None
-            return bytes(buf)
+        self.LoadProfile(profile_name.encode('ascii'))
+        buf = (ctypes.c_byte * size)()
+        success = self.GetProfileProperty(property_name.encode('ascii'), ctypes.byref(buf), size)
+        if not success:
+            return None
+        return bytes(buf)
 
     def set_profile_property(self, profile_name, property_name, value, size=4, update=True):
         # SaveProfile writes the profile .cfg, so serialize it with the file writers
         # (re-entrant: safe when called from set_fractional_framerate holding the lock).
         with self._profile_lock:
-            self.LoadProfile(profile_name.encode(PROFILE_ENCODING))
+            self.LoadProfile(profile_name.encode('ascii'))
             if isinstance(value, int):
                 buf = ctypes.c_int(value)
                 ptr = ctypes.byref(buf)
@@ -122,8 +106,8 @@ class RTSSController:
                 ptr = ctypes.byref(buf)
             else:
                 raise ValueError("Unsupported value type")
-            success = self.SetProfileProperty(property_name.encode(PROFILE_ENCODING), ptr, size)
-            self.SaveProfile(profile_name.encode(PROFILE_ENCODING))
+            success = self.SetProfileProperty(property_name.encode('ascii'), ptr, size)
+            self.SaveProfile(profile_name.encode('ascii'))
             if update:
                 self.UpdateProfiles()
             return success
@@ -143,9 +127,9 @@ class RTSSController:
                 ptr = ctypes.byref(buf)
             else:
                 raise ValueError("Unsupported value type")
-            self.SetProfileProperty(prop.encode(PROFILE_ENCODING), ptr, size)
+            self.SetProfileProperty(prop.encode('ascii'), ptr, size)
         # Save as new profile
-        self.SaveProfile(profile_name.encode(PROFILE_ENCODING))
+        self.SaveProfile(profile_name.encode('ascii'))
         self.UpdateProfiles()
 
 #    def get_flags(self):
@@ -172,82 +156,11 @@ class RTSSController:
         half-written profile (``os.replace`` is atomic on the same volume/NTFS).
         """
         tmp_file = profile_file + ".tmp"
-        with open(tmp_file, "w", encoding=PROFILE_ENCODING) as f:
+        with open(tmp_file, "w", encoding="utf-8") as f:
             f.writelines(lines)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_file, profile_file)
-
-    def _update_framerate_section(self, lines, updates):
-        """Insert or update key-value pairs within the [Framerate] section.
-
-        - If [Framerate] section exists, update existing keys in place inside [Framerate],
-          or insert missing keys into [Framerate].
-        - If [Framerate] section is absent, add [Framerate] header and keys at top or EOF.
-        - Ensures clean newline boundaries (prevents gluing keys to lines lacking trailing newline).
-        - Preserves unrelated sections and content.
-        """
-        lines = list(lines)
-        section_start = None
-        first_section_idx = None
-
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith("[") and stripped.endswith("]"):
-                if first_section_idx is None:
-                    first_section_idx = i
-                if stripped.lower() == "[framerate]":
-                    section_start = i
-
-        section_end = len(lines)
-        if section_start is not None:
-            for i in range(section_start + 1, len(lines)):
-                stripped = lines[i].strip()
-                if stripped.startswith("[") and stripped.endswith("]"):
-                    section_end = i
-                    break
-        else:
-            has_pre_keys = False
-            check_until = first_section_idx if first_section_idx is not None else len(lines)
-            for i in range(check_until):
-                line = lines[i]
-                if "=" in line:
-                    key = line.split("=", 1)[0].strip().lower()
-                    if any(k.lower() == key for k in updates):
-                        has_pre_keys = True
-                        break
-
-            if first_section_idx is None or has_pre_keys:
-                lines.insert(0, "[Framerate]\n")
-                section_start = 0
-                section_end = (first_section_idx + 1) if first_section_idx is not None else len(lines)
-            else:
-                if lines and not lines[-1].endswith(("\n", "\r")):
-                    lines[-1] += "\n"
-                lines.append("[Framerate]\n")
-                section_start = len(lines) - 1
-                section_end = len(lines)
-
-        remaining_keys = dict(updates)
-        for i in range(section_start + 1, section_end):
-            line = lines[i]
-            if "=" in line:
-                key = line.split("=", 1)[0].strip()
-                for k in list(remaining_keys.keys()):
-                    if key.lower() == k.lower():
-                        lines[i] = f"{k}={remaining_keys.pop(k)}\n"
-                        break
-
-        if remaining_keys:
-            if section_end > 0 and lines[section_end - 1] and not lines[section_end - 1].endswith(("\n", "\r")):
-                lines[section_end - 1] += "\n"
-
-            insert_idx = section_end
-            for k, v in remaining_keys.items():
-                lines.insert(insert_idx, f"{k}={v}\n")
-                insert_idx += 1
-
-        return lines
 
     def set_limit_denominator(self, profile_name, new_denominator, update=True):
         with self._profile_lock:
@@ -263,10 +176,18 @@ class RTSSController:
                 self.logger.add_log(f"Profile file not found: {profile_file}")
                 return False
 
-            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
+            with open(profile_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
-            lines = self._update_framerate_section(lines, {"LimitDenominator": new_denominator})
+            found = False
+            for i, line in enumerate(lines):
+                if line.strip().startswith("LimitDenominator="):
+                    lines[i] = f"LimitDenominator={new_denominator}\n"
+                    found = True
+                    break
+
+            if not found:
+                lines.append(f"LimitDenominator={new_denominator}\n")
 
             self._atomic_write_lines(profile_file, lines)
 
@@ -324,13 +245,25 @@ class RTSSController:
                 denominator = 1
                 limit = int(framerate)
 
-            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
+            with open(profile_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
-            lines = self._update_framerate_section(lines, {
-                "Limit": limit,
-                "LimitDenominator": denominator,
-            })
+            found_limit = False
+            found_denominator = False
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith("Limit="):
+                    lines[i] = f"Limit={limit}\n"
+                    found_limit = True
+                elif stripped.startswith("LimitDenominator="):
+                    lines[i] = f"LimitDenominator={denominator}\n"
+                    found_denominator = True
+
+            # Append if not found
+            if not found_limit:
+                lines.append(f"Limit={limit}\n")
+            if not found_denominator:
+                lines.append(f"LimitDenominator={denominator}\n")
 
             self._atomic_write_lines(profile_file, lines)
 
@@ -358,25 +291,14 @@ class RTSSController:
 
         denominator = 1
         if os.path.isfile(profile_file):
-            with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
-                lines = f.readlines()
-
-            in_framerate = False
-            has_sections = any(l.strip().startswith("[") and l.strip().endswith("]") for l in lines)
-
-            for line in lines:
-                stripped = line.strip()
-                if stripped.startswith("[") and stripped.endswith("]"):
-                    if stripped.lower() == "[framerate]":
-                        in_framerate = True
-                    elif in_framerate:
+            with open(profile_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("LimitDenominator="):
+                        try:
+                            denominator = int(line.strip().split("=")[1])
+                        except Exception:
+                            denominator = 1
                         break
-                elif (in_framerate or not has_sections) and stripped.startswith("LimitDenominator="):
-                    try:
-                        denominator = int(stripped.split("=", 1)[1])
-                    except Exception:
-                        denominator = 1
-                    break
 
         if denominator < 1:
             denominator = 1
