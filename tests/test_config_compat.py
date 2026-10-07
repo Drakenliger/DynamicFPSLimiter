@@ -238,7 +238,7 @@ def test_partial_config_creation_missing_profiles(manager, tmp_path):
     assert cm.profiles_config['Global']['maxcap'] == '114'
 
 
-def test_pre_launch_and_ui_scale_missing_and_corrupt(tmp_path):
+def test_pre_launch_and_ui_scale_missing_and_corrupt(tmp_path, monkeypatch):
     base = tmp_path / 'core'
     assert _is_first_launch(base) is True
     assert read_preference(base / 'config' / 'settings.ini') == 'Auto'
@@ -256,8 +256,11 @@ def test_pre_launch_and_ui_scale_missing_and_corrupt(tmp_path):
     assert read_preference(settings) == '125%'
     settings.write_bytes(b'[Preferences]\nui_scale=\xff\n')
     assert _is_first_launch(base) is True
+    monkeypatch.setattr('core.config_io.locale.getencoding', lambda: 'utf-8')
     with pytest.raises(UnicodeDecodeError):
         read_preference(settings)
+    monkeypatch.setattr('core.config_io.locale.getencoding', lambda: 'cp1252')
+    assert read_preference(settings) == 'Auto'
     settings.write_text('[Preferences]\nfirst_launch_done=True\nui_scale=200%\n', encoding='utf-8')
     assert _is_first_launch(base) is False
     assert read_preference(settings) == '200%'
