@@ -3,7 +3,6 @@ import csv
 import io
 from pathlib import Path
 import queue
-import re
 import threading
 import time
 import uuid
@@ -11,9 +10,6 @@ import uuid
 
 FIELDS = ('time', 'session_number', 'profile', 'old_cap', 'new_cap', 'reason',
           'gpu_reading', 'cpu_reading', 'fps_mean')
-
-MAX_RETAINED_LOGS = 20
-CAP_LOG_PATTERN = re.compile(r'^cap_changes_(\d+)_([0-9a-fA-F]{8})\.csv$')
 
 
 def make_row(timestamp, session, profile, old_cap, new_cap, reason,
@@ -55,55 +51,23 @@ class CapChangeLog:
         except Exception:
             pass  # An error reporter must not interrupt cap control or shutdown.
 
-    def _prune_old_logs(self):
-        try:
-            parent = self.path.parent
-            if not parent.is_dir():
-                return
-            candidates = []
-            for child in parent.iterdir():
-                if child.name == self.path.name:
-                    continue
-                match = CAP_LOG_PATTERN.fullmatch(child.name)
-                if match:
-                    try:
-                        if child.is_symlink() or not child.is_file():
-                            continue
-                    except Exception:
-                        continue
-                    timestamp = int(match.group(1))
-                    candidates.append((timestamp, child))
-
-            total_count = len(candidates) + 1
-            if total_count > MAX_RETAINED_LOGS:
-                candidates.sort(key=lambda item: (item[0], item[1].name))
-                to_delete = total_count - MAX_RETAINED_LOGS
-                for _, child in candidates[:to_delete]:
-                    try:
-                        child.unlink()
-                    except Exception as exc:
-                        self._error(exc)
-        except Exception as exc:
-            self._error(exc)
-
     def record(self, row):
         with self._lock:
             if not self._closed:
                 self._queue.put(row)
 
-    def close(self, timeout=None):
+    def close(self):
         with self._lock:
             if not self._closed:
                 self._closed = True
                 self._queue.put(None)
-        self._thread.join(timeout=timeout)
+        self._thread.join()
 
     def _write(self):
         drained = False
         try:
             with self.path.open('x', newline='', encoding='utf-8') as output:
                 output.write(serialize_row(FIELDS))
-                self._prune_old_logs()
                 while True:
                     row = self._queue.get()
                     if row is None:
