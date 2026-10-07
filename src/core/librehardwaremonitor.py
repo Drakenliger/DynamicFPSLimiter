@@ -25,6 +25,26 @@ def _percentile(data, percentile):
 import os
 import sys
 
+def _gpu_types(ht):
+    if ht is None:
+        return ()
+    return tuple(t for t in (getattr(ht, "GpuAmd", None), getattr(ht, "GpuNvidia", None), getattr(ht, "GpuIntel", None)) if t is not None)
+
+def _is_intel_gpu(hw, ht):
+    intel = getattr(ht, "GpuIntel", None)
+    return intel is not None and getattr(hw, "HardwareType", None) == intel
+
+def _ordered_hardware(hardware_list, ht):
+    """Return hardware_list with CPU and AMD/NVIDIA GPUs in relative original order first, then Intel GPUs.
+
+    Preserves legacy ordinal parameter IDs (gpu1, gpu2) for existing AMD/NVIDIA configs.
+    """
+    if not hardware_list:
+        return []
+    non_intel = [hw for hw in hardware_list if not _is_intel_gpu(hw, ht)]
+    intel = [hw for hw in hardware_list if _is_intel_gpu(hw, ht)]
+    return non_intel + intel
+
 def get_selected_sensor_details(hardware, sensor_map):
     """Return a list of dicts for selected sensors: [{'sensor_type': ..., 'name': ..., 'value': ..., 'identifier': ...}]"""
     details = []
@@ -89,7 +109,7 @@ def get_all_sensor_infos(base_dir, logger=None):
         return []
 
     try:
-        for hw in computer.Hardware:
+        for hw in _ordered_hardware(computer.Hardware, HardwareType):
             hw.Update()
             if hw.HardwareType == HardwareType.Cpu:
                 cpu_count += 1
@@ -122,7 +142,7 @@ def get_all_sensor_infos(base_dir, logger=None):
                             "hw_id": hw_id,
                             "identifier": identifier,
                         })
-            elif hw.HardwareType in (HardwareType.GpuAmd, HardwareType.GpuNvidia):
+            elif hw.HardwareType in _gpu_types(HardwareType):
                 gpu_count += 1
                 param_indices = {"Load": 0, "Power": 0, "Temperature": 0}
                 name_counts = defaultdict(int)  # track duplicate sensor names per sensor type
@@ -240,16 +260,16 @@ class LHMSensor:
         return None
 
     def get_gpu_name(self): #TODO Remove this if unused
-        for hw in self.computer.Hardware:
-            if hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
+        for hw in _ordered_hardware(self.computer.Hardware, self.HardwareType):
+            if hw.HardwareType in _gpu_types(self.HardwareType):
                 return hw.Name
         return None
 
     def get_gpu_names(self):
         """Return a list of all detected GPU names."""
         names = []
-        for hw in self.computer.Hardware:
-            if hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
+        for hw in _ordered_hardware(self.computer.Hardware, self.HardwareType):
+            if hw.HardwareType in _gpu_types(self.HardwareType):
                 names.append(hw.Name)
         return names
 
@@ -337,7 +357,7 @@ class LHMSensor:
         gpu_displays = []
         gpu_hw_names = []
 
-        for hw in self.computer.Hardware:
+        for hw in _ordered_hardware(self.computer.Hardware, self.HardwareType):
             if hw.HardwareType == self.HardwareType.Cpu:
                 hw.Update()
                 details = get_selected_sensor_details(hw, self.CPU_SENSORS)
@@ -374,7 +394,7 @@ class LHMSensor:
                         refreshed_cpu_keys.add(identifier)
 
                 cpu_displays.append(self.format_history(display_history, display_percentiles, hw.Name))
-            elif hw.HardwareType in (self.HardwareType.GpuAmd, self.HardwareType.GpuNvidia):
+            elif hw.HardwareType in _gpu_types(self.HardwareType):
                 hw.Update()
                 details = get_selected_sensor_details(hw, self.GPU_SENSORS)
                 display_history = {}
