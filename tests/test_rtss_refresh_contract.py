@@ -1,5 +1,4 @@
 import ctypes
-import os
 import sys
 import types
 from decimal import Decimal
@@ -60,60 +59,65 @@ class StubLogger:
 def rtss_controller_fake_dll(tmp_path, monkeypatch):
     import threading
 
-    if sys.platform != "win32" and "winreg" not in sys.modules:
-        monkeypatch.setitem(sys.modules, "winreg", types.ModuleType("winreg"))
-
-    modules_snapshot = dict(sys.modules)
+    # Scope cleanup to the import under test; unrelated imports must survive.
+    missing = object()
+    names = ("winreg", "core", "core.rtss_functions")
+    saved_modules = {name: sys.modules.get(name, missing) for name in names}
     core_mod = sys.modules.get("core")
-    core_attrs_snapshot = dict(core_mod.__dict__) if core_mod else None
-
-    from core.rtss_functions import RTSSController
-
-    ctrl = object.__new__(RTSSController)
-    rtss_dir = tmp_path / "RTSS"
-    profiles_dir = rtss_dir / "Profiles"
-    profiles_dir.mkdir(parents=True)
-    (profiles_dir / "Global").write_text(
-        "FramerateLimit=0\nLimitDenominator=1\n", encoding="utf-8"
+    saved_attr = (
+        core_mod.__dict__.get("rtss_functions", missing)
+        if core_mod is not None else missing
     )
 
-    ctrl.rtss_install_path = str(rtss_dir)
-    ctrl.rtss_path = str(rtss_dir / "RTSSHooks64.dll")
-    ctrl.logger = StubLogger()
-    ctrl._profile_lock = threading.RLock()
-
-    fake = FakeDLLCalls()
-    ctrl.LoadProfile = fake.load_profile
-    ctrl.SaveProfile = fake.save_profile
-    ctrl.GetProfileProperty = fake.get_profile_property
-    ctrl.SetProfileProperty = fake.set_profile_property
-    ctrl.DeleteProfile = fake.delete_profile
-    ctrl.ResetProfile = fake.reset_profile
-    ctrl.UpdateProfiles = fake.update_profiles
-    ctrl.SetFlags = fake.set_flags
-
     try:
+        if sys.platform != "win32" and "winreg" not in sys.modules:
+            sys.modules["winreg"] = types.ModuleType("winreg")
+        # Test the real source freshly, even if another test cached it already.
+        sys.modules.pop("core.rtss_functions", None)
+        if core_mod is not None:
+            core_mod.__dict__.pop("rtss_functions", None)
+
+        from core.rtss_functions import RTSSController
+
+        ctrl = object.__new__(RTSSController)
+        rtss_dir = tmp_path / "RTSS"
+        profiles_dir = rtss_dir / "Profiles"
+        profiles_dir.mkdir(parents=True)
+        (profiles_dir / "Global").write_text(
+            "FramerateLimit=0\nLimitDenominator=1\n", encoding="utf-8"
+        )
+
+        ctrl.rtss_install_path = str(rtss_dir)
+        ctrl.rtss_path = str(rtss_dir / "RTSSHooks64.dll")
+        ctrl.logger = StubLogger()
+        ctrl._profile_lock = threading.RLock()
+
+        fake = FakeDLLCalls()
+        ctrl.LoadProfile = fake.load_profile
+        ctrl.SaveProfile = fake.save_profile
+        ctrl.GetProfileProperty = fake.get_profile_property
+        ctrl.SetProfileProperty = fake.set_profile_property
+        ctrl.DeleteProfile = fake.delete_profile
+        ctrl.ResetProfile = fake.reset_profile
+        ctrl.UpdateProfiles = fake.update_profiles
+        ctrl.SetFlags = fake.set_flags
+
         yield ctrl, fake
     finally:
-        # Remove any newly loaded modules from sys.modules
-        added_modules = set(sys.modules) - set(modules_snapshot)
-        for mod in added_modules:
-            del sys.modules[mod]
-
-        # Restore prior values for any modified sys.modules
-        for mod, prev_val in modules_snapshot.items():
-            if sys.modules.get(mod) is not prev_val:
-                sys.modules[mod] = prev_val
-
-        # Clean up or restore parent package attributes (e.g. core.rtss_functions)
+        # Also clear a fresh parent retained by a caller after cache removal.
+        imported_core = sys.modules.get("core")
+        if imported_core is not None and imported_core is not core_mod:
+            imported_core.__dict__.pop("rtss_functions", None)
         if core_mod is not None:
-            current_attrs = set(core_mod.__dict__)
-            added_attrs = current_attrs - set(core_attrs_snapshot)
-            for attr in added_attrs:
-                delattr(core_mod, attr)
-            for attr, prev_val in core_attrs_snapshot.items():
-                if core_mod.__dict__.get(attr) is not prev_val:
-                    setattr(core_mod, attr, prev_val)
+            if saved_attr is missing:
+                core_mod.__dict__.pop("rtss_functions", None)
+            else:
+                core_mod.rtss_functions = saved_attr
+        for name, previous in saved_modules.items():
+            if previous is missing:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
 
 
 def test_global_decimal_5994_refresh_contract(rtss_controller_fake_dll):
@@ -257,30 +261,95 @@ def test_three_decimal_places_refresh_contract(rtss_controller_fake_dll):
     ]
 
 
-def test_fixture_teardown_removes_newly_imported_module_and_attr(tmp_path, monkeypatch):
-    saved_mod = sys.modules.pop("core.rtss_functions", None)
-    core_mod = sys.modules.get("core")
-    saved_attr = None
-    had_attr = False
-    if core_mod and hasattr(core_mod, "rtss_functions"):
-        had_attr = True
-        saved_attr = getattr(core_mod, "rtss_functions")
-        delattr(core_mod, "rtss_functions")
+@pytest.mark.parametrize("existing_parent", [False, True])
+@pytest.mark.parametrize("existing_winreg", [False, True])
+@pytest.mark.parametrize("failure", [None, "mkdir", "write_text"])
+def test_fixture_restores_import_state_on_success_and_setup_failure(
+    tmp_path, monkeypatch, existing_parent, existing_winreg, failure
+):
+    # Exercise the actual generator, including failures before its yield.
+    parent = types.ModuleType("core") if existing_parent else None
+    cached_module = types.ModuleType("core.rtss_functions")
+    saved_attr = object()
+    registry = types.ModuleType("winreg")
+    unrelated_module = types.ModuleType("t6_unrelated_import")
+    unrelated_attr = object()
+    retained_parents = []
+    imported_modules = []
+    original_mkdir = Path.mkdir
+    original_write_text = Path.write_text
 
-    try:
-        gen = rtss_controller_fake_dll.__wrapped__(tmp_path, monkeypatch)
-        ctrl, fake = next(gen)
-        assert "core.rtss_functions" in sys.modules
+    with monkeypatch.context() as isolated:
+        if existing_parent:
+            parent.__path__ = [str(Path(__file__).resolve().parents[1] / "src" / "core")]
+            parent.rtss_functions = saved_attr
+            isolated.setitem(sys.modules, "core", parent)
+            isolated.setitem(sys.modules, "core.rtss_functions", cached_module)
+        else:
+            isolated.delitem(sys.modules, "core", raising=False)
+            isolated.delitem(sys.modules, "core.rtss_functions", raising=False)
+        if existing_winreg:
+            isolated.setitem(sys.modules, "winreg", registry)
+        else:
+            isolated.delitem(sys.modules, "winreg", raising=False)
+
+        # Register undo before simulating an unrelated import during setup.
+        isolated.setitem(sys.modules, "t6_unrelated_import", unrelated_module)
+        isolated.delitem(sys.modules, "t6_unrelated_import")
+
+        def mkdir(path, *args, **kwargs):
+            imported_parent = sys.modules["core"]
+            imported_module = sys.modules["core.rtss_functions"]
+            retained_parents.append(imported_parent)
+            imported_modules.append(imported_module)
+            assert imported_parent.rtss_functions is imported_module
+            assert imported_module is not cached_module
+            if existing_winreg or sys.platform != "win32":
+                assert imported_module.winreg is sys.modules["winreg"]
+            sys.modules["t6_unrelated_import"] = unrelated_module
+            imported_parent.unrelated_t6_attr = unrelated_attr
+            if failure == "mkdir":
+                raise OSError("injected mkdir failure")
+            return original_mkdir(path, *args, **kwargs)
+
+        def write_text(path, *args, **kwargs):
+            if failure == "write_text":
+                raise OSError("injected write_text failure")
+            return original_write_text(path, *args, **kwargs)
+
+        isolated.setattr(Path, "mkdir", mkdir)
+        isolated.setattr(Path, "write_text", write_text)
+        gen = rtss_controller_fake_dll.__wrapped__(tmp_path, isolated)
         try:
-            next(gen)
-        except StopIteration:
-            pass
+            if failure:
+                with pytest.raises(OSError, match=f"injected {failure} failure"):
+                    next(gen)
+            else:
+                ctrl, fake = next(gen)
+                assert type(ctrl) is imported_modules[0].RTSSController
+                assert isinstance(fake, FakeDLLCalls)
+                with pytest.raises(StopIteration):
+                    next(gen)
+        finally:
+            gen.close()
 
-        assert "core.rtss_functions" not in sys.modules
-        if core_mod is not None:
-            assert not hasattr(core_mod, "rtss_functions")
-    finally:
-        if saved_mod is not None:
-            sys.modules["core.rtss_functions"] = saved_mod
-        if had_attr and core_mod is not None:
-            setattr(core_mod, "rtss_functions", saved_attr)
+        # Check before monkeypatch undo, so it cannot conceal fixture leaks.
+        assert retained_parents
+        assert sys.modules["t6_unrelated_import"] is unrelated_module
+        for retained_parent in retained_parents:
+            assert retained_parent.unrelated_t6_attr is unrelated_attr
+            if existing_parent:
+                assert retained_parent is parent
+                assert retained_parent.rtss_functions is saved_attr
+            else:
+                assert "rtss_functions" not in retained_parent.__dict__
+        if existing_parent:
+            assert sys.modules["core"] is parent
+            assert sys.modules["core.rtss_functions"] is cached_module
+        else:
+            assert "core" not in sys.modules
+            assert "core.rtss_functions" not in sys.modules
+        if existing_winreg:
+            assert sys.modules["winreg"] is registry
+        else:
+            assert "winreg" not in sys.modules
