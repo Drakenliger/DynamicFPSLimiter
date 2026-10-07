@@ -15,8 +15,9 @@ def real_evaluator(ns, enabled=True, value=95):
     tree = ast.parse((Path(__file__).resolve().parents[1] / 'src/core/fps_utils.py').read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'FPSUtils')
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'evaluate_cap_change')
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'evaluate_librehm_decision')
     scope = {'statistics': statistics, 'evaluate_legacy_cap_change': evaluate_legacy_cap_change}
-    exec(compile(ast.Module(body=[method], type_ignores=[]), '<FPSUtils>', 'exec'), scope)
+    exec(compile(ast.Module(body=[helper, method], type_ignores=[]), '<FPSUtils>', 'exec'), scope)
     values = {'input_monitoring_method': 'LibreHM', 'input_load_enable': enabled,
               'input_load_upper': 90, 'input_load_lower': 70}
     ns['dpg'].get_value = values.get
@@ -206,9 +207,9 @@ def test_real_librehm_any_drop_all_raise_and_missing_sensor_semantics():
     assert evaluate([], [], 'LibreHM') == (False, False)
     sensor.gpu_percentiles[('Load', '1 Other')] = 50
     assert evaluate([], [], 'LibreHM') == (False, True)
-    # Existing behavior ignores a missing reading when other selected sensors have data.
+    # Missing reading on an enabled sensor blocks increase (non-qualifying).
     sensor.gpu_percentiles[('Load', '1 Other')] = None
-    assert evaluate([], [], 'LibreHM') == (False, True)
+    assert evaluate([], [], 'LibreHM') == (False, False)
     ns['cm'].sensor_infos = []
     assert evaluate([], [], 'LibreHM') == (False, False)
 
