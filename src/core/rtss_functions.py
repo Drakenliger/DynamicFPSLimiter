@@ -292,14 +292,14 @@ class RTSSController:
                 denominator = 1
                 limit = int(framerate)
 
-            prop_success = self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update)
-            if not prop_success:
-                return False
-
             if denominator:
                 denom_success = self.set_limit_denominator(profile_name, denominator, update=update)
                 if not denom_success:
                     return False
+
+            prop_success = self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update)
+            if not prop_success:
+                return False
 
             if not update:
                 self.UpdateProfiles()
