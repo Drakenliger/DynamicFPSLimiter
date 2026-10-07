@@ -205,7 +205,7 @@ def test_actual_finish_rejects_invalid_global_intermediate(tmp_path, monkeypatch
     assert runtime.evidence['switch_response'] is False
 
 
-@pytest.mark.parametrize('fault', ['exit', 'timeout', 'empty'])
+@pytest.mark.parametrize('fault', ['exit', 'timeout', 'empty', 'restore'])
 def test_actual_parent_failure_restores_and_exports(tmp_path, monkeypatch, fault):
     import acceptance_windows as driver
     import csv
@@ -224,6 +224,27 @@ def test_actual_parent_failure_restores_and_exports(tmp_path, monkeypatch, fault
     monkeypatch.setattr(driver, 'ROOT', root)
     monkeypatch.setattr(driver.sys, 'platform', 'win32')
     monkeypatch.setattr(driver, 'controller', lambda: rtss)
+    from core import single_instance
+    handle = 0x1234567887654321
+    inheritance = []
+    closed = []
+    def close():
+        # Admission survives all profile and flag restoration, even on failure.
+        assert (profiles / 'Global').read_bytes() == original
+        assert not (profiles / 'pythonw.exe.cfg').exists()
+        assert flag_calls[-1] == (0xFFFFFFFE, 1)
+        closed.append(True)
+    lease = SimpleNamespace(handle=handle, close=close, inheritable=inheritance.append)
+    monkeypatch.setattr(single_instance, 'acquire', lambda: lease)
+    monkeypatch.setattr(driver.subprocess, 'STARTUPINFO', SimpleNamespace, raising=False)
+    if fault == 'restore':
+        real_restore = driver.Snapshot.restore
+        def failing_restore(snapshot):
+            real_restore(snapshot)
+            raise RuntimeError('restoration diagnostic failure')
+        monkeypatch.setattr(driver.Snapshot, 'restore', failing_restore)
+    flag_calls = []
+    rtss.SetFlags = lambda *args: flag_calls.append(args) or 1
     monkeypatch.setattr(driver.subprocess, 'check_output', lambda *a, **kw: '90ee864')
     monkeypatch.setattr(driver.time, 'sleep', lambda *a: None)
     monkeypatch.setattr(driver, 'wait_ready', lambda *a: None)
@@ -233,6 +254,9 @@ def test_actual_parent_failure_restores_and_exports(tmp_path, monkeypatch, fault
             self.child = '--child' in command
             self.returncode = None
             if self.child:
+                assert command[command.index('--instance-handle') + 1] == str(handle)
+                assert kw['startupinfo'].lpAttributeList == {'handle_list': [handle]}
+                assert kw['close_fds'] is True and inheritance == [True]
                 scratch = Path(command[command.index('--child') + 1])
                 if fault != 'empty':
                     with (scratch / 'cap_changes_test.csv').open('w', newline='') as out:
@@ -251,6 +275,7 @@ def test_actual_parent_failure_restores_and_exports(tmp_path, monkeypatch, fault
             return self.returncode
     monkeypatch.setattr(driver.subprocess, 'Popen', Process)
     assert driver.run() == 1
+    assert closed == [True] and inheritance == [True, False]
     assert (profiles / 'Global').read_bytes() == original
     assert not (profiles / 'pythonw.exe.cfg').exists()
     output = next((root / 'results').iterdir())
@@ -261,6 +286,8 @@ def test_actual_parent_failure_restores_and_exports(tmp_path, monkeypatch, fault
         rows = list(reader)
     summary = (output / 'summary.md').read_text()
     assert 'child result missing or invalid' in summary and 'FAIL' in summary
+    if fault == 'restore':
+        assert 'restoration diagnostic failure' in summary
     if fault != 'empty':
         assert rows[0]['new_cap'] == '30'
         assert len((output / 'frames.csv').read_text().splitlines()) == 4
@@ -326,7 +353,8 @@ def test_actual_startup_skips_popup_ini_read_and_needs_no_early_context(tmp_path
     env = Environment(__builtins__=__builtins__, __file__=str(app_path), os=os, sys=sys,
         csv=__import__('csv'), logging=logging, threading=threading, time=__import__('time'),
         Decimal=Decimal, InvalidOperation=InvalidOperation, dpg=dpg,
-        ConfigManager=config_module.ConfigManager,
+        ConfigManager=config_module.ConfigManager, app_lease=lambda *args: None,
+        _instance_lease=None,
         ScaledDPG=ScaledDPG, enable_native_dpi=enable_native_dpi,
         primary_monitor_dpi=primary_monitor_dpi, read_preference=read_preference,
         resolve_scale=resolve_scale, pixels=pixels,
@@ -779,3 +807,24 @@ def test_actual_monitor_raise_to_max_before_real_exit_requires_continuous_chain(
         assert [(r['reason'], int(r['session_number']), float(r['old_cap']), float(r['new_cap']))
                 for r in runtime.rows[4:]] == [('increase', 1, 36, 48), ('exit', 2, 48, 48),
                                              ('exit_refresh', 2, 48, 48)]
+
+
+def test_actual_parent_duplicate_fails_before_side_effects(tmp_path, monkeypatch):
+    import acceptance_windows as driver
+    from core import single_instance
+    monkeypatch.setattr(driver.sys, 'platform', 'win32')
+    monkeypatch.setattr(driver, 'ROOT', tmp_path)
+    calls = []
+    monkeypatch.setattr(single_instance, 'acquire', lambda: calls.append('acquire') or None)
+    def forbidden(*args, **kwargs):
+        pytest.fail('duplicate supervisor performed runtime side effect')
+    monkeypatch.setattr(driver, 'controller', forbidden)
+    monkeypatch.setattr(driver, 'Snapshot', forbidden)
+    monkeypatch.setattr(driver, 'generated_configs', forbidden)
+    monkeypatch.setattr(driver.subprocess, 'Popen', forbidden)
+    monkeypatch.setattr(driver.subprocess, 'check_output', forbidden)
+    with pytest.raises(SystemExit) as exc:
+        driver.run()
+    assert exc.value.code != 0
+    assert 'another DFL instance' in str(exc.value)
+    assert calls == ['acquire'] and list(tmp_path.iterdir()) == []

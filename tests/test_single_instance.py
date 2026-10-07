@@ -45,7 +45,7 @@ def test_duplicate_signals_and_closes_only_own_handles():
     assert si.acquire(native) is None
     assert native.closed == [BIG, BIG + 1]
     assert native.signals == [BIG + 1]
-    assert native.foregrounds == 1
+    assert native.foregrounds == 0
 
 
 def test_null_fails_closed():
@@ -78,8 +78,17 @@ def test_activation_uses_real_tray_restore_on_poll_thread():
         calls.append(threading.get_ident())
         tray.is_tray_active = False
     tray.restore_from_tray = restore
+    duplicate = Native(183)
+    assert si.acquire(duplicate) is None
+    assert duplicate.foregrounds == 0
+    assert tray.is_tray_active
+    def foreground():
+        assert not tray.is_tray_active
+        calls.append('foreground')
+        native.foregrounds += 1
+    native.foreground = foreground
     lease.poll_activation(tray)
-    assert calls == [threading.get_ident()]
+    assert calls == [threading.get_ident(), 'foreground']
     assert not tray.is_tray_active
     assert native.foregrounds == 1
     lease.close()
@@ -119,7 +128,7 @@ def test_acceptance_supervisor_lease_covers_restore(monkeypatch):
     run = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'run')
     order = []
     lease = SimpleNamespace(close=lambda: order.append('close'))
-    monkeypatch.setattr(si, 'app_lease', lambda: order.append('acquire') or lease)
+    monkeypatch.setattr(si, 'acquire', lambda: order.append('acquire') or lease)
     def work(value):
         assert value is lease
         order.extend(['controller', 'snapshot', 'write', 'child_exit', 'restore'])
@@ -132,3 +141,18 @@ def test_acceptance_supervisor_lease_covers_restore(monkeypatch):
     assert "'handle_list': [lease.handle]" in source
     assert 'close_fds=True' in source
     assert "'_single_instance_handle': instance_handle" in source
+
+
+@pytest.mark.parametrize('frozen', [False, True])
+def test_production_duplicate_activates_and_exits_zero(monkeypatch, frozen):
+    native = Native(183)
+    monkeypatch.setattr(si, 'Native', lambda: native)
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si.sys, 'frozen', frozen, raising=False)
+    monkeypatch.setattr(ctypes, 'get_last_error', lambda: 183, raising=False)
+    with pytest.raises(SystemExit) as exc:
+        si.app_lease()
+    assert exc.value.code == 0
+    assert native.signals == [BIG + 1]
+    assert native.closed == [BIG, BIG + 1]
+    assert native.foregrounds == 0

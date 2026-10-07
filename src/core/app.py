@@ -1667,7 +1667,10 @@ if _acceptance_runtime is not None:
 
 while dpg.is_dearpygui_running():
     if _instance_lease is not None:
-        _instance_lease.poll_activation(tray)
+        try:
+            _instance_lease.poll_activation(tray)
+        except Exception:
+            logging.error("Instance activation dispatch failed", exc_info=True)
     dpg.render_dearpygui_frame()
     for job in dpg.get_callback_queue() or []:
         try:

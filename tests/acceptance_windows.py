@@ -494,10 +494,12 @@ def export_evidence(scratch, output, errors):
 
 
 def run():
-    from core.single_instance import app_lease
+    from core.single_instance import acquire
     if sys.platform != "win32":
         raise SystemExit("Windows only; real interactive desktop and RTSS required")
-    lease = app_lease()
+    lease = acquire()
+    if lease is None:
+        raise SystemExit("Acceptance requires exclusive admission; another DFL instance is running")
     try:
         return _run_with_lease(lease)
     finally:

@@ -104,7 +104,6 @@ def acquire(native=None, inherited=None):
                 kernel.SetEvent(event)
             finally:
                 kernel.CloseHandle(event)
-        native.foreground()
         return None
     return Lease(native, handle)
 
