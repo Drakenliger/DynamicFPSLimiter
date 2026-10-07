@@ -16,8 +16,9 @@ def load_real_evaluate_cap_change(ns, enabled=True, upper=90, value=90):
     tree = ast.parse(fps_utils_path.read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "FPSUtils")
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "evaluate_cap_change")
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "evaluate_librehm_decision")
     scope = {"statistics": statistics, "evaluate_legacy_cap_change": evaluate_legacy_cap_change}
-    exec(compile(ast.Module(body=[method], type_ignores=[]), "<FPSUtils>", "exec"), scope)
+    exec(compile(ast.Module(body=[helper, method], type_ignores=[]), "<FPSUtils>", "exec"), scope)
 
     values = {
         "input_monitoring_method": "LibreHM",

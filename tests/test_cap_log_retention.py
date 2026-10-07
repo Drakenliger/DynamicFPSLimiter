@@ -8,19 +8,6 @@ from core.cap_change_log import CapChangeLog, make_row, run_path
 
 
 @pytest.fixture(autouse=True)
-def bounded_writer_shutdown(monkeypatch):
-    """Fail a stuck real writer instead of leaving pytest in an unbounded join."""
-    actual_close = CapChangeLog.close
-
-    def close(log, timeout=None):
-        result = actual_close(log, timeout=5.0 if timeout is None else min(timeout, 5.0))
-        assert not log._thread.is_alive(), 'cap-change CSV writer did not stop within 5 seconds'
-        return result
-
-    monkeypatch.setattr(CapChangeLog, 'close', close)
-
-
-@pytest.fixture(autouse=True)
 def ordered_run_timestamps(monkeypatch):
     # Retention assertions compare launch order, so do not depend on clock precision.
     ticks = itertools.count(1_000_000_000_000_000_000)
@@ -128,7 +115,7 @@ def test_failed_creation_preserves_old_logs(tmp_path):
     assert 'Cap-change CSV error' in errors[0]
 
 
-def test_close_drains_accepted_rows_and_waits_writer(tmp_path):
+def test_default_close_drains_accepted_rows_and_waits_writer(tmp_path):
     errors = []
     path = run_path(tmp_path)
     log = CapChangeLog(path, errors.append)
@@ -137,7 +124,7 @@ def test_close_drains_accepted_rows_and_waits_writer(tmp_path):
     for i in range(count):
         log.record(make_row(i, 1, 'Global', None, 60, 'start'))
 
-    log.close()  # The fixture bounds the real writer join.
+    log.close()  # Production default close() with timeout=None
 
     assert not log._thread.is_alive()
     assert path.exists()

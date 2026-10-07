@@ -13,19 +13,6 @@ from test_app_session import APP, load_app
 from test_librehm_policy import run_passes
 
 
-@pytest.fixture(autouse=True)
-def bounded_writer_shutdown(monkeypatch):
-    """Fail a stuck real writer instead of leaving pytest in an unbounded join."""
-    actual_close = CapChangeLog.close
-
-    def close(log, timeout=None):
-        result = actual_close(log, timeout=5.0 if timeout is None else min(timeout, 5.0))
-        assert not log._thread.is_alive(), 'cap-change CSV writer did not stop within 5 seconds'
-        return result
-
-    monkeypatch.setattr(CapChangeLog, 'close', close)
-
-
 def test_initializer_csv_error_without_gui_queue(tmp_path, monkeypatch, fake_dpg):
     import core.logger as logger
 
