@@ -13,6 +13,8 @@ import pytest
 
 import core.autostart as autostart
 
+SID_LOOKUP = autostart.current_user_sid
+
 FIXED_APP_PATH = "C:\\DynamicFPSLimiter\\DFL.exe"
 FIXED_TASK_NAME = "DFL_TestTask"
 
@@ -20,6 +22,7 @@ QUERY_ARGS = ["schtasks", "/Query", "/TN", FIXED_TASK_NAME]
 XML_ARGS = ["schtasks", "/Query", "/TN", FIXED_TASK_NAME, "/XML"]
 DELETE_ARGS = ["schtasks", "/Delete", "/TN", FIXED_TASK_NAME, "/F"]
 USER_ID = "DOMAIN\\InteractiveUser"
+USER_SID = "S-1-5-21-100-200-300-1001"
 CREATE_ARGS = ["schtasks", "/Create", "/TN", FIXED_TASK_NAME, "/XML", "<temp>", "/F"]
 
 
@@ -59,6 +62,7 @@ def autostart_manager(fake_dpg, monkeypatch):
         task_name=FIXED_TASK_NAME,
     )
     monkeypatch.setattr(autostart, "current_user_id", lambda: USER_ID)
+    monkeypatch.setattr(autostart, "current_user_sid", lambda user_id: USER_SID)
     recorder = _RunRecorder()
     monkeypatch.setattr(autostart.subprocess, "run", recorder)
     return mgr, recorder
@@ -117,6 +121,84 @@ def test_update_if_needed_keeps_task_when_xml_path_matches(autostart_manager):
     recorder.returncode = 0
     recorder.stdout = autostart.build_task_xml(FIXED_APP_PATH, USER_ID).decode("utf-16")
     mgr.update_if_needed(True)
+    _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS])
+
+
+@pytest.mark.parametrize("trigger,principal", [
+    (USER_ID.lower(), USER_ID.upper()),
+    (USER_SID, USER_SID),
+    (USER_ID.lower(), USER_SID),
+    (USER_SID, USER_ID.upper()),
+])
+def test_equivalent_account_xml_remains_untouched(autostart_manager, trigger, principal):
+    mgr, recorder = autostart_manager
+    root = ET.fromstring(autostart.build_task_xml(FIXED_APP_PATH, USER_ID))
+    ns = {"t": autostart.TASK_NAMESPACE}
+    root.find("t:Triggers/t:LogonTrigger/t:UserId", ns).text = trigger
+    root.find("t:Principals/t:Principal/t:UserId", ns).text = principal
+    recorder.stdout = ET.tostring(root, encoding="unicode")
+    mgr.update_if_needed(True)
+    _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS])
+
+
+@pytest.mark.parametrize("field", ["Triggers/LogonTrigger", "Principals/Principal"])
+@pytest.mark.parametrize("wrong_user", ["S-1-5-21-100-200-300-1002", "DOMAIN\\OtherUser"])
+def test_wrong_identity_replaces_task(autostart_manager, field, wrong_user):
+    mgr, recorder = autostart_manager
+    root = ET.fromstring(autostart.build_task_xml(FIXED_APP_PATH, USER_SID))
+    root.find("/".join(f"{{{autostart.TASK_NAMESPACE}}}{part}" for part in
+                       (field + "/UserId").split("/"))).text = wrong_user
+    recorder.stdout = ET.tostring(root, encoding="unicode")
+    mgr.update_if_needed(True)
+    _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS, CREATE_ARGS])
+
+
+def test_pure_matcher_does_not_accept_unknown_sid():
+    xml = autostart.build_task_xml(FIXED_APP_PATH, USER_SID)
+    assert not autostart.task_xml_matches(xml, FIXED_APP_PATH, USER_ID)
+    assert autostart.task_xml_matches(xml, FIXED_APP_PATH, USER_ID, (USER_SID,))
+
+
+@pytest.mark.parametrize("output", [
+    f'"{USER_ID.lower()}","{USER_SID}"\r\n',
+    f'"{USER_ID.upper()}","{USER_SID}"\n',
+])
+def test_current_user_sid_checked_csv_boundary(monkeypatch, output):
+    recorder = _RunRecorder(stdout=output)
+    monkeypatch.setattr(autostart.subprocess, "run", recorder)
+    assert autostart.current_user_sid(USER_ID) == USER_SID
+    _assert_call_sequences(recorder, [["whoami", "/user", "/fo", "csv", "/nh"]])
+    assert recorder.calls[0][1]["check"] is True
+    assert recorder.calls[0][1]["text"] is True
+
+
+@pytest.mark.parametrize("output", [
+    "", '"DOMAIN\\OtherUser","S-1-5-21-1001"',
+    f'"{USER_ID}","not-a-sid"', f'"{USER_ID}","S-1-5-4294967296"',
+    f'"{USER_ID}","S-1-281474976710656-1"',
+    f'"{USER_ID}","{USER_SID}","extra"',
+    f'"{USER_ID}","{USER_SID}"\n"other","S-1-5-1"',
+])
+def test_current_user_sid_rejects_unvalidated_output(monkeypatch, output):
+    monkeypatch.setattr(autostart.subprocess, "run", _RunRecorder(stdout=output))
+    with pytest.raises(ValueError):
+        autostart.current_user_sid(USER_ID)
+
+
+@pytest.mark.parametrize("error", [subprocess.CalledProcessError(1, "whoami"), OSError("launch failed")])
+def test_sid_native_failure_does_not_replace_task(autostart_manager, monkeypatch, error):
+    mgr, recorder = autostart_manager
+    recorder.stdout = autostart.build_task_xml(FIXED_APP_PATH, USER_SID).decode("utf-16")
+    monkeypatch.setattr(autostart, "current_user_sid", SID_LOOKUP)
+    def run(args, **kwargs):
+        if args[0] == "whoami":
+            assert kwargs["check"] is True
+            assert kwargs["creationflags"] == 0x08000000
+            raise error
+        return recorder(args, **kwargs)
+    monkeypatch.setattr(autostart.subprocess, "run", run)
+    with pytest.raises(type(error)):
+        mgr.update_if_needed(True)
     _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS])
 
 

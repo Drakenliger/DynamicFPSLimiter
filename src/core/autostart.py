@@ -5,6 +5,8 @@ import logging
 import ntpath
 import pathlib
 import ctypes
+import csv
+import re
 from ctypes import wintypes
 import tempfile
 import xml.etree.ElementTree as ET
@@ -25,6 +27,27 @@ def current_user_id():
     if not get_name(2, buffer, ctypes.byref(size)):  # NameSamCompatible
         raise ctypes.WinError(ctypes.get_last_error())
     return buffer.value
+
+
+def current_user_sid(user_id):
+    """Read and validate the current process user's SID and account name."""
+    result = subprocess.run(
+        ["whoami", "/user", "/fo", "csv", "/nh"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        creationflags=CREATE_NO_WINDOW, check=True,
+    )
+    rows = list(csv.reader(result.stdout.splitlines(), strict=True))
+    if len(rows) != 1 or len(rows[0]) != 2:
+        raise ValueError("Unexpected whoami user output")
+    account, sid = rows[0]
+    if account.casefold() != user_id.casefold():
+        raise ValueError("whoami account does not match the current user")
+    if not re.fullmatch(r"S-1-[0-9]+(?:-[0-9]+){1,15}", sid):
+        raise ValueError("Invalid current user SID")
+    numbers = [int(part) for part in sid.split("-")[2:]]
+    if numbers[0] >= 2**48 or any(part >= 2**32 for part in numbers[1:]):
+        raise ValueError("Invalid current user SID")
+    return sid
 
 
 def build_task_xml(app_path, user_id):
@@ -50,7 +73,7 @@ def build_task_xml(app_path, user_id):
     return ET.tostring(task, encoding="utf-16", xml_declaration=True)
 
 
-def task_xml_matches(xml, app_path, user_id):
+def task_xml_matches(xml, app_path, user_id, known_aliases=()):
     """Require the executable and all autostart policy fields to match."""
     try:
         task = ET.fromstring(xml)
@@ -67,11 +90,14 @@ def task_xml_matches(xml, app_path, user_id):
     trigger, principal, action = triggers[0], principals[0], actions[0]
     def value(node, name):
         return node.findtext(f"t:{name}", namespaces=ns)
+    identities = {identity.casefold() for identity in (user_id, *known_aliases)}
+    def same_user(identity):
+        return bool(identity) and identity.casefold() in identities
     return (
         trigger.tag == f"{{{TASK_NAMESPACE}}}LogonTrigger"
-        and value(trigger, "UserId") == user_id
+        and same_user(value(trigger, "UserId"))
         and value(trigger, "Enabled") == "true"
-        and value(principal, "UserId") == user_id
+        and same_user(value(principal, "UserId"))
         and value(principal, "LogonType") == "InteractiveToken"
         and value(principal, "RunLevel") == "HighestAvailable"
         and task.find("t:Actions", ns).get("Context") == principal.get("id")
@@ -181,8 +207,11 @@ class AutoStartManager:
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                     creationflags=CREATE_NO_WINDOW, check=True,
                 )
-                if not task_xml_matches(result.stdout, self.app_path, current_user_id()):
-                    return self.create()
+                user_id = current_user_id()
+                if not task_xml_matches(result.stdout, self.app_path, user_id):
+                    sid = current_user_sid(user_id)
+                    if not task_xml_matches(result.stdout, self.app_path, user_id, (sid,)):
+                        return self.create()
             else:
                 return self.create()
         else:
