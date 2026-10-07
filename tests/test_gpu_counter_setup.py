@@ -74,7 +74,19 @@ def _fake_pdh(added_counters=None, closed_queries=None, collects=None):
 
 def test_no_duplicate_counters_on_start(monkeypatch, stub_logger):
     added_counters = []
+    collect_event = threading.Event()
+    collect_threads = []
+    main_thread_ident = threading.get_ident()
+
+    def collect_query_data_spy(query_handle):
+        ident = threading.get_ident()
+        if ident != main_thread_ident:
+            collect_threads.append(ident)
+            collect_event.set()
+        return 0
+
     fake_pdh_inst = _fake_pdh(added_counters=added_counters)
+    fake_pdh_inst.PdhCollectQueryData = collect_query_data_spy
     monkeypatch.setattr(gpu_monitor, "pdh", fake_pdh_inst)
 
     running = True
@@ -87,8 +99,12 @@ def test_no_duplicate_counters_on_start(monkeypatch, stub_logger):
     )
 
     try:
-        # Give worker thread time to run gpu_run initial setup
-        time.sleep(0.05)
+        # Wait until the background worker reaches its initial PdhCollectQueryData seam
+        reached = collect_event.wait(timeout=2.0)
+        assert reached, "Worker thread did not reach initial PdhCollectQueryData within timeout"
+        assert len(collect_threads) >= 1
+        assert collect_threads[0] != main_thread_ident
+
         # Verify PdhAddEnglishCounterW was called exactly ONCE for engtype_3D instance during initialize,
         # and NOT called again when gpu_run started.
         paths = [path for _, path, _ in added_counters]
