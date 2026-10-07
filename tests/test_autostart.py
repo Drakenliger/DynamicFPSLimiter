@@ -21,7 +21,8 @@ SID_LOOKUP = autostart.current_user_sid
 FIXED_APP_PATH = "C:\\DynamicFPSLimiter\\DFL.exe"
 FIXED_TASK_NAME = "DFL_TestTask"
 
-QUERY_ARGS = ["schtasks", "/Query", "/TN", FIXED_TASK_NAME]
+QUERY_ARGS = ["schtasks", "/Query", "/TN", FIXED_TASK_NAME, "/HRESULT"]
+MISSING_HRESULT = 0x80070002
 XML_ARGS = ["schtasks", "/Query", "/TN", FIXED_TASK_NAME, "/XML"]
 DELETE_ARGS = ["schtasks", "/Delete", "/TN", FIXED_TASK_NAME, "/F"]
 USER_ID = "DOMAIN\\InteractiveUser"
@@ -96,7 +97,7 @@ def test_task_exists_passes_argument_list_and_uses_returncode(autostart_manager)
     mgr, recorder = autostart_manager
     recorder.returncode = 0
     assert mgr.task_exists() is True
-    recorder.returncode = 1
+    recorder.returncode = MISSING_HRESULT
     recorder.stderr = "ERROR: The system cannot find the file specified."
     assert mgr.task_exists() is False
     _assert_call_sequences(recorder, [QUERY_ARGS, QUERY_ARGS])
@@ -208,11 +209,18 @@ def test_sid_native_failure_does_not_replace_task(autostart_manager, monkeypatch
     _assert_call_sequences(recorder, [QUERY_ARGS, XML_ARGS])
 
 
-def test_update_if_needed_creates_when_task_missing(autostart_manager):
+@pytest.mark.parametrize("returncode", [MISSING_HRESULT, MISSING_HRESULT - 2**32])
+@pytest.mark.parametrize("diagnostic", ["", "Das System kann die angegebene Datei nicht finden."])
+def test_update_if_needed_creates_when_task_missing(
+        autostart_manager, monkeypatch, returncode, diagnostic):
     mgr, recorder = autostart_manager
-    recorder.returncode = 1  # task does not exist
-    recorder.stderr = "ERROR: The system cannot find the file specified."
-    mgr.update_if_needed(True)
+    def run(args, **kwargs):
+        result = recorder(args, **kwargs)
+        if args == QUERY_ARGS:
+            return _FakeResult(returncode, "", diagnostic)
+        return result
+    monkeypatch.setattr(autostart.subprocess, "run", run)
+    assert mgr.update_if_needed(True).returncode == 0
     _assert_call_sequences(recorder, [QUERY_ARGS, CREATE_ARGS])
 
 
@@ -315,8 +323,9 @@ def test_failed_update_query_does_not_overwrite_task(autostart_manager, monkeypa
 @pytest.mark.parametrize("operation,enabled", [("create", True), ("delete", False),
     ("query", True), ("identity", True), ("sid", True)])
 @pytest.mark.parametrize("caller", ["startup", "checkbox"])
+@pytest.mark.parametrize("query_returncode", [None, 1, 0x80070005, 0x80070005 - 2**32])
 def test_actual_callers_report_failure_and_continue(
-        autostart_manager, monkeypatch, caplog, operation, enabled, caller):
+        autostart_manager, monkeypatch, caplog, operation, enabled, caller, query_returncode):
     if caller == "checkbox" and operation == "sid":
         pytest.skip("Checkbox creation does not resolve SID aliases")
     mgr, recorder = autostart_manager
@@ -325,12 +334,15 @@ def test_actual_callers_report_failure_and_continue(
     if caller == "checkbox" and operation == "query":
         enabled = False
     def run(args, **kwargs):
+        if operation == "query" and args == QUERY_ARGS and query_returncode is not None:
+            recorder(args, **kwargs)
+            return _FakeResult(query_returncode, "", "ERROR: The system cannot find the file specified.")
         if ((operation == "create" and "/Create" in args)
                 or (operation == "delete" and "/Delete" in args)
                 or (operation == "query" and "/Query" in args)):
             raise subprocess.CalledProcessError(1, args, stderr="native denied")
         if operation == "create" and "/Query" in args:
-            return _FakeResult(1, "", "ERROR: The system cannot find the file specified.")
+            return _FakeResult(MISSING_HRESULT, "", "ERROR: The system cannot find the file specified.")
         return recorder(args, **kwargs)
     monkeypatch.setattr(autostart.subprocess, "run", run)
     if operation in ("identity", "sid"):
@@ -383,11 +395,13 @@ def test_programming_defect_propagates(autostart_manager, monkeypatch):
         mgr.create()
 
 
-@pytest.mark.parametrize("diagnostic", ["access denied", "", "unrecognized diagnostic"])
-def test_failed_existence_query_never_creates(autostart_manager, caplog, diagnostic):
+@pytest.mark.parametrize("returncode", [1, 0x80070005, 0x80070005 - 2**32])
+@pytest.mark.parametrize("diagnostic", ["access denied", "", "unrecognized diagnostic",
+    "ERROR: The system cannot find the file specified."])
+def test_failed_existence_query_never_creates(autostart_manager, caplog, returncode, diagnostic):
     mgr, recorder = autostart_manager
     mgr.logger = Mock()
-    recorder.returncode = 1
+    recorder.returncode = returncode
     recorder.stderr = diagnostic
     assert mgr.update_if_needed(True) is False
     _assert_call_sequences(recorder, [QUERY_ARGS])

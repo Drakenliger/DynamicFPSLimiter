@@ -186,18 +186,19 @@ class AutoStartManager:
         return self._task_exists()
 
     def _task_exists(self):
-        result = subprocess.run(["schtasks", "/Query", "/TN", self.task_name],
+        result = subprocess.run(["schtasks", "/Query", "/TN", self.task_name, "/HRESULT"],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 creationflags=CREATE_NO_WINDOW)
-        if result.returncode == 0:
+        returncode = result.returncode & 0xFFFFFFFF
+        if returncode == 0:
             return True
-        # Only a confirmed missing task permits creation. Other query failures
-        # (including unrecognized/localized diagnostics) must not overwrite it.
-        if "the system cannot find the file specified" in result.stderr.casefold():
+        # Normalize signed Windows HRESULTs; diagnostics may be localized.
+        # Only a confirmed missing task permits creation.
+        if returncode == 0x80070002:
             return False
         raise subprocess.CalledProcessError(
             result.returncode, result.args if hasattr(result, "args") else
-            ["schtasks", "/Query", "/TN", self.task_name],
+            ["schtasks", "/Query", "/TN", self.task_name, "/HRESULT"],
             output=result.stdout, stderr=result.stderr,
         )
 
