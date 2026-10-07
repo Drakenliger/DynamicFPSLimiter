@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 # Add src directory to python path
 _original_sys_path = sys.path[:]
@@ -28,6 +28,11 @@ MOCK_ENV_ROOTS = {
 
 
 class TestAutoStartInstallWarning(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("core.autostart.current_user_id", return_value="DOMAIN\\User")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
 
     @patch.dict(os.environ, MOCK_ENV_ROOTS, clear=True)
     @patch("core.autostart.subprocess.run")
@@ -78,11 +83,9 @@ class TestAutoStartInstallWarning(unittest.TestCase):
                 self.assertIn("outside Program Files", gui_log.call_args.args[0])
                 self.assertEqual(app_logger.log_messages, [gui_log.call_args.args[0]])
                 mock_run.assert_called_once_with([
-                    "schtasks", "/Create", "/SC", "ONLOGON",
-                    "/TN", "DynamicFPSLimiter", "/TR",
-                    '"C:\\Users\\Public\\DynamicFPSLimiter\\DynamicFPSLimiter.exe"',
-                    "/RL", "HIGHEST", "/F",
-                ])
+                    "schtasks", "/Create", "/TN", "DynamicFPSLimiter",
+                    "/XML", ANY, "/F",
+                ], creationflags=0x08000000, check=True)
             finally:
                 for handler in root.handlers:
                     handler.close()
@@ -184,13 +187,7 @@ class TestAutoStartInstallWarning(unittest.TestCase):
         # Verify schtasks invocation was preserved
         mock_run.assert_called_once()
         expected_cmd = [
-            "schtasks",
-            "/Create",
-            "/SC", "ONLOGON",
-            "/TN", "DynamicFPSLimiter",
-            "/TR", f'"{app_path}"',
-            "/RL", "HIGHEST",
-            "/F",
+            "schtasks", "/Create", "/TN", "DynamicFPSLimiter", "/XML", ANY, "/F",
         ]
         self.assertEqual(mock_run.call_args[0][0], expected_cmd)
 
@@ -210,13 +207,7 @@ class TestAutoStartInstallWarning(unittest.TestCase):
         # Verify schtasks invocation was preserved
         mock_run.assert_called_once()
         expected_cmd = [
-            "schtasks",
-            "/Create",
-            "/SC", "ONLOGON",
-            "/TN", "DynamicFPSLimiter",
-            "/TR", f'"{app_path}"',
-            "/RL", "HIGHEST",
-            "/F",
+            "schtasks", "/Create", "/TN", "DynamicFPSLimiter", "/XML", ANY, "/F",
         ]
         self.assertEqual(mock_run.call_args[0][0], expected_cmd)
 
@@ -236,13 +227,7 @@ class TestAutoStartInstallWarning(unittest.TestCase):
         # Verify schtasks invocation was still preserved
         mock_run.assert_called_once()
         expected_cmd = [
-            "schtasks",
-            "/Create",
-            "/SC", "ONLOGON",
-            "/TN", "DynamicFPSLimiter",
-            "/TR", f'"{app_path}"',
-            "/RL", "HIGHEST",
-            "/F",
+            "schtasks", "/Create", "/TN", "DynamicFPSLimiter", "/XML", ANY, "/F",
         ]
         self.assertEqual(mock_run.call_args[0][0], expected_cmd)
 
