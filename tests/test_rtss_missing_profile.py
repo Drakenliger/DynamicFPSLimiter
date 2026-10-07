@@ -1,124 +1,183 @@
 """C2 regression tests: handle missing RTSS game profile .cfg creation and denominator setting.
 
 Verifies that setting a fractional framerate for a missing game profile:
-- Creates the .cfg file (or retries denominator after creation via SaveProfile)
-- Successfully sets both Limit and LimitDenominator in the .cfg file
-- Reads back the correct fractional FPS limit (e.g. 59.94)
-- Propagates False if profile creation or denominator application fails
-- Preserves unrelated settings when profile already exists
+- Selects Global/base profile before calling SaveProfile
+- Inherits intended Global default settings rather than last loaded game settings
+- Sets both Limit (numerator 5994) and LimitDenominator (100) in file/DLL
+- Reads back correct fractional FPS (59.94)
+- Leaves Global and other profile settings unchanged
+- Propagates False on creation or denominator failure without misleading success log
+- Preserves unrelated settings for existing profiles
 """
 import ctypes
+import os
+import re
 from pathlib import Path
 import pytest
 
 
 def _profile_file(rtss_stub, name="Global"):
-    if name.lower() == "global":
+    if not name or name.lower() == "global":
         return Path(rtss_stub.rtss_install_path) / "Profiles" / "Global"
     return Path(rtss_stub.rtss_install_path) / "Profiles" / f"{name}.cfg"
 
 
-def test_missing_profile_fractional_fps_creation_and_readback(rtss_stub):
-    """Fake DLL SaveProfile creates missing file; actual final cfg/API 59.94 means 5994/100."""
-    profile_name = "NewGame.exe"
-    cfg_path = _profile_file(rtss_stub, profile_name)
-    assert not cfg_path.exists()
+class StatefulDLLMock:
+    """Stateful mock of RTSS DLL profile API.
 
-    def fake_save_profile(pname_bytes):
-        name = pname_bytes.decode("latin1")
-        pfile = _profile_file(rtss_stub, name)
-        if not pfile.exists():
-            pfile.write_text("[Framerate]\nLimit=5994\n", encoding="latin1")
+    Tracks active loaded profile state and property dictionaries across
+    LoadProfile, SetProfileProperty, GetProfileProperty, and SaveProfile calls.
+    Updates .cfg files on disk while preserving non-DLL managed keys (e.g. LimitDenominator).
+    """
 
-    rtss_stub.SaveProfile = fake_save_profile
+    def __init__(self, rtss_stub):
+        self.rtss_stub = rtss_stub
+        self.profiles = {
+            b"": {"FramerateLimit": 0, "OSDPositionX": 0},
+        }
+        self.active_profile = b""
+        self.active_properties = dict(self.profiles[b""])
+        self.allow_save = True
 
-    def fake_get_property(prop, ptr, size):
-        if prop == b"FramerateLimit":
-            val = (5994).to_bytes(size, byteorder="little", signed=True)
-            ctypes.memmove(ptr, val, size)
+    def load_profile(self, name_bytes):
+        self.active_profile = name_bytes
+        if name_bytes in self.profiles:
+            self.active_properties = dict(self.profiles[name_bytes])
+
+    def set_profile_property(self, prop_bytes, ptr, size):
+        prop_str = prop_bytes.decode("latin1")
+        val = int.from_bytes(ctypes.string_at(ptr, size), byteorder="little", signed=True)
+        self.active_properties[prop_str] = val
+        return True
+
+    def get_profile_property(self, prop_bytes, ptr, size):
+        prop_str = prop_bytes.decode("latin1")
+        if prop_str in self.active_properties:
+            val = self.active_properties[prop_str]
+            val_bytes = val.to_bytes(size, byteorder="little", signed=True)
+            ctypes.memmove(ptr, val_bytes, size)
             return True
         return False
 
-    rtss_stub.GetProfileProperty = fake_get_property
+    def save_profile(self, name_bytes):
+        if not self.allow_save:
+            return
+        name = name_bytes.decode("latin1")
+        self.profiles[name_bytes] = dict(self.active_properties)
 
-    result = rtss_stub.set_fractional_framerate(profile_name, 59.94, update=False)
+        pfile = _profile_file(self.rtss_stub, name)
+        limit = self.active_properties.get("FramerateLimit", 0)
+
+        if pfile.exists():
+            text = pfile.read_text(encoding="latin1")
+            # Update Limit= in [Framerate] section or add section if missing
+            if re.search(r"^Limit=\d+", text, flags=re.MULTILINE):
+                text = re.sub(r"^Limit=\d+", f"Limit={limit}", text, flags=re.MULTILINE)
+            elif "[Framerate]" in text:
+                text = text.replace("[Framerate]\n", f"[Framerate]\nLimit={limit}\n")
+            else:
+                text += f"\n[Framerate]\nLimit={limit}\n"
+
+            osd_x = self.active_properties.get("OSDPositionX")
+            if osd_x is not None:
+                if re.search(r"^OSDPositionX=\d+", text, flags=re.MULTILINE):
+                    text = re.sub(r"^OSDPositionX=\d+", f"OSDPositionX={osd_x}", text, flags=re.MULTILINE)
+                elif "[OSD]" in text:
+                    text = text.replace("[OSD]\n", f"[OSD]\nOSDPositionX={osd_x}\n")
+                else:
+                    text = f"[OSD]\nOSDPositionX={osd_x}\n" + text
+            pfile.write_text(text, encoding="latin1")
+        else:
+            lines = []
+            osd_x = self.active_properties.get("OSDPositionX")
+            if osd_x is not None and osd_x != 0:
+                lines.append(f"[OSD]\nOSDPositionX={osd_x}\n")
+
+            lines.append(f"[Framerate]\nLimit={limit}\n")
+            pfile.write_text("".join(lines), encoding="latin1")
+
+
+def _install_stateful_mock(rtss_stub):
+    mock = StatefulDLLMock(rtss_stub)
+    rtss_stub.LoadProfile = mock.load_profile
+    rtss_stub.SetProfileProperty = mock.set_profile_property
+    rtss_stub.GetProfileProperty = mock.get_profile_property
+    rtss_stub.SaveProfile = mock.save_profile
+    return mock
+
+
+def test_missing_profile_inherits_global_defaults_and_sets_fractional_fps(rtss_stub):
+    """Missing profile inherits Global defaults (not previously loaded game) and sets 5994/100."""
+    mock = _install_stateful_mock(rtss_stub)
+
+    # 1. Mutate OtherGame.exe to have custom OSD setting
+    rtss_stub.set_profile_property("OtherGame.exe", "OSDPositionX", 999)
+    other_cfg = _profile_file(rtss_stub, "OtherGame.exe")
+    assert "OSDPositionX=999" in other_cfg.read_text(encoding="latin1")
+
+    new_cfg = _profile_file(rtss_stub, "NewGame.exe")
+    assert not new_cfg.exists()
+
+    # 2. Set fractional framerate for missing NewGame.exe
+    result = rtss_stub.set_fractional_framerate("NewGame.exe", 59.94, update=False)
     assert result == (5994, 100)
 
-    assert cfg_path.exists()
-    content = cfg_path.read_text(encoding="latin1")
+    # 3. Verify NewGame.exe created and inherited Global defaults (no OSDPositionX=999)
+    assert new_cfg.exists()
+    content = new_cfg.read_text(encoding="latin1")
     assert "LimitDenominator=100" in content
-    assert rtss_stub.get_framerate_limit(profile_name, get_denominator=True) == 59.94
+    assert "Limit=5994" in content
+    assert "OSDPositionX=999" not in content
+
+    # 4. Verify readback
+    assert rtss_stub.get_framerate_limit("NewGame.exe", get_denominator=True) == 59.94
+
+    # 5. Verify Global and OtherGame settings remain unchanged
+    assert "OSDPositionX=999" in other_cfg.read_text(encoding="latin1")
+    global_cfg = _profile_file(rtss_stub, "Global")
+    assert "OSDPositionX=999" not in global_cfg.read_text(encoding="latin1")
 
 
-def test_missing_profile_creation_failure_returns_false(rtss_stub):
-    """When profile creation / SaveProfile fails to create the file, denominator set and method return False."""
+def test_missing_profile_creation_failure_returns_false_and_no_success_log(rtss_stub):
+    """Creation failure returns False and suppresses misleading success log."""
+    mock = _install_stateful_mock(rtss_stub)
+    mock.allow_save = False  # SaveProfile fails to write file
+
     profile_name = "UncreatableGame.exe"
-    cfg_path = _profile_file(rtss_stub, profile_name)
-    assert not cfg_path.exists()
-
-    # SaveProfile does not create file (creation failure)
-    rtss_stub.SaveProfile = lambda pname_bytes: None
-
     result = rtss_stub.set_fractional_framerate(profile_name, 59.94, update=False)
+
     assert result is False
+    assert not any(f"Set {profile_name}" in msg for msg in rtss_stub.logger.messages)
 
 
-def test_set_profile_property_failure_returns_false(rtss_stub):
-    """When SetProfileProperty returns False, set_fractional_framerate returns False."""
-    rtss_stub.SetProfileProperty = lambda *args, **kwargs: False
+def test_direct_set_limit_denominator_on_missing_profile(rtss_stub):
+    """Direct set_limit_denominator on missing profile loads Global base and creates file."""
+    mock = _install_stateful_mock(rtss_stub)
 
-    result = rtss_stub.set_fractional_framerate("Global", 60, update=False)
-    assert result is False
+    # Mutate OtherGame first
+    rtss_stub.set_profile_property("OtherGame.exe", "OSDPositionX", 888)
 
-
-def test_set_limit_denominator_direct_creates_file_via_save_profile(rtss_stub):
-    """set_limit_denominator on missing profile calls SaveProfile to ensure file exists."""
     profile_name = "DirectGame.exe"
     cfg_path = _profile_file(rtss_stub, profile_name)
     assert not cfg_path.exists()
 
-    def fake_save_profile(pname_bytes):
-        name = pname_bytes.decode("latin1")
-        pfile = _profile_file(rtss_stub, name)
-        if not pfile.exists():
-            pfile.write_text("[Framerate]\nLimit=6000\n", encoding="latin1")
-
-    rtss_stub.SaveProfile = fake_save_profile
-
     success = rtss_stub.set_limit_denominator(profile_name, 100, update=False)
     assert success is True
     assert cfg_path.exists()
+
     content = cfg_path.read_text(encoding="latin1")
     assert "LimitDenominator=100" in content
-
-
-def test_set_limit_denominator_direct_creation_failure_returns_false(rtss_stub):
-    """set_limit_denominator returns False if SaveProfile fails to create the file."""
-    profile_name = "MissingDirect.exe"
-    cfg_path = _profile_file(rtss_stub, profile_name)
-    assert not cfg_path.exists()
-
-    rtss_stub.SaveProfile = lambda pname_bytes: None
-
-    success = rtss_stub.set_limit_denominator(profile_name, 100, update=False)
-    assert success is False
+    assert "OSDPositionX=888" not in content
 
 
 def test_existing_profile_preserves_unrelated_settings(rtss_stub):
     """Updating fractional framerate on existing profile preserves unrelated sections and keys."""
+    mock = _install_stateful_mock(rtss_stub)
+
     profile_name = "ExistingGame.exe"
     cfg_path = _profile_file(rtss_stub, profile_name)
     initial_content = "[OSD]\nPositionX=100\nPositionY=200\nLabel=Test\n[Framerate]\nLimit=60\n"
     cfg_path.write_text(initial_content, encoding="latin1")
-
-    def fake_get_property(prop, ptr, size):
-        if prop == b"FramerateLimit":
-            val = (5994).to_bytes(size, byteorder="little", signed=True)
-            ctypes.memmove(ptr, val, size)
-            return True
-        return False
-
-    rtss_stub.GetProfileProperty = fake_get_property
 
     result = rtss_stub.set_fractional_framerate(profile_name, 59.94, update=False)
     assert result == (5994, 100)
