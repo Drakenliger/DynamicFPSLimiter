@@ -298,7 +298,7 @@ def increase_locations(tree, arm):
     increase_try = next(n for n in ast.walk(monitor) if isinstance(n, ast.Try)
                         and any(isinstance(h.type, ast.Name) and h.type.id == 'ValueError'
                                 for h in n.handlers))
-    body = increase_try.body if arm == 'ladder' else increase_try.handlers[0].body
+    body = increase_try.orelse if arm == 'ladder' else increase_try.handlers[0].body
     nodes = [n for statement in body for n in ast.walk(statement)]
     lookup = next(n for n in nodes if isinstance(n, ast.Assign)
                   and any(isinstance(t, ast.Name) and t.id == 'next_fps' for t in n.targets)
