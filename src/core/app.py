@@ -1417,7 +1417,7 @@ autopilot_thread.start()
 apply_all_tooltips(dpg, get_tooltips(), cm.showtooltip, cm, logger)
 cm.refresh_ui_callbacks()
 
-autostart = AutoStartManager(app_path=os.path.join(os.path.dirname(Base_dir), "DynamicFPSLimiter.exe"), logger=logger)
+autostart = AutoStartManager(app_path=os.path.join(os.path.dirname(Base_dir), "DynamicFPSLimiter.exe"))
 autostart.update_if_needed(cm.launchonstartup)
 
 if cm.autopilot:

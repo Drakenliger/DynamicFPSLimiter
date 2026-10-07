@@ -206,9 +206,9 @@ def test_real_librehm_any_drop_all_raise_and_missing_sensor_semantics():
     assert evaluate([], [], 'LibreHM') == (False, False)
     sensor.gpu_percentiles[('Load', '1 Other')] = 50
     assert evaluate([], [], 'LibreHM') == (False, True)
-    # Existing behavior ignores a missing reading when other selected sensors have data.
+    # Missing reading on an enabled sensor blocks increase (non-qualifying).
     sensor.gpu_percentiles[('Load', '1 Other')] = None
-    assert evaluate([], [], 'LibreHM') == (False, True)
+    assert evaluate([], [], 'LibreHM') == (False, False)
     ns['cm'].sensor_infos = []
     assert evaluate([], [], 'LibreHM') == (False, False)
 
