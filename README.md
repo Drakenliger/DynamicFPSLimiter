@@ -19,12 +19,11 @@ If you'd like to inspect or customize the source code, follow the instructions i
 
 ### To Use Prebuilt Executable,
 1. Download the `DynamicFPSLimiter_vX.X.X.zip` file from the latest release [here.](https://github.com/SameSalamander5710/DynamicFPSLimiter/releases)
-2. Extract the zip file to a desired location (e.g. under `Program Files` or `Program Files (x86)`).
+2. Extract the zip file to a desired location
 3. Run `DynamicFPSLimiter.exe`  as Administrator.
 4. **Recommended**: Add `DynamicFPSLimiter.exe`as an exclusion in RTSS to reduce the app's CPU performance overhead. 
     - This can be done by holding the **Shift** key and clicking **Add** in RTSS, while the app is running.
     - **Note**: While not strictly necessary, this step is strongly recommended if you have disabled 'passive waiting' for the Global profile in RTSS
-5. **Autostart Recommendation**: If enabling autostart, it is strongly recommended to install the app under `Program Files` or `Program Files (x86)` before enabling autostart to prevent elevated execution from user-writable directories.
 
 Watch the demo here! (App version v5.0.1)
 
