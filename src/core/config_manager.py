@@ -103,13 +103,24 @@ class ConfigManager:
             'customfpslimits': '30.01, 45.00, 59.99',
             'monitoring_method': 'LibreHM'
         }
-        for config, path, defaults in (
+        configs = (
             (self.settings_config, self.settings_path, settings_defaults),
             (self.profiles_config, self.profiles_path, profiles_defaults),
-        ):
-            exists = os.path.exists(path)
+        )
+        existing = [os.path.exists(path) for _, path, _ in configs]
+        for (config, path, _), exists in zip(configs, existing):
             if exists:
                 read_config(config, path)
+
+        # Preserve get_setting's legacy Global fallback before seeding the
+        # higher-priority GlobalSettings section with program defaults.
+        if self.profiles_config.has_section("Global"):
+            legacy_global = self.profiles_config["Global"]
+            for key in settings_defaults["GlobalSettings"]:
+                if key in legacy_global:
+                    settings_defaults["GlobalSettings"][key] = legacy_global[key]
+
+        for (config, path, defaults), exists in zip(configs, existing):
             merge_defaults(config, defaults)
             if not exists:
                 with open(path, "w", encoding="utf-8") as stream:
