@@ -1,9 +1,17 @@
 import csv
+import itertools
 import os
 from pathlib import Path
 import pytest
 
 from core.cap_change_log import CapChangeLog, make_row, run_path
+
+
+@pytest.fixture(autouse=True)
+def ordered_run_timestamps(monkeypatch):
+    # Retention assertions compare launch order, so do not depend on clock precision.
+    ticks = itertools.count(1_000_000_000_000_000_000)
+    monkeypatch.setattr("core.cap_change_log.time.time_ns", lambda: next(ticks))
 
 
 def test_prune_21_plus_logs_keeps_20_and_retains_current(tmp_path):
