@@ -197,7 +197,10 @@ def test_two_cpus_identical_sensor_names_distinct_histories(cpu_count):
     sensor.dpg = MagicMock()
     sensor.gui_queue = None
 
-    LHMSensor._poll_loop(sensor)
+    while sensor._running():
+        with sensor._lock:
+            readings = sensor._poll_pass()
+        sensor._submit_dpg(sensor.dpg.set_value, "ReadingsText", readings)
 
     assert sensor.cpu_percentiles["/amdcpu/0/temp/0"] == 10.0
     rows = sensor.dpg.set_value.call_args.args[1].split("\n\n")
@@ -260,7 +263,10 @@ def test_gpu_removal_reindex_distinct_histories():
     sensor.dpg = MagicMock()
     sensor.gui_queue = None
 
-    LHMSensor._poll_loop(sensor)
+    while sensor._running():
+        with sensor._lock:
+            readings = sensor._poll_pass()
+        sensor._submit_dpg(sensor.dpg.set_value, "ReadingsText", readings)
 
     # GPU 1 identifier is unrefreshed -> None
     assert sensor.gpu_percentiles["/gpu/0/load/0"] is None

@@ -4,6 +4,7 @@ from collections import defaultdict
 import re
 from typing import Optional, Dict, List, Tuple
 import threading
+import logging
 
 pdh = ctypes.windll.pdh
 
@@ -206,62 +207,89 @@ class GPUUsageMonitor:
                 pdh.PdhCloseQuery(self.query_handle)
                 self.query_handle = None
 
+    def _invalidate_readings(self):
+        with self._lock:
+            self.samples.clear()
+            self.gpu_percentile = None
+
     def gpu_run(self, engine_type: str = "engtype_3D"):
+        try:
+            try:
+                # Setup counters for the specified engine type
+                with self._pdh_lock:
+                    _, self.counter_handles = self._setup_gpu_query_from_instances(
+                        self.query_handle, self.instances, engine_type  # Use stored instances
+                    )
 
-        # Setup counters for the specified engine type
-        with self._pdh_lock:
-            _, self.counter_handles = self._setup_gpu_query_from_instances(
-                self.query_handle, self.instances, engine_type  # Use stored instances
-            )
+                    status = pdh.PdhCollectQueryData(self.query_handle)
+                    if status != 0:
+                        raise RuntimeError(f"Failed GPU initial collect: {status}")
 
-            pdh.PdhCollectQueryData(self.query_handle)
+            except Exception:
+                with self._pdh_lock:
+                    self.counter_handles = {}
+                self._invalidate_readings()
+                logging.exception("GPU monitor initial polling setup failed")
 
-        while self.looping:
-            time.sleep(self.interval)
-            if self._running():
-                try:
-                    with self._pdh_lock:
-                        pdh.PdhCollectQueryData(self.query_handle)
+            while self.looping:
+                time.sleep(self.interval)
+                if not self.looping:
+                    break
+                if self._running():
+                    try:
+                        with self._pdh_lock:
+                            status = pdh.PdhCollectQueryData(self.query_handle)
+                            if status != 0:
+                                raise RuntimeError(f"Failed GPU collect: {status}")
 
-                        usage_by_luid = {}
+                            usage_by_luid = {}
+                            with self._lock:
+                                target_luid = self.luid
+                            handles_to_use = (
+                                {target_luid: self.counter_handles[target_luid]}
+                                if target_luid and target_luid in self.counter_handles
+                                else self.counter_handles
+                            )
+
+                            for luid, handles in handles_to_use.items():
+                                if not handles:
+                                    raise RuntimeError("GPU counter handles are empty")
+                                total = 0.0
+                                #max_value = 0.0
+                                for h in handles:
+                                    val = PDH_FMT_COUNTERVALUE()
+                                    status = pdh.PdhGetFormattedCounterValue(h, PDH_FMT_DOUBLE, None, ctypes.byref(val))
+                                    if status == 0 and val.CStatus == 0:
+                                        total += val.doubleValue
+                                        #max_value = max(max_value, val.doubleValue)
+                                    else:
+                                        raise RuntimeError(f"Failed GPU counter: status={status}, CStatus={val.CStatus}")
+                                usage_by_luid[luid] = total #max_value or total
+
+                        if not usage_by_luid:
+                            raise RuntimeError("GPU counter map is empty")
+
+                        max_luid, max_usage = max(usage_by_luid.items(), key=lambda item: item[1])
+                        #self.logger.add_log(f"target: {target_luid}, Current max LUID: {max_luid}, engine type: {engine_type}")
+                        highest_usage = max_usage
+
                         with self._lock:
-                            target_luid = self.luid
-                        handles_to_use = (
-                            {target_luid: self.counter_handles[target_luid]}
-                            if target_luid and target_luid in self.counter_handles
-                            else self.counter_handles
-                        )
+                            self.samples.append(highest_usage)
+                            if len(self.samples) > self.max_samples:
+                                self.samples.pop(0)
+                            self.gpu_percentile = round(GPUUsageMonitor.calculate_percentile(self.samples, self.percentile))
+                            #self.logger.add_log(f"GPU usage percentile: {self.gpu_percentile}%")
 
-                        for luid, handles in handles_to_use.items():
-                            total = 0.0
-                            #max_value = 0.0
-                            for h in handles:
-                                val = PDH_FMT_COUNTERVALUE()
-                                status = pdh.PdhGetFormattedCounterValue(h, PDH_FMT_DOUBLE, None, ctypes.byref(val))
-                                if status == 0 and val.CStatus == 0:
-                                    total += val.doubleValue
-                                    #max_value = max(max_value, val.doubleValue)
-                                else:
-                                    self.logger.add_log(f"02_Failed to read counter (LUID: {luid}): status={status}")
-                                    self.reinitialize()
-                            usage_by_luid[luid] = total #max_value or total
+                    except Exception:
+                        self._invalidate_readings()
+                        logging.exception("GPU polling failed")
+                        try:
+                            self.reinitialize(engine_type)
+                        except Exception:
+                            logging.exception("GPU polling reinitialization failed")
 
-                    if not usage_by_luid:
-                        return 0, ""
-
-                    max_luid, max_usage = max(usage_by_luid.items(), key=lambda item: item[1])
-                    #self.logger.add_log(f"target: {target_luid}, Current max LUID: {max_luid}, engine type: {engine_type}")
-                    highest_usage = max_usage
-
-                    with self._lock:
-                        self.samples.append(highest_usage)
-                        if len(self.samples) > self.max_samples:
-                            self.samples.pop(0)
-                        self.gpu_percentile = round(GPUUsageMonitor.calculate_percentile(self.samples, self.percentile))
-                        #self.logger.add_log(f"GPU usage percentile: {self.gpu_percentile}%")
-
-                except Exception as e:
-                    self.logger.add_log(f"GPU monitor error: {e}")
+        finally:
+            self._invalidate_readings()
 
     def toggle_luid_selection(self):
         """
