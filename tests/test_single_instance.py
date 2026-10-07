@@ -30,8 +30,54 @@ class Native:
         self.foregrounds += 1
 
 
-def test_retained_pointer_width_and_close_once():
-    native = Native()
+@pytest.fixture
+def native_factory(monkeypatch):
+    # Model use_last_error=True: each fake mutex call publishes its own error.
+    last_error = 0
+    monkeypatch.setattr(ctypes, 'get_last_error', lambda: last_error, raising=False)
+
+    def make(error=0, handle=BIG):
+        native = Native(error, handle)
+
+        def create_mutex(*args):
+            nonlocal last_error
+            last_error = native.last_error
+            return handle
+
+        native.kernel.CreateMutexW = create_mutex
+        return native
+
+    return make
+
+
+@pytest.mark.parametrize('error, handle', [(0, BIG), (183, BIG), (5, None)])
+def test_fake_mutex_publishes_error_on_win32(monkeypatch, native_factory, error, handle):
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    native = native_factory(error, handle)
+    assert ctypes.get_last_error() == 0
+    if error == 5:
+        with pytest.raises(OSError) as exc:
+            si.acquire(native)
+        assert exc.value.errno == 5
+        assert native.closed == []
+        assert native.signals == []
+    elif error == 183:
+        assert si.acquire(native) is None
+        assert native.closed == [BIG, BIG + 1]
+        assert native.signals == [BIG + 1]
+        assert native.foregrounds == 0
+    else:
+        lease = si.acquire(native)
+        assert lease.handle == BIG
+        assert native.closed == []
+        assert native.signals == []
+        lease.close()
+        assert native.closed == [BIG]
+    assert ctypes.get_last_error() == error
+
+
+def test_retained_pointer_width_and_close_once(native_factory):
+    native = native_factory()
     lease = si.acquire(native)
     assert lease.handle == BIG
     lease.activation_event()
@@ -40,37 +86,37 @@ def test_retained_pointer_width_and_close_once():
     assert native.closed == [BIG + 1, BIG]
 
 
-def test_duplicate_signals_and_closes_only_own_handles():
-    native = Native(183)
+def test_duplicate_signals_and_closes_only_own_handles(native_factory):
+    native = native_factory(183)
     assert si.acquire(native) is None
     assert native.closed == [BIG, BIG + 1]
     assert native.signals == [BIG + 1]
     assert native.foregrounds == 0
 
 
-def test_null_fails_closed():
-    native = Native(5, None)
+def test_null_fails_closed(native_factory):
+    native = native_factory(5, None)
     with pytest.raises(OSError):
         si.acquire(native)
     assert native.closed == []
 
 
-def test_inherited_validation_and_ownership():
-    native = Native(183)
+def test_inherited_validation_and_ownership(native_factory):
+    native = native_factory(183)
     lease = si.acquire(native, BIG)
     assert native.closed == [BIG + 2]
     lease.close()
     assert native.closed == [BIG + 2, BIG]
-    native = Native()
+    native = native_factory()
     native.kernel.CompareObjectHandles = lambda *a: False
     with pytest.raises(OSError):
         si.acquire(native, BIG)
     assert native.closed == [BIG, BIG + 2]
 
 
-def test_activation_uses_real_tray_restore_on_poll_thread():
+def test_activation_uses_real_tray_restore_on_poll_thread(native_factory):
     import threading
-    native = Native()
+    native = native_factory()
     lease = si.acquire(native)
     calls = []
     tray = SimpleNamespace(is_tray_active=True)
@@ -78,7 +124,7 @@ def test_activation_uses_real_tray_restore_on_poll_thread():
         calls.append(threading.get_ident())
         tray.is_tray_active = False
     tray.restore_from_tray = restore
-    duplicate = Native(183)
+    duplicate = native_factory(183)
     assert si.acquire(duplicate) is None
     assert duplicate.foregrounds == 0
     assert tray.is_tray_active
@@ -144,12 +190,11 @@ def test_acceptance_supervisor_lease_covers_restore(monkeypatch):
 
 
 @pytest.mark.parametrize('frozen', [False, True])
-def test_production_duplicate_activates_and_exits_zero(monkeypatch, frozen):
-    native = Native(183)
+def test_production_duplicate_activates_and_exits_zero(monkeypatch, frozen, native_factory):
+    native = native_factory(183)
     monkeypatch.setattr(si, 'Native', lambda: native)
     monkeypatch.setattr(si.sys, 'platform', 'win32')
     monkeypatch.setattr(si.sys, 'frozen', frozen, raising=False)
-    monkeypatch.setattr(ctypes, 'get_last_error', lambda: 183, raising=False)
     with pytest.raises(SystemExit) as exc:
         si.app_lease()
     assert exc.value.code == 0
