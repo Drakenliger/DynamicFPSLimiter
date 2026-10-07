@@ -9,6 +9,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from core import librehardwaremonitor as lhm_mod
 
 
@@ -69,6 +71,95 @@ class _FakeComputer:
 
     def Close(self):
         self.close_calls += 1
+
+
+@pytest.mark.parametrize("layout", ["intel-first", "intel-middle"])
+def test_saved_profile_roundtrip_after_intel_admission(
+    layout, tmp_path, monkeypatch, fake_dpg, stub_logger
+):
+    """Real persistence keeps legacy ordinals and defaults across Intel admission."""
+    from core.config_manager import ConfigManager
+
+    cpu = _FakeHardware("CPU", _FakeHardwareType.Cpu, [
+        _FakeSensor("CPU Total", _FakeSensorType.Load, 15, "/cpu/0/load/0")
+    ])
+    amd = _FakeHardware("AMD", _FakeHardwareType.GpuAmd, [
+        _FakeSensor("GPU Core", _FakeSensorType.Load, 85, "/amdgpu/0/load/0")
+    ])
+    nvidia = _FakeHardware("NVIDIA", _FakeHardwareType.GpuNvidia, [
+        _FakeSensor("GPU Core", _FakeSensorType.Load, 35, "/nvidiagpu/0/load/0")
+    ])
+    intel = _FakeHardware("Intel", _FakeHardwareType.GpuIntel, [
+        _FakeSensor("GPU Core", _FakeSensorType.Load, 10, "/intelgpu/0/load/0")
+    ])
+    hardware = [cpu, amd, nvidia]
+    monkeypatch.setattr(
+        lhm_mod, "get_types",
+        lambda base_dir=None: (
+            lambda: _FakeComputer(hardware), _FakeSensorType, _FakeHardwareType
+        ),
+    )
+    # Only the hardware boundary is fake; ConfigManager discovers sensors itself.
+    assert ConfigManager.__init__.__globals__["get_all_sensor_infos"] is lhm_mod.get_all_sensor_infos
+
+    def create_manager():
+        manager = ConfigManager(
+            stub_logger, fake_dpg,
+            SimpleNamespace(set_profile_property=lambda *args, **kwargs: True),
+            None,
+            SimpleNamespace(themes={"enabled_text_theme": 1, "disabled_text_theme": 2}),
+            str(tmp_path / "core"),
+        )
+        # Match the dynamic initialization sequence in app.py.
+        manager.update_dynamic_input_field_keys()
+        manager.update_dynamic_default_settings()
+        manager.update_dynamic_key_type_map()
+        return manager
+
+    def assert_profile_values(manager, expected_ids, expected_values):
+        actual_ids = {sensor["hw_name"]: sensor["parameter_id"] for sensor in manager.sensor_infos}
+        assert actual_ids == expected_ids
+        for hardware_name, values in expected_values.items():
+            for suffix, expected in values.items():
+                actual = fake_dpg.get_value(f"input_{expected_ids[hardware_name]}_{suffix}")
+                assert actual == expected, (layout, hardware_name, suffix, actual, expected)
+                assert type(actual) is type(expected), (layout, hardware_name, suffix)
+
+    legacy_ids = {
+        "CPU": "cpu1_load_01", "AMD": "gpu1_load_01", "NVIDIA": "gpu2_load_01"
+    }
+    expected_values = {
+        "CPU": {"enable": True, "lower": 11, "upper": 77},
+        "AMD": {"enable": True, "lower": 31, "upper": 71},
+        "NVIDIA": {"enable": False, "lower": 43, "upper": 93},
+    }
+    original = create_manager()
+    assert {sensor["hw_name"]: sensor["parameter_id"] for sensor in original.sensor_infos} == legacy_ids
+    for key in original.input_field_keys:
+        fake_dpg.set_value(f"input_{key}", original.Default_settings_original[key])
+    for hardware_name, values in expected_values.items():
+        for suffix, value in values.items():
+            fake_dpg.set_value(f"input_{legacy_ids[hardware_name]}_{suffix}", value)
+    original.save_profile("LegacyMixedGPU")
+
+    hardware = (
+        [intel, cpu, amd, nvidia] if layout == "intel-first"
+        else [cpu, amd, intel, nvidia]
+    )
+    admitted_ids = {**legacy_ids, "Intel": "gpu3_load_01"}
+    expected_values["Intel"] = {"enable": False, "lower": 0, "upper": 100}
+    fake_dpg.values.clear()
+    fake_dpg.items.clear()
+    restarted = create_manager()
+    assert restarted.load_profile_raw("LegacyMixedGPU") is True
+    assert_profile_values(restarted, admitted_ids, expected_values)
+
+    restarted.save_profile("ResavedMixedGPU")
+    fake_dpg.values.clear()
+    fake_dpg.items.clear()
+    final = create_manager()
+    assert final.load_profile_raw("ResavedMixedGPU") is True
+    assert_profile_values(final, admitted_ids, expected_values)
 
 
 def test_intel_gpu_discovery_standalone(monkeypatch):
