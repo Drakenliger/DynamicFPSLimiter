@@ -260,8 +260,10 @@ class RTSSController:
                 profile_name_for_api = profile_name
 
             if not os.path.isfile(profile_file):
-                self.logger.add_log(f"Profile file not found: {profile_file}")
-                return False
+                self.SaveProfile(profile_name_for_api.encode(PROFILE_ENCODING))
+                if not os.path.isfile(profile_file):
+                    self.logger.add_log(f"Profile file not found: {profile_file}")
+                    return False
 
             with open(profile_file, "r", encoding=PROFILE_ENCODING) as f:
                 lines = f.readlines()
@@ -290,10 +292,15 @@ class RTSSController:
                 denominator = 1
                 limit = int(framerate)
 
-            if denominator:
-                self.set_limit_denominator(profile_name, denominator, update=update)
+            prop_success = self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update)
+            if not prop_success:
+                return False
 
-            self.set_profile_property(profile_name_for_api, "FramerateLimit", limit, update=update)
+            if denominator:
+                denom_success = self.set_limit_denominator(profile_name, denominator, update=update)
+                if not denom_success:
+                    return False
+
             if not update:
                 self.UpdateProfiles()
 
