@@ -312,9 +312,8 @@ def increase_locations(tree, arm):
                   and isinstance(n.value.value, ast.Name)
                   and n.value.value.id == 'fps_limit_list')
     admission = next(n for n in nodes if isinstance(n, ast.With)
-                     and any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
-                             and isinstance(s.value.func, ast.Name) and s.value.func.id == '_write_cap'
-                             for s in n.body))
+                     and any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == '_write_cap'
+                             for stmt in n.body for node in ast.walk(stmt)))
     return lookup.lineno, admission
 
 

@@ -146,8 +146,8 @@ def test_pause_after_admission_before_rtss_call(lockless):
     ns, writes, _, _ = load_app(lockless=lockless)
     tree = ast.parse(APP.read_text())
     monitor = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'monitoring_loop')
-    call_line = min(n.lineno for n in ast.walk(monitor) if isinstance(n, ast.Expr)
-                    and isinstance(n.value, ast.Call) and ast.unparse(n.value) == "_write_cap(current_profile, next_fps, 'decrease')")
+    call_line = min(n.lineno for n in ast.walk(monitor) if isinstance(n, ast.Call)
+                    and ast.unparse(n) == "_write_cap(current_profile, next_fps, 'decrease')")
     paused, release = threading.Event(), threading.Event()
     invalidation_attempted, restarted = threading.Event(), threading.Event()
     class ObservedLock:

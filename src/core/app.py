@@ -176,6 +176,10 @@ def _write_cap(profile, cap, reason, *, direct=False):
     result = (rtss.set_fractional_fps_direct(profile, cap) if direct
               else rtss.set_fractional_framerate(profile, cap))
     if result is False:
+        try:
+            logger.add_log(f"RTSS cap write failed for profile '{profile}': requested cap {cap} (reason: {reason})")
+        except Exception:
+            pass
         return result
     try:
         cap_change_log.record(make_row(timestamp, session_number, profile, old_cap,
@@ -581,10 +585,10 @@ def monitoring_loop(captured_session):
                                 return
                             if captured_profile_revision != profile_revision:
                                 continue
-                            _write_cap(current_profile, last_active_fps_cap, "idle_restore")
-                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                            should_decrease = should_increase = False
-                            idle_state = False
+                            if _write_cap(current_profile, last_active_fps_cap, "idle_restore") is not False:
+                                gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                should_decrease = should_increase = False
+                                idle_state = False
                     else:
                         if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
                                               cm.minvalidgpu, cm.minvalidfps):
@@ -613,13 +617,13 @@ def monitoring_loop(captured_session):
                                             return
                                         if captured_profile_revision != profile_revision:
                                             continue
-                                        _write_cap(current_profile, next_fps, "decrease")
-                                        CurrentFPSOffset = next_fps - current_maxcap
-                                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                                        observer = globals().get("_acceptance_runtime")
-                                        if observer is not None:
-                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
-                                        should_decrease = should_increase = False
+                                        if _write_cap(current_profile, next_fps, "decrease") is not False:
+                                            CurrentFPSOffset = next_fps - current_maxcap
+                                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                            observer = globals().get("_acceptance_runtime")
+                                            if observer is not None:
+                                                observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
+                                            should_decrease = should_increase = False
 
                             # --- COOLDOWN LOGIC ---
                             with session_lock:
@@ -658,15 +662,15 @@ def monitoring_loop(captured_session):
                                                 return
                                             if captured_profile_revision != profile_revision:
                                                 continue
-                                            _write_cap(current_profile, next_fps, "increase")
-                                            CurrentFPSOffset = next_fps - current_maxcap
-                                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                                            observer = globals().get("_acceptance_runtime")
-                                            if observer is not None:
-                                                observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
-                                            should_decrease = should_increase = False
-                                            increase_cooldown = cm.delaybeforeincrease  # Start cooldown
-                                            pass_increase_cooldown = increase_cooldown
+                                            if _write_cap(current_profile, next_fps, "increase") is not False:
+                                                CurrentFPSOffset = next_fps - current_maxcap
+                                                gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                                observer = globals().get("_acceptance_runtime")
+                                                if observer is not None:
+                                                    observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
+                                                should_decrease = should_increase = False
+                                                increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                                pass_increase_cooldown = increase_cooldown
                                 else:
                                     next_index = min(current_index + steps, len(fps_limit_list) - 1)
                                     if next_index > current_index:
@@ -676,15 +680,15 @@ def monitoring_loop(captured_session):
                                                 return
                                             if captured_profile_revision != profile_revision:
                                                 continue
-                                            _write_cap(current_profile, next_fps, "increase")
-                                            CurrentFPSOffset = next_fps - current_maxcap
-                                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                                            observer = globals().get("_acceptance_runtime")
-                                            if observer is not None:
-                                                observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
-                                            should_decrease = should_increase = False
-                                            increase_cooldown = cm.delaybeforeincrease  # Start cooldown
-                                            pass_increase_cooldown = increase_cooldown
+                                            if _write_cap(current_profile, next_fps, "increase") is not False:
+                                                CurrentFPSOffset = next_fps - current_maxcap
+                                                gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                                observer = globals().get("_acceptance_runtime")
+                                                if observer is not None:
+                                                    observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
+                                                should_decrease = should_increase = False
+                                                increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                                pass_increase_cooldown = increase_cooldown
                 else:
                     if idle_state:
                         pass
@@ -694,11 +698,11 @@ def monitoring_loop(captured_session):
                                 return
                             if captured_profile_revision != profile_revision:
                                 continue
-                            _write_cap(current_profile, cm.idle_fps_cap, "idle")
-                            last_active_fps_cap = current_maxcap + CurrentFPSOffset
-                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                            should_decrease = should_increase = False
-                            idle_state = True
+                            if _write_cap(current_profile, cm.idle_fps_cap, "idle") is not False:
+                                last_active_fps_cap = current_maxcap + CurrentFPSOffset
+                                gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                should_decrease = should_increase = False
+                                idle_state = True
 
             if (session_is_current(captured_session, session_number, running)
                     and captured_profile_revision == profile_revision):
