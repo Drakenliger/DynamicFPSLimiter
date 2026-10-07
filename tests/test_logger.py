@@ -90,3 +90,38 @@ def test_add_log_is_thread_safe(fake_dpg, monkeypatch):
 
     # The lock keeps the buffer consistent: exactly the latest 50 survive.
     assert len(logger.log_messages) == 50
+
+
+def test_thread_hook_logs_and_preserves_collector_once(tmp_path, monkeypatch):
+    import logging
+    import sys
+    collected = []
+    monkeypatch.setattr(threading, 'excepthook', collected.append)
+    monkeypatch.setattr(sys, 'excepthook', sys.excepthook)
+    root = logging.getLogger()
+    handler = logging.FileHandler(tmp_path / 'error.log')
+    formatter = logging.Formatter('PR8 %(levelname)s %(message)s')
+    handler.setFormatter(formatter)
+    monkeypatch.setattr(root, 'handlers', [handler])
+    monkeypatch.setattr(root, 'level', logging.ERROR)
+    try:
+        logger.init_logging(str(tmp_path / 'unused.log'))
+        hook = threading.excepthook
+        logger.init_logging(str(tmp_path / 'unused.log'))
+        assert threading.excepthook is hook
+        assert root.handlers == [handler] and handler.formatter is formatter
+        def fail():
+            raise RuntimeError('thread failure evidence')
+        thread = threading.Thread(target=fail, name='actual-failing-worker')
+        thread.start()
+        thread.join(5)
+        assert not thread.is_alive()
+        handler.flush()
+        text = (tmp_path / 'error.log').read_text()
+        assert text.count('Uncaught thread exception') == 1
+        assert 'PR8 ERROR' in text and 'Traceback' in text
+        assert 'thread failure evidence' in text
+        assert len(collected) == 1 and collected[0].thread is thread
+        assert not (tmp_path / 'unused.log').exists()
+    finally:
+        handler.close()

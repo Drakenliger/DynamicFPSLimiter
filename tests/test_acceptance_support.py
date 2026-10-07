@@ -683,8 +683,10 @@ def test_actual_monitor_reset_observed_once_before_valid_next_sample(tmp_path, m
         assignment = 'gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()'
         original_source = source
         source = source.replace('_write_cap(current_profile, next_fps, "decrease")\n'
-                                '                                    ' + assignment,
-                                '_write_cap(current_profile, next_fps, "decrease")')
+                                '                                        CurrentFPSOffset = next_fps - current_maxcap\n'
+                                '                                        ' + assignment,
+                                '_write_cap(current_profile, next_fps, "decrease")\n'
+                                '                                        CurrentFPSOffset = next_fps - current_maxcap')
         assert source != original_source
         mutated = tmp_path / 'app.py'
         mutated.write_text(source)

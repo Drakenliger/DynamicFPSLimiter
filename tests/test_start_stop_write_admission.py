@@ -1,5 +1,6 @@
 """Start/Stop write admission race tests under concurrent session invalidations."""
 import ast
+import logging
 from decimal import Decimal
 import sys
 import threading
@@ -41,7 +42,7 @@ def load_app_custom(*, lockless=False):
                                  cap_readings_valid, confirm_librehm_decision, fresh_cap_evidence)
     from core.cap_change_log import make_row
     from core.session_policy import session_is_current
-    ns = dict(make_row=make_row, cap_change_log=NS(record=noop, close=noop), exit_restore_cap=exit_restore_cap,
+    ns = dict(logging=logging, make_row=make_row, cap_change_log=NS(record=noop, close=noop), exit_restore_cap=exit_restore_cap,
               fresh_cap_evidence=fresh_cap_evidence, cap_readings_valid=cap_readings_valid,
               confirm_librehm_decision=confirm_librehm_decision, build_cap_model=build_cap_model,
               profile_revision=0, session_is_current=session_is_current, next_cap_on_decrease=next_cap_on_decrease,

@@ -403,7 +403,7 @@ def monitoring_loop(captured_session):
     last_process_name = None
     profiles = cm.profiles_config.sections() if hasattr(cm, "profiles_config") else []
 
-    gpu_monitor.reinitialize()
+    backend_initialized = False
 
     model_revision = None
     librehm_history = (0, 0)
@@ -411,235 +411,259 @@ def monitoring_loop(captured_session):
     last_active_fps_cap = None
 
     while running:
-        with session_lock:
-            if not session_is_current(captured_session, session_number, running):
-                return
-            current_profile = cm.current_profile
-            captured_profile_revision = profile_revision
-            captured_pass_time = time.time()
-            if model_revision != captured_profile_revision:
-                fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
-                    fps_utils.current_stepped_limits())
-                model_revision = captured_profile_revision
-                librehm_history = (0, 0)
-                increase_cooldown = 0
-                last_active_fps_cap = None
-        fps, process_name = rtss_manager.get_fps_for_active_window()
-        #logger.add_log(f"Current highed CPU core load: {cpu_monitor.cpu_percentile}%")
+        current_profile = None
+        captured_profile_revision = None
+        pass_increase_cooldown = None
+        try:
+            with session_lock:
+                if not session_is_current(captured_session, session_number, running):
+                    return
+                current_profile = cm.current_profile
+                captured_profile_revision = profile_revision
+                captured_pass_time = time.time()
+                if not backend_initialized:
+                    gpu_monitor.reinitialize()
+                    backend_initialized = True
+                if model_revision != captured_profile_revision:
+                    fps_limit_list, current_mincap, current_maxcap, min_ft, max_ft = build_cap_model(
+                        fps_utils.current_stepped_limits())
+                    model_revision = captured_profile_revision
+                    librehm_history = (0, 0)
+                    increase_cooldown = 0
+                    last_active_fps_cap = None
+            pass_increase_cooldown = increase_cooldown
+            fps, process_name = rtss_manager.get_fps_for_active_window()
+            #logger.add_log(f"Current highed CPU core load: {cpu_monitor.cpu_percentile}%")
 
-        #logger.add_log(f"get_foreground_process_name {get_foreground_process_name()}")
-        
-        #TODO: Fix autopilot logic to handle changes to active window
-        if cm.autopilot:
-            fg_process = get_foreground_process_name()
-            if cm.autopilot_only_profiles:
-                # Legacy behavior: stop monitoring when the selected specific profile is no longer active
-                if current_profile != "Global" and fg_process != current_profile and running:
-                    logger.add_log(f"AutoPilot: Active process changed to '{fg_process}' != selected profile '{current_profile}'; stopping (autopilot_only_profiles).")
-                    _gui_submit(start_stop_callback, None, None, cm)
-            else:
-                # New default: if a specific profile was selected but the foreground process no longer matches,
-                # switch to Global profile and keep monitoring running.
-                if current_profile != "Global" and fg_process != current_profile:
-                    logger.add_log(f"AutoPilot: Active process changed to '{fg_process}'; switching to 'Global' profile and keeping monitoring.")
-                    _gui_submit(_load_profile_on_gui, "Global")
+            #logger.add_log(f"get_foreground_process_name {get_foreground_process_name()}")
 
-        if process_name and process_name != last_process_name:
-            last_process_name = process_name
-            logger.add_log(f"Active window changed to: {last_process_name}") 
-            if process_name != "DynamicFPSLimiter.exe":
-                _gui_submit(dpg.set_value, "LastProcess", last_process_name)
-            gpu_monitor.reinitialize()
-
-        if current_profile == "Global" and cm.autopilot and process_name and process_name in profiles:
-            logger.add_log(f"AutoPilot: Switching from 'Global' to profile '{process_name}' (detected running process).")
-            _gui_submit(_load_profile_on_gui, process_name)
-
-        # Sample outside the lock; only an admitted pass may update histories.
-        gpuUsage = gpu_monitor.gpu_percentile
-        cpuUsage = cpu_monitor.cpu_percentile
-        with session_lock:
-            if not session_is_current(captured_session, session_number, running):
-                return
-            if captured_profile_revision != profile_revision:
-                continue
-            monitoring_method = dpg.get_value("input_monitoring_method")
-            previous_librehm_history = librehm_history
-            librehm_history = (0, 0)  # A pass without an eligible decision breaks confirmation.
-            if fps:
-                if len(fps_values) > 2:
-                    fps_values.pop(0)
-                fps_values.append(fps)
-                fps_mean = sum(fps_values) / len(fps_values)
-
-            if len(gpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
-                gpu_values.pop(0)
-            gpu_values.append(gpuUsage)
-
-            if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
-                cpu_values.pop(0)
-            cpu_values.append(cpuUsage)
-            observer = globals().get("_acceptance_runtime")
-            if observer is not None:
-                observer.sample_observed(captured_session, captured_profile_revision)
-
-        #TODO: if no LHM sensor selected, pass through without limiting
-        # To prevent loading screens from affecting the fps cap
-        if (monitoring_method == "LibreHM" or gpuUsage is not None) and process_name not in {"DynamicFPSLimiter.exe"}:
-            if not monitor_idle(cm.idle_fps_delay) or not cm.idle_mode:
-                if idle_state:
-                    with session_lock:
-                        if not session_is_current(captured_session, session_number, running):
-                            return
-                        if captured_profile_revision != profile_revision:
-                            continue
-                        _write_cap(current_profile, last_active_fps_cap, "idle_restore")
-                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                        should_decrease = should_increase = False
-                        idle_state = False
+            #TODO: Fix autopilot logic to handle changes to active window
+            if cm.autopilot:
+                fg_process = get_foreground_process_name()
+                if cm.autopilot_only_profiles:
+                    # Legacy behavior: stop monitoring when the selected specific profile is no longer active
+                    if current_profile != "Global" and fg_process != current_profile and running:
+                        logger.add_log(f"AutoPilot: Active process changed to '{fg_process}' != selected profile '{current_profile}'; stopping (autopilot_only_profiles).")
+                        _gui_submit(start_stop_callback, None, None, cm)
                 else:
-                    if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
-                                          cm.minvalidgpu, cm.minvalidfps):
+                    # New default: if a specific profile was selected but the foreground process no longer matches,
+                    # switch to Global profile and keep monitoring running.
+                    if current_profile != "Global" and fg_process != current_profile:
+                        logger.add_log(f"AutoPilot: Active process changed to '{fg_process}'; switching to 'Global' profile and keeping monitoring.")
+                        _gui_submit(_load_profile_on_gui, "Global")
 
-                        should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
-                        observer = globals().get("_acceptance_runtime")
-                        if observer is not None:
-                            observer.decision_observed(captured_session, captured_profile_revision,
-                                                       (should_decrease, should_increase), gpu_values, captured_pass_time)
-                        if monitoring_method == "LibreHM":
-                            with session_lock:
-                                if not session_is_current(captured_session, session_number, running):
-                                    return
-                                if captured_profile_revision != profile_revision:
-                                    continue
-                                librehm_history, (should_decrease, should_increase) = confirm_librehm_decision(
-                                    previous_librehm_history, should_decrease, should_increase,
-                                    cm.delaybeforedecrease, cm.delaybeforeincrease)
+            if process_name and process_name != last_process_name:
+                last_process_name = process_name
+                logger.add_log(f"Active window changed to: {last_process_name}")
+                if process_name != "DynamicFPSLimiter.exe":
+                    _gui_submit(dpg.set_value, "LastProcess", last_process_name)
+                gpu_monitor.reinitialize()
 
-                        if CurrentFPSOffset > (current_mincap - current_maxcap) and should_decrease:
-                            current_fps_cap = current_maxcap + CurrentFPSOffset
-                            next_fps = next_cap_on_decrease(fps_limit_list, current_fps_cap, fps_mean)
-                            if next_fps is not None:
-                                with session_lock:
-                                    if not session_is_current(captured_session, session_number, running):
-                                        return
-                                    if captured_profile_revision != profile_revision:
-                                        continue
-                                    CurrentFPSOffset = next_fps - current_maxcap
-                                    _write_cap(current_profile, next_fps, "decrease")
-                                    gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                                    observer = globals().get("_acceptance_runtime")
-                                    if observer is not None:
-                                        observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
-                                    should_decrease = should_increase = False
+            if current_profile == "Global" and cm.autopilot and process_name and process_name in profiles:
+                logger.add_log(f"AutoPilot: Switching from 'Global' to profile '{process_name}' (detected running process).")
+                _gui_submit(_load_profile_on_gui, process_name)
 
-                        # --- COOLDOWN LOGIC ---
+            # Sample outside the lock; only an admitted pass may update histories.
+            gpuUsage = gpu_monitor.gpu_percentile
+            cpuUsage = cpu_monitor.cpu_percentile
+            with session_lock:
+                if not session_is_current(captured_session, session_number, running):
+                    return
+                if captured_profile_revision != profile_revision:
+                    continue
+                monitoring_method = dpg.get_value("input_monitoring_method")
+                previous_librehm_history = librehm_history
+                librehm_history = (0, 0)  # A pass without an eligible decision breaks confirmation.
+                if fps:
+                    if len(fps_values) > 2:
+                        fps_values.pop(0)
+                    fps_values.append(fps)
+                    fps_mean = sum(fps_values) / len(fps_values)
+
+                if len(gpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
+                    gpu_values.pop(0)
+                gpu_values.append(gpuUsage)
+
+                if len(cpu_values) > (max(cm.delaybeforedecrease, cm.delaybeforeincrease)+1):
+                    cpu_values.pop(0)
+                cpu_values.append(cpuUsage)
+                observer = globals().get("_acceptance_runtime")
+                if observer is not None:
+                    observer.sample_observed(captured_session, captured_profile_revision)
+
+            #TODO: if no LHM sensor selected, pass through without limiting
+            # To prevent loading screens from affecting the fps cap
+            if (monitoring_method == "LibreHM" or gpuUsage is not None) and process_name not in {"DynamicFPSLimiter.exe"}:
+                if not monitor_idle(cm.idle_fps_delay) or not cm.idle_mode:
+                    if idle_state:
                         with session_lock:
                             if not session_is_current(captured_session, session_number, running):
                                 return
                             if captured_profile_revision != profile_revision:
                                 continue
-                            if increase_cooldown > 0:
-                                increase_cooldown -= 1
+                            _write_cap(current_profile, last_active_fps_cap, "idle_restore")
+                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                            should_decrease = should_increase = False
+                            idle_state = False
+                    else:
+                        if cap_readings_valid(monitoring_method, gpuUsage, fps, fps_mean,
+                                              cm.minvalidgpu, cm.minvalidfps):
 
-                        if CurrentFPSOffset < 0 and should_increase and increase_cooldown == 0:
-                            current_fps = current_maxcap + CurrentFPSOffset
-                            gpu_range = cm.gpucutofffordecrease - cm.gpucutoffforincrease
-                            last_gpu = gpu_values[-1] if gpu_values else 0
+                            should_decrease, should_increase = fps_utils.evaluate_cap_change(gpu_values, cpu_values, monitoring_method)
+                            observer = globals().get("_acceptance_runtime")
+                            if observer is not None:
+                                observer.decision_observed(captured_session, captured_profile_revision,
+                                                           (should_decrease, should_increase), gpu_values, captured_pass_time)
+                            if monitoring_method == "LibreHM":
+                                with session_lock:
+                                    if not session_is_current(captured_session, session_number, running):
+                                        return
+                                    if captured_profile_revision != profile_revision:
+                                        continue
+                                    librehm_history, (should_decrease, should_increase) = confirm_librehm_decision(
+                                        previous_librehm_history, should_decrease, should_increase,
+                                        cm.delaybeforedecrease, cm.delaybeforeincrease)
 
-                            # Determine how many steps to increase
-                            steps = 1 # removed step logic to prevent unintended consequences with newer methods
-                            #threshold = cm.gpucutoffforincrease - gpu_range
-                            #while last_gpu < threshold and (threshold > cm.minvalidgpu):
-                            #    steps += 1
-                            #    threshold = cm.gpucutoffforincrease - gpu_range * steps
-
-                            try:
-                                current_index = fps_limit_list.index(current_fps)
-                                next_index = min(current_index + steps, len(fps_limit_list) - 1)
-                                if next_index > current_index:
-                                    next_fps = fps_limit_list[next_index]
+                            if CurrentFPSOffset > (current_mincap - current_maxcap) and should_decrease:
+                                current_fps_cap = current_maxcap + CurrentFPSOffset
+                                next_fps = next_cap_on_decrease(fps_limit_list, current_fps_cap, fps_mean)
+                                if next_fps is not None:
                                     with session_lock:
                                         if not session_is_current(captured_session, session_number, running):
                                             return
                                         if captured_profile_revision != profile_revision:
                                             continue
+                                        _write_cap(current_profile, next_fps, "decrease")
                                         CurrentFPSOffset = next_fps - current_maxcap
-                                        _write_cap(current_profile, next_fps, "increase")
                                         gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
                                         observer = globals().get("_acceptance_runtime")
                                         if observer is not None:
                                             observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
                                         should_decrease = should_increase = False
-                                        increase_cooldown = cm.delaybeforeincrease  # Start cooldown
-                            except ValueError:
-                                # If current FPS not in list, find nearest higher value
-                                higher_values = [x for x in fps_limit_list if x > current_fps]
-                                if higher_values:
-                                    # Find the index of the smallest higher value
-                                    min_higher = min(higher_values)
-                                    min_higher_index = fps_limit_list.index(min_higher)
-                                    next_index = min(min_higher_index + steps - 1, len(fps_limit_list) - 1)
-                                    next_fps = fps_limit_list[next_index]
-                                    with session_lock:
-                                        if not session_is_current(captured_session, session_number, running):
-                                            return
-                                        if captured_profile_revision != profile_revision:
-                                            continue
-                                        CurrentFPSOffset = next_fps - current_maxcap
-                                        _write_cap(current_profile, next_fps, "increase")
-                                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                                        observer = globals().get("_acceptance_runtime")
-                                        if observer is not None:
-                                            observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
-                                        should_decrease = should_increase = False
-                                        increase_cooldown = cm.delaybeforeincrease  # Start cooldown
-            else:
-                if idle_state:
-                    pass
+
+                            # --- COOLDOWN LOGIC ---
+                            with session_lock:
+                                if not session_is_current(captured_session, session_number, running):
+                                    return
+                                if captured_profile_revision != profile_revision:
+                                    continue
+                                if increase_cooldown > 0:
+                                    increase_cooldown -= 1
+
+                            if CurrentFPSOffset < 0 and should_increase and increase_cooldown == 0:
+                                current_fps = current_maxcap + CurrentFPSOffset
+                                gpu_range = cm.gpucutofffordecrease - cm.gpucutoffforincrease
+                                last_gpu = gpu_values[-1] if gpu_values else 0
+
+                                # Determine how many steps to increase
+                                steps = 1 # removed step logic to prevent unintended consequences with newer methods
+                                #threshold = cm.gpucutoffforincrease - gpu_range
+                                #while last_gpu < threshold and (threshold > cm.minvalidgpu):
+                                #    steps += 1
+                                #    threshold = cm.gpucutoffforincrease - gpu_range * steps
+
+                                try:
+                                    current_index = fps_limit_list.index(current_fps)
+                                except ValueError:
+                                    # If current FPS not in list, find nearest higher value
+                                    higher_values = [x for x in fps_limit_list if x > current_fps]
+                                    if higher_values:
+                                        # Find the index of the smallest higher value
+                                        min_higher = min(higher_values)
+                                        min_higher_index = fps_limit_list.index(min_higher)
+                                        next_index = min(min_higher_index + steps - 1, len(fps_limit_list) - 1)
+                                        next_fps = fps_limit_list[next_index]
+                                        with session_lock:
+                                            if not session_is_current(captured_session, session_number, running):
+                                                return
+                                            if captured_profile_revision != profile_revision:
+                                                continue
+                                            _write_cap(current_profile, next_fps, "increase")
+                                            CurrentFPSOffset = next_fps - current_maxcap
+                                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                            observer = globals().get("_acceptance_runtime")
+                                            if observer is not None:
+                                                observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
+                                            should_decrease = should_increase = False
+                                            increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                            pass_increase_cooldown = increase_cooldown
+                                else:
+                                    next_index = min(current_index + steps, len(fps_limit_list) - 1)
+                                    if next_index > current_index:
+                                        next_fps = fps_limit_list[next_index]
+                                        with session_lock:
+                                            if not session_is_current(captured_session, session_number, running):
+                                                return
+                                            if captured_profile_revision != profile_revision:
+                                                continue
+                                            _write_cap(current_profile, next_fps, "increase")
+                                            CurrentFPSOffset = next_fps - current_maxcap
+                                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                                            observer = globals().get("_acceptance_runtime")
+                                            if observer is not None:
+                                                observer.reset_observed(captured_session, captured_profile_revision, librehm_history)
+                                            should_decrease = should_increase = False
+                                            increase_cooldown = cm.delaybeforeincrease  # Start cooldown
+                                            pass_increase_cooldown = increase_cooldown
                 else:
-                    with session_lock:
-                        if not session_is_current(captured_session, session_number, running):
-                            return
-                        if captured_profile_revision != profile_revision:
-                            continue
-                        last_active_fps_cap = current_maxcap + CurrentFPSOffset
-                        _write_cap(current_profile, cm.idle_fps_cap, "idle")
-                        gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
-                        should_decrease = should_increase = False
-                        idle_state = True
+                    if idle_state:
+                        pass
+                    else:
+                        with session_lock:
+                            if not session_is_current(captured_session, session_number, running):
+                                return
+                            if captured_profile_revision != profile_revision:
+                                continue
+                            _write_cap(current_profile, cm.idle_fps_cap, "idle")
+                            last_active_fps_cap = current_maxcap + CurrentFPSOffset
+                            gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                            should_decrease = should_increase = False
+                            idle_state = True
 
-        if (session_is_current(captured_session, session_number, running)
-                and captured_profile_revision == profile_revision):
-            # Update legend labels with current values (deferred to the main DPG thread)
-            _gui_submit(_update_legend_labels,
-                        f"GPU: {gpuUsage}%",
-                        f"FPS: {fps:.1f}" if fps is not None else None,
-                        f"Cap: {current_maxcap + CurrentFPSOffset}",
-                        f"CPU: {cpuUsage}%")
+            if (session_is_current(captured_session, session_number, running)
+                    and captured_profile_revision == profile_revision):
+                # Update legend labels with current values (deferred to the main DPG thread)
+                _gui_submit(_update_legend_labels,
+                            f"GPU: {gpuUsage}%",
+                            f"FPS: {fps:.1f}" if fps is not None else None,
+                            f"Cap: {current_maxcap + CurrentFPSOffset}",
+                            f"CPU: {cpuUsage}%")
 
-            # Update plot if fps is valid
-            if fps and process_name not in {"DynamicFPSLimiter.exe"}:
-                # Scaling FPS value to fit 0-100 axis
-                scaled_fps = ((fps - min_ft)/(max_ft - min_ft)) * Decimal('100')
-                scaled_cap = ((Decimal(current_maxcap) + Decimal(CurrentFPSOffset) - min_ft)/(max_ft - min_ft)) * Decimal('100')
-                actual_cap = current_maxcap + CurrentFPSOffset
-                # Pass actual values, update_plot_FPS handles timing and lists (deferred to the main DPG thread)
-                _gui_submit(update_plot_FPS, scaled_fps, scaled_cap)
+                # Update plot if fps is valid
+                if fps and process_name not in {"DynamicFPSLimiter.exe"}:
+                    # Scaling FPS value to fit 0-100 axis
+                    scaled_fps = ((fps - min_ft)/(max_ft - min_ft)) * Decimal('100')
+                    scaled_cap = ((Decimal(current_maxcap) + Decimal(CurrentFPSOffset) - min_ft)/(max_ft - min_ft)) * Decimal('100')
+                    actual_cap = current_maxcap + CurrentFPSOffset
+                    # Pass actual values, update_plot_FPS handles timing and lists (deferred to the main DPG thread)
+                    _gui_submit(update_plot_FPS, scaled_fps, scaled_cap)
 
-                # Update summary statistics data
-                if len(fps_utils.summary_fps) >= 600:
-                    fps_utils.summary_fps.pop(0)
-                fps_utils.summary_fps.append(fps)
-                if len(fps_utils.summary_cap) >= 600:
-                    fps_utils.summary_cap.pop(0)
-                fps_utils.summary_cap.append(actual_cap)
+                    # Update summary statistics data
+                    if len(fps_utils.summary_fps) >= 600:
+                        fps_utils.summary_fps.pop(0)
+                    fps_utils.summary_fps.append(fps)
+                    if len(fps_utils.summary_cap) >= 600:
+                        fps_utils.summary_cap.pop(0)
+                    fps_utils.summary_cap.append(actual_cap)
 
-        # Update last_process_name
-        if process_name:
-            last_process_name = process_name
+            # Update last_process_name
+            if process_name:
+                last_process_name = process_name
 
-        time.sleep(1) # This loop runs every 1 second
+        except Exception:
+            logging.exception("Monitoring pass failed (session=%s, profile=%s, revision=%s)",
+                              captured_session, current_profile, captured_profile_revision)
+            with session_lock:
+                if not session_is_current(captured_session, session_number, running):
+                    return
+                if captured_profile_revision == profile_revision:
+                    if pass_increase_cooldown is not None:
+                        increase_cooldown = pass_increase_cooldown
+                    gpu_values, cpu_values, fps_values, fps_mean, librehm_history = fresh_cap_evidence()
+                    should_decrease = should_increase = False
+        # Failed passes retry at the same one-second cadence as successful passes.
+        if session_is_current(captured_session, session_number, running):
+            time.sleep(1)
 
 def plotting_loop(captured_session):
     global running, elapsed_time # Make sure elapsed_time is global

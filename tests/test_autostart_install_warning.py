@@ -3,6 +3,7 @@ import os
 import ast
 import importlib.util
 import logging
+import threading
 import ntpath
 import tempfile
 from pathlib import Path
@@ -54,6 +55,7 @@ class TestAutoStartInstallWarning(unittest.TestCase):
                 patch.object(root, "handlers", []), \
                 patch.object(root, "level", logging.NOTSET), \
                 patch.object(sys, "excepthook"), \
+                patch.object(threading, "excepthook", threading.excepthook), \
                 patch.object(app_logger, "log_messages", []), \
                 patch.object(app_logger, "_gui_queue", None), \
                 patch.object(app_logger, "_dpg", None), \

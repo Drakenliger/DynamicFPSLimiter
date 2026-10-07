@@ -25,7 +25,7 @@ def set_dpg(dpg_instance):
 
 # Function to initialize logging configuration and set the exception hook
 def init_logging(log_file_path):
-    """Sets up basic logging configuration and assigns the system exception hook."""
+    """Configure error logging and uncaught main/thread exception hooks."""
     logging.basicConfig(
         filename=log_file_path,  # Use the provided path
         level=logging.ERROR,       # Only log errors or more severe messages
@@ -33,6 +33,17 @@ def init_logging(log_file_path):
     )
     # Redirect uncaught exceptions to the error_log_exception function
     sys.excepthook = error_log_exception
+    previous = threading.excepthook
+    if not getattr(previous, "_dfl_error_log_hook", False):
+        def thread_error_log(args):
+            try:
+                if args.exc_type is not SystemExit:
+                    logging.error("Uncaught thread exception (%s)", args.thread.name if args.thread else "unknown",
+                                  exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+            finally:
+                previous(args)
+        thread_error_log._dfl_error_log_hook = True
+        threading.excepthook = thread_error_log
 
 # Error logging function - now just logs the error
 def error_log_exception(exc_type, exc_value, exc_traceback):
