@@ -2,7 +2,7 @@
 
 > Companion to [`status.md`](./status.md) (done / pending / deferred fix tracking) and
 > [`lessons.md`](./lessons.md) (engineering lessons). This document describes the
-> **current v5.0.1** codebase.
+> **current v5.1.0** codebase (forked from upstream v5.0.1).
 
 ## 1. Overview
 
@@ -14,7 +14,7 @@ fixed cap.
 
 - **GUI**: DearPyGui (Dear ImGui) single window + a pystray system-tray icon.
 - **Hardware reads (primary)**: LibreHardwareMonitorLib (a .NET DLL loaded via `pythonnet`),
-  exposing per-sensor Load / Power / Temperature for CPU and every GPU.
+  exposing per-sensor Load / Power / Temperature for CPU and detected GPUs (Nvidia, AMD, and Intel).
 - **Hardware reads (fallback "Legacy")**: Windows Performance Counters (PDH via `ctypes`) for
   per-LUID 3D-engine GPU utilization, and `psutil` for per-core CPU usage.
 - **Actuation**: writes the FPS limit into RTSS profiles through the `RTSSHooks64.dll` API and
@@ -95,7 +95,7 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 | `src/core/version.py` | **Single source of truth** for the app version (`VERSION`); the GUI strings (`display_version()`) and the PyInstaller version resource (`version.txt`) are derived from it (A4 fix) |
 | `src/core/config_manager.py` | INI load/save, defaults, profile management, GUI↔config sync, dynamic LHM keys; maintains a `current_method` snapshot (init + `current_method_callback`) for the tray hover text (F3 fix) |
 | `src/core/fps_utils.py` | FPS-cap ladder (custom/step/ratio) + core `evaluate_cap_change` decision engine; `current_stepped_limits()` is total — always returns a non-empty list, falling back to the stepped ladder on bad/unknown capmethod (F5 fix) |
-| `src/core/cap_policy.py` | Pure cap **decrease** policy (`next_cap_on_decrease`), extracted from `app` (F1 fix); no GUI/RTSS/.NET deps |
+| `src/core/cap_policy.py` | Pure cap policy: decrease rung selection (`next_cap_on_decrease`), cap model construction (`build_cap_model`), exit restoration (`exit_restore_cap`), reading validity, and LibreHM confirmation delays/evidence gating; no GUI/RTSS/.NET deps |
 | `src/core/librehardwaremonitor.py` | `LHMSensor` polling thread + `get_all_sensor_infos` hardware discovery; degrades to a disabled no-sensor state when LHM is unavailable (F2 fix); `start()` re-opens a closed `Computer` so Stop→Start keeps working and `get_all_sensor_infos` closes its one-shot `Computer` (F7 fix) |
 | `src/core/lhm_loader.py` | pythonnet CLR bootstrap, .NET runtime detection, DLL-variant selection; raises `LHMLoadError` on load failure (F2 fix) |
 | `src/core/gpu_monitor.py` | Legacy GPU usage via PDH performance counters (per-LUID 3D engine); `initialize()` closes the prior PDH query before re-opening and `reinitialize()` re-assigns `counter_handles` (F8 fix); `get_gpu_usage()` reuses the live query (no re-init), `self.luid` reads/writes are lock-guarded, and its `dpg.*` calls defer to the `GuiQueue` (F9 fix) |
@@ -111,9 +111,14 @@ are shared **without locks**; `monitoring_loop` writes them while GUI callbacks 
 | `src/core/warning.py` | Active-warning computation (min>max, RTSS not running, …) |
 | `src/core/autopilot.py` | Foreground-process detection + autopilot start/stop |
 | `src/core/autostart.py` | `AutoStartManager`: `schtasks` Run-key create/delete |
-| `src/core/idle_timer.py` | Win32 `GetLastInputInfo` idle duration (idle FPS-cap mode) |
-| `src/core/logger.py` | logging setup, DPG log-text refresh, uncaught-exception hook; `log_messages` is lock-guarded (thread-safe) and the DPG `LogText` refresh is the only `dpg.*` touch point, run on the main thread via an injected `GuiQueue` (F3 fix) |
-| `src/core/video2gif.py` | **Dev-only** CLI (MP4→GIF); not imported by the app |
+| `src/core/idle_timer.py` | Win32 `GetLastInputInfo` idle duration and `monitor_idle` check with unsigned 32-bit tick wrap handling (tracks mouse/keyboard input; controller-only input may not reset Windows idle timer) |
+| `src/core/logger.py` | Logging setup (`FileHandler` at ERROR level), uncaught main/thread exception hooks, `faulthandler` fatal crash sink to `error_log.txt`, and thread-safe DPG `LogText` widget refresh via injected `GuiQueue` (F3 fix) |
+| `src/core/config_io.py` | INI parsing with legacy encoding support, default merging, and atomic config file saves via temporary file, fsync, and `os.replace` (`write_config`) |
+| `src/core/ui_scale.py` | Per-Monitor V2 DPI awareness initialization (`enable_native_dpi`), primary monitor DPI detection, preference scaling (`resolve_scale`), and scaled DPG wrapper (`ScaledDPG`) |
+| `src/core/cap_change_log.py` | Local CSV logging of RTSS cap transitions with rolling retention (latest 20 logs retained) |
+| `src/core/session_policy.py` | Monitoring session admission tracking (`session_is_current`) to invalidate retired worker writes across restarts |
+| `src/core/profile_policy.py` | Profile transitions (`profile_transition_kind`), effective max limits, and profile admission tracking |
+| `src/core/single_instance.py` | Named mutex single-instance lease guarding concurrent launches (`app_lease`) |
 
 ## 5. Core control loop (the decision engine)
 
@@ -152,12 +157,12 @@ The cap ladder (`current_stepped_limits`) depends on the profile's `capmethod`:
 
 ## 6. Configuration system
 
-Config lives in `<app dir>/config/` (`src/config/` in dev, next to the exe when frozen):
+Config lives in `<app dir>/config/` (`src/config/` in dev, in the executable directory beside `DynamicFPSLimiter.exe` when frozen):
 
 - **`settings.ini`**
-  - `[Preferences]` (bools): `showtooltip`, `globallimitonexit`, `idle_mode`,
+  - `[Preferences]`: `showtooltip`, `globallimitonexit`, `idle_mode`,
     `profileonstartup`, `launchonstartup`, `minimizeonstartup`, `autopilot`, `hide_unselected`,
-    `autopilot_only_profiles`, `first_launch_done`, `hide_loading_popup`.
+    `autopilot_only_profiles`, `first_launch_done`, `hide_loading_popup`, `ui_scale`.
   - `[GlobalSettings]`: `minvalidgpu`, `minvalidfps`, `globallimitonexit_fps`, `idle_fps_cap`,
     `idle_fps_delay`, `cpu/gpu/lhwmonitor percentile`, `cpu/gpu/lhwmonitor polling interval`,
     `cpu/gpu/lhwmonitor samples`, `profileonstartup_name`.
@@ -171,7 +176,7 @@ Config lives in `<app dir>/config/` (`src/config/` in dev, next to the exe when 
 - Registers **dynamic** input keys for every discovered sensor after the UI is built.
 - `apply_current_input_values()` pushes GUI fields → attributes (called on Start/Stop and
   profile switch); the monitoring loop reads thresholds from these attributes.
-- Every preference change rewrites the full INI to disk immediately (non-atomic — see flaws).
+- Preference and profile changes are written to disk atomically using `write_config` (temporary file + fsync + `os.replace` in `src/core/config_io.py`).
 
 ## 7. External integrations
 
@@ -200,28 +205,29 @@ Config lives in `<app dir>/config/` (`src/config/` in dev, next to the exe when 
 
 ## 8. Packaging & build
 
-- **Dev run**: `python -m venv .venv` → activate → `pip install -r src/requirements.txt`
-  → `python src/__main__.py` (relaunches elevated if not admin).
+- **Dev run**: 64-bit Python 3.12/3.13: `python -m venv venv` → activate → `pip install -r src/requirements.txt`
+  → `python src/__main__.py` (relaunches elevated if not admin; pass `--debug` to retain console).
 - **Build**: `python src/__main__.py --build` → PyInstaller with entry `src/core/app.py`,
   `--onedir --uac-admin --noconsole`, dynamic `--add-data` for every file under
   `src/core/assets`, `--version-file src/metadata/version.txt` (regenerated from the single
-  version source `src/core/version.py` on every build), output to `output/dist/`.
+  version source `src/core/version.py` on every build), output to `output/dist/DynamicFPSLimiter/`.
 - **Frozen layout**: `Base_dir = sys._MEIPASS` (`_internal`), so assets resolve under
-  `_internal/assets/` and config/error-log resolve next to the exe.
-- `DynamicFPSLimiter.spec` at the repo root is a **stale artifact** (hardcoded `E:\…` paths,
-  gitignored, not used by the build).
+  `_internal/assets/` and config/error-log resolve in the executable directory beside
+  `DynamicFPSLimiter.exe` (e.g. `output/dist/DynamicFPSLimiter/config/` and
+  `output/dist/DynamicFPSLimiter/error_log.txt`).
+- Build options are configured directly in `src/__main__.py:build_executable`; no external `.spec` file is used.
 
 ## 9. Error handling
 
-- `sys.excepthook` → `logger.error_log_exception` writes uncaught exceptions to
-  `error_log.txt`.
+- `sys.excepthook` and `threading.excepthook` redirect uncaught exceptions to `logger.error_log_exception`,
+  writing tracebacks to `error_log.txt` at `logging.ERROR` level.
+- `faulthandler` fatal crash sink is enabled to capture low-level native/C faults into `error_log.txt`.
 - RTSS missing → dedicated popup + exit (by design).
 - LHM load failure is caught (F2 fix) — `LHMLoadError` degrades to Legacy with no fallback crash.
 - Most per-sensor / per-counter read failures are logged and skipped, but several daemon
   threads have **no** try/except around their main work, so a single exception kills the thread
   silently (see flaws #18, #21).
-- INI writes are non-atomic; a crash mid-write can corrupt `settings.ini`/`profiles.ini`
-  (flaw #14).
+- INI writes are atomic via `write_config` using a temporary file, fsync, and `os.replace`.
 
 ## 10. File inventory
 
@@ -235,7 +241,7 @@ See the module map (§4) for Python sources. Non-code:
 | `src/core/assets/*.ico`, `*.png` | App/tray icons + window-control icons |
 | `src/core/assets/faqs.csv` | FAQ rows shown in the GUI |
 | `src/core/assets/LHM_0.9.6_lib/` | LibreHardwareMonitorLib.dll (4 .NET variants) + license |
-| `src/Public_SameSalamander5710.cer` | Code-signing public certificate |
+| `src/Public_SameSalamander5710_2026.cer` | Code-signing public certificate |
 | `README.md`, `CHANGELOG.md`, `src/BUILD.md` | User/release docs |
 | `docs/README.md`, `docs/architecture.md`, `docs/status.md`, `docs/lessons.md` | Design docs + status tracker |
 
@@ -243,15 +249,12 @@ See the module map (§4) for Python sources. Non-code:
 
 Glaring, fix-first issues are all resolved — see **`status.md` §1.2**. Lower-priority debt worth noting:
 
-- **Single-file orchestrator** — `app.py` is ~1,270 lines of module-level script with heavy
+- **Single-file orchestrator** — `app.py` is ~1,690 lines of module-level script with heavy
   global state and import-order-dependent startup; hard to test or reason about.
-- **GUI coupling in core** — several non-GUI modules (`logger`, `cpu_monitor`, `autostart`,
-  `tray_functions`) import DearPyGui at module top, preventing headless use.
 - **Undeclared direct dependency** — `PIL`/Pillow is used by `tray_functions` but only present
   as a transitive dependency of pystray.
-- **Two competing RTSS write paths** (API vs direct `.cfg` edits) and non-atomic INI writes.
-- **Dead / stray code** — `idle_timer.monitor_idle` (debug loop) and `video2gif.py`
-  (not part of the app).
+- **Two competing RTSS write paths** (API vs direct `.cfg` edits).
+- **Dead / stray code** — `video2gif.py` (not part of the app, gitignored).
 - **Pending refactor** — the A1–A6 modular split of `app.py`/`ConfigManager` is tracked in
   `status.md` §2.1.
 - **Latent type hazards** — `Decimal` vs `float` in the plot math (currently consistent because

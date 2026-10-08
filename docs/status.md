@@ -94,9 +94,8 @@ Lower-priority debt; glaring issues are all resolved (see §1.2).
   resolved by **A2**).
 - **Undeclared direct dependency** — `PIL`/Pillow used by `tray_functions` but only present as a
   transitive dependency of pystray.
-- **Non-atomic INI writes** — `settings.ini`/`profiles.ini` are rewritten immediately on every
-  preference change with no tmp+rename; a crash mid-write can corrupt them (RTSS `.cfg` writes
-  are already atomic — F6; INI is not).
+- **Non-atomic INI writes** — Resolved in v5.1.0: `settings.ini`/`profiles.ini` writes use
+  atomic replacement via temporary file and `os.replace` (`src/core/config_io.py`).
 - **Dead / stray code** — `video2gif.py` (not part of the app).
 - **Latent type hazards** — `Decimal` vs `float` in plot math (consistent today only because the
   FPS reader returns `Decimal`); `copy_from_plot` truncates fractional custom limits.
