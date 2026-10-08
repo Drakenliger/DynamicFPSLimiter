@@ -145,6 +145,7 @@ def autopilot_checkbox_callback(sender, app_data, user_data):
 running = False  # Flag to control the monitoring loop
 session_number = 0
 profile_revision = 0
+active_applied_cap = None
 # Serialize session/profile invalidation with cap admission and the ensuing write.
 session_lock = threading.Lock()
 
@@ -160,6 +161,7 @@ fps_utils = FPSUtils(cm, lhm_sensor, logger, dpg, pixels(Viewport_width, dpg.sca
 
 def _write_cap(profile, cap, reason, *, direct=False):
     """Called only inside the existing admitted session/profile blocks."""
+    global active_applied_cap
     old_cap = None
     try:
         old_cap = rtss.get_framerate_limit(profile, get_denominator=True)
@@ -181,6 +183,10 @@ def _write_cap(profile, cap, reason, *, direct=False):
         except Exception:
             pass
         return result
+    if running:
+        active_applied_cap = cap
+    else:
+        active_applied_cap = None
     try:
         cap_change_log.record(make_row(timestamp, session_number, profile, old_cap,
                                        cap, reason, gpu, cpu, mean))
@@ -196,7 +202,7 @@ def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
 
     cm = user_data
 
-    global running, session_number
+    global running, session_number, active_applied_cap
     global fps_values, CurrentFPSOffset, fps_mean, gpu_values, cpu_values, idle_state
     with session_lock:
         if expected_autopilot is not None and not autopilot_request_current(
@@ -204,6 +210,8 @@ def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
             return
         session_number += 1
         running = not running
+        if not running:
+            active_applied_cap = None
         captured_session = session_number
         observer = globals().get("_acceptance_runtime")
         if observer is not None:
@@ -772,7 +780,7 @@ def plotting_loop(captured_session):
 gui_running = True
 
 def _update_idle_ui():
-    """Refresh warnings, the FPS-cap visualization and HW header counts while idle.
+    """Refresh warnings, the FPS-cap visualization and HW header counts.
 
     Runs on the main DPG thread (submitted through the GuiQueue from
     gui_update_loop). update_fps_cap_visualization() deletes and recreates the
@@ -789,7 +797,7 @@ def _update_idle_ui():
             dpg.set_value("warning_tooltip_text", warning_message)
 
             # Update FPS limit visualization based on current input values
-            fps_utils.update_fps_cap_visualization()
+            fps_utils.update_fps_cap_visualization(active_applied_cap=active_applied_cap if running else None)
 
         try:
             # Use ConfigManager helper to build a map of enabled params per hw/section
@@ -847,9 +855,8 @@ def gui_update_loop():
         while tray.is_tray_active and gui_running:
             time.sleep(1)  # Sleep until tray is not active
 
-        if not running:
-            # Idle-UI refresh runs on the main DPG thread via the GuiQueue
-            _gui_submit(_update_idle_ui)
+        # UI refresh runs on the main DPG thread via the GuiQueue
+        _gui_submit(_update_idle_ui)
         time.sleep(0.1)
 
 def _autopilot_start_on_gui(target, expected):
@@ -1302,19 +1309,6 @@ with dpg.window(label=app_title, tag="Primary Window"):
             dpg.add_text("", tag="warning_tooltip_text", wrap=300)
         dpg.bind_item_font("warning_text", bold_font)
 
-    with dpg.group(horizontal=False):
-        draw_height = 40
-        layer1_height = 30
-        layer2_height = 30
-        draw_width = Viewport_width - 60
-        margin = 10
-        with dpg.drawlist(width= draw_width + 5, height=draw_height, tag="fps_cap_drawlist"):
-            with dpg.draw_layer(tag="Baseline"):
-                dpg.draw_line((margin, layer1_height // 2), (draw_width, layer1_height // 2), color=(200, 200, 200), thickness=2)
-            with dpg.draw_layer(tag="Foreground"):
-                dpg.draw_line((margin, layer2_height // 2), (draw_width, layer2_height // 2), color=(200, 200, 200), thickness=2)
-        dpg.add_spacer(height=1)
-
     dpg.add_spacer(height=1)
 
     with dpg.group(horizontal=True):
@@ -1387,6 +1381,16 @@ with dpg.window(label=app_title, tag="Primary Window"):
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="Reset", tag="rest_fps_cap_button", width=65, callback=fps_utils.reset_custom_limits)
                     dpg.add_button(label="Copy from above", tag="autofill_fps_caps", width=135, callback=fps_utils.copy_from_plot)
+                dpg.add_spacer(height=5)
+                dpg.add_text("Caps DFL will use", color=(200, 200, 200), tag="label_caps_preview")
+                draw_width = 210
+                draw_height = 35
+                margin = 5
+                with dpg.drawlist(width=draw_width, height=draw_height, tag="fps_cap_drawlist"):
+                    with dpg.draw_layer(tag="Baseline"):
+                        dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
+                    with dpg.draw_layer(tag="Foreground"):
+                        dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
 
 
             dpg.add_spacer(height=1)

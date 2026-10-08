@@ -110,23 +110,18 @@ class FPSUtils:
         custom_limits = sorted(x for x in set(values) if x >= minimum)
         return custom_limits
 
-    def update_fps_cap_visualization(self):
+    def update_fps_cap_visualization(self, active_applied_cap=None):
         dpg = self.dpg
-        Viewport_width = self.viewport_width
 
         fps_limits = self.current_stepped_limits()
         if not fps_limits or len(fps_limits) < 2:
             return
 
-        # The viewport getter is physical; convert once before logical drawing.
         scale = getattr(dpg, "scale", 1)
         if not isinstance(scale, (int, float)):
             scale = 1
-        actual_width = dpg.get_viewport_width()
-        if not isinstance(actual_width, (int, float)) or actual_width <= 0:
-            actual_width = Viewport_width
-        Viewport_width = actual_width / scale
-        geometry = (actual_width, scale)
+        panel_width = 210
+        geometry = (panel_width, scale, active_applied_cap)
         if (fps_limits == self.last_fps_limits
                 and geometry == getattr(self, "_last_ladder_geometry", None)
                 and dpg.does_item_exist("Foreground")):
@@ -136,28 +131,57 @@ class FPSUtils:
         self._last_ladder_geometry = geometry
         dpg.delete_item("Foreground")
         with dpg.draw_layer(tag="Foreground", parent="fps_cap_drawlist"):
-            draw_width = Viewport_width - 67
-            layer2_height = 30
-            margin = 10
+            draw_width = panel_width
+            margin = 5
+            usable_width = draw_width - 2 * margin
+            y_center = 15
+            tick_half_h = 6
+            highlight_half_h = 10
+
             min_fps = min(fps_limits)
             max_fps = max(fps_limits)
             fps_range = max_fps - min_fps
+
             for cap in fps_limits:
-                # Project to drawing coordinates only; retain Decimal cap values.
-                x_pos = margin + int(float((cap - min_fps) / fps_range) * (draw_width - margin))
-                y_pos = layer2_height // 2
-                dpg.draw_circle(
-                    (x_pos, y_pos),
-                    7,
-                    fill=(200, 200, 200),
-                    parent="Foreground"
-                )
+                if fps_range == 0:
+                    x_pos = margin + usable_width // 2
+                else:
+                    x_pos = margin + int(float((cap - min_fps) / fps_range) * usable_width)
+
+                is_highlighted = False
+                if active_applied_cap is not None:
+                    try:
+                        from decimal import Decimal
+                        is_highlighted = (Decimal(str(cap)) == Decimal(str(active_applied_cap)))
+                    except Exception:
+                        is_highlighted = (cap == active_applied_cap)
+
+                if is_highlighted:
+                    # Highlight current active cap with prominent yellow/gold line & thickness
+                    dpg.draw_line(
+                        (x_pos, y_center - highlight_half_h),
+                        (x_pos, y_center + highlight_half_h),
+                        color=(255, 215, 0),
+                        thickness=3,
+                        parent="Foreground"
+                    )
+                else:
+                    dpg.draw_line(
+                        (x_pos, y_center - tick_half_h),
+                        (x_pos, y_center + tick_half_h),
+                        color=(200, 200, 200),
+                        thickness=1,
+                        parent="Foreground"
+                    )
+
                 if len(fps_limits) < 20:
-                    dpg.draw_text((x_pos - 10, y_pos + 8),
-                                  str(cap),
-                                  color=(200, 200, 200),
-                                  size=16,
-                                  parent="Foreground")
+                    dpg.draw_text(
+                        (x_pos - 8, y_center + 8),
+                        str(cap),
+                        color=(255, 215, 0) if is_highlighted else (200, 200, 200),
+                        size=14,
+                        parent="Foreground"
+                    )
 
     def copy_from_plot(self):
         fps_limits = sorted(set(self.current_stepped_limits()))

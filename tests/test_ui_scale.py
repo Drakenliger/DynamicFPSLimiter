@@ -66,10 +66,10 @@ class Config(NS):
 
 
 @pytest.mark.parametrize('choice,viewport,plot,child,font,mono,large,ladder', [
-    ('100%', (610, 700), 190, (590, 450), 18, 14, 24, (10, 543, 15, 7, 16)),
-    ('150%', (915, 1050), 285, (885, 675), 27, 21, 36, (15, 814, 22, 10.5, 24)),
-    ('200%', (1220, 1400), 380, (1180, 900), 36, 28, 48, (20, 1086, 30, 14, 32)),
-    ('300%', (1830, 2100), 570, (1770, 1350), 54, 42, 72, (30, 1629, 45, 21, 48)),
+    ('100%', (610, 700), 190, (590, 450), 18, 14, 24, (5, 205, 9, 21, 14)),
+    ('150%', (915, 1050), 285, (885, 675), 27, 21, 36, (8, 308, 14, 32, 21)),
+    ('200%', (1220, 1400), 380, (1180, 900), 36, 28, 48, (10, 410, 18, 42, 28)),
+    ('300%', (1830, 2100), 570, (1770, 1350), 54, 42, 72, (15, 615, 27, 63, 42)),
 ])
 def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, mono, large, ladder, monkeypatch):
     from core.themes import ThemesManager
@@ -132,7 +132,7 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
                                and k.value.value == 'Primary Window' for k in n.items[0].context_expr.keywords))
     exec(compile(ast.Module(body=[main_window], type_ignores=[]), 'app.py', 'exec'), ns)
     assert raw.tagged('drawlist', 'fps_cap_drawlist')['width'] == {
-        '100%': 555, '150%': 832, '200%': 1110, '300%': 1665}[choice]
+        '100%': 210, '150%': 315, '200%': 420, '300%': 630}[choice]
     assert raw.tagged('child_window', 'LHwM_childwindow')['height'] == {
         '100%': 385, '150%': 578, '200%': 770, '300%': 1155}[choice]
     assert raw.tagged('add_image', 'icon')['width'] == {
@@ -148,22 +148,22 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
     fps = NS(dpg=dpg, viewport_width=viewport[0], last_fps_limits=[30, 60],
              current_stepped_limits=lambda: [30, 60])
     ladder_ns['update_fps_cap_visualization'](fps)
-    circles = [(a, k) for n, a, k in raw.calls if n == 'draw_circle']
-    x1, x2, y, radius, text_size = ladder
-    assert [a for a, k in circles] == [((x1, y), radius), ((x2, y), radius)]
-    assert [k['thickness'] for a, k in circles] == [dpg.scale, dpg.scale]
+    lines = [(a, k) for n, a, k in raw.calls if n == 'draw_line']
+    x1, x2, y1, y2, text_size = ladder
+    assert [a for a, k in lines] == [((x1, y1), (x1, y2)), ((x2, y1), (x2, y2))]
+    assert [k['thickness'] for a, k in lines] == [dpg.scale, dpg.scale]
     texts = [(a, k) for n, a, k in raw.calls if n == 'draw_text']
-    assert texts[0][0] == ((0, round(23 * dpg.scale)), '30')
+    assert texts[0][0] == ((round(-3 * dpg.scale), round(23 * dpg.scale)), '30')
     assert texts[0][1]['size'] == text_size
-    before = len(circles)
+    before = len(lines)
     ladder_ns['update_fps_cap_visualization'](fps)
-    assert sum(n == 'draw_circle' for n, a, k in raw.calls) == before
+    assert sum(n == 'draw_line' for n, a, k in raw.calls) == before
     raw.items.remove('Foreground')
     ladder_ns['update_fps_cap_visualization'](fps)
-    assert sum(n == 'draw_circle' for n, a, k in raw.calls) == before + 2
+    assert sum(n == 'draw_line' for n, a, k in raw.calls) == before + 2
     raw.width += 100
     ladder_ns['update_fps_cap_visualization'](fps)
-    assert sum(n == 'draw_circle' for n, a, k in raw.calls) == before + 4
+    assert sum(n == 'draw_line' for n, a, k in raw.calls) == before + 2
 
 
 def test_adapter_sentinels_data_and_other_api_passthrough():
@@ -448,8 +448,8 @@ def test_popup_import_cleanup_and_later_import(preloaded, monkeypatch):
 
 
 @pytest.mark.parametrize('scale,width,expected', [
-    (1, 610, [10, 285, 543]), (1.5, 915, [15, 428, 814]),
-    (2, 1220, [20, 570, 1086]), (3, 1830, [30, 855, 1629])])
+    (1, 610, [5, 108, 205]), (1.5, 915, [8, 162, 308]),
+    (2, 1220, [10, 216, 410]), (3, 1830, [15, 324, 615])])
 def test_actual_decimal_parser_and_ladder(scale, width, expected, monkeypatch):
     import runpy
     import sys
@@ -474,7 +474,7 @@ def test_actual_decimal_parser_and_ladder(scale, width, expected, monkeypatch):
     assert caps == [Decimal('30.00'), Decimal('45.50'), Decimal('59.99')]
     assert all(isinstance(cap, Decimal) for cap in caps)
     ns['update_fps_cap_visualization'](fps)
-    assert [a[0][0] for n,a,k in raw.calls if n == 'draw_circle'] == expected
+    assert [a[0][0] for n,a,k in raw.calls if n == 'draw_line'] == expected
     assert fps.last_fps_limits == caps
     assert [a[1] for n,a,k in raw.calls if n == 'draw_text'] == ['30.00', '45.50', '59.99']
 
