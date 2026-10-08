@@ -787,6 +787,7 @@ class ConfigManager:
     def select_default_profile_callback(self, sender, app_data, user_data):
 
         current_profile = self.dpg.get_value("profile_dropdown")
+        self.profileonstartup_name = current_profile
         self.dpg.set_value("profileonstartup_name", current_profile)
         self.settings_config["GlobalSettings"]["profileonstartup_name"] = current_profile
         write_config(self.settings_config, self.settings_path)
