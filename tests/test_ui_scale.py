@@ -153,7 +153,7 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
     assert [a for a, k in lines] == [((x1, y1), (x1, y2)), ((x2, y1), (x2, y2))]
     assert [k['thickness'] for a, k in lines] == [dpg.scale, dpg.scale]
     texts = [(a, k) for n, a, k in raw.calls if n == 'draw_text']
-    assert texts[0][0] == ((round(-3 * dpg.scale), round(23 * dpg.scale)), '30')
+    assert texts[0][0] == ((0, round(23 * dpg.scale)), '30')
     assert texts[0][1]['size'] == text_size
     before = len(lines)
     ladder_ns['update_fps_cap_visualization'](fps)

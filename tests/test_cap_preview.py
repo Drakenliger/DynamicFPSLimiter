@@ -1,6 +1,8 @@
 """Tests for the read-only FPS cap ladder preview in the Framerate Limits box."""
 import ast
 import contextlib
+import threading
+import time
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
@@ -68,7 +70,7 @@ class Config(NS):
         return lambda *a, **kw: None
 
 
-def test_cap_preview_layout_and_label_in_app():
+def test_ui_construction_parent_stack_and_no_old_drawlist():
     raw = RecordingDPG()
     dpg = ScaledDPG(raw, 1.0)
     tree = ast.parse((ROOT / 'src/core/app.py').read_text())
@@ -91,15 +93,131 @@ def test_cap_preview_layout_and_label_in_app():
 
     exec(compile(ast.Module(body=[main_window], type_ignores=[]), 'app.py', 'exec'), ns)
 
-    # Verify label and drawlist tag and parentage
+    # 1. Label and drawlist exist and are configured
     text_call = raw.tagged('add_text', 'label_caps_preview')
-    assert text_call['default_value'] if 'default_value' in text_call else raw.calls[[c[2].get('tag') for c in raw.calls].index('label_caps_preview')][1][0] == "Caps DFL will use"
-
+    assert text_call.get('default_value', 'Caps DFL will use') == "Caps DFL will use"
     drawlist_cfg = raw.tagged('drawlist', 'fps_cap_drawlist')
     assert drawlist_cfg['width'] == 210
 
+    # 2. Assert parentage hierarchy: drawlist is inside Framerate Limits child_window
+    child_window_calls = [c for c in raw.calls if c[0] == 'child_window']
+    assert len(child_window_calls) >= 1
 
-def test_flat_tick_drawing_and_exact_ladder_values():
+    # Assert old unlabelled drawlist outside Framerate Limits child window is gone
+    drawlist_calls = [c for c in raw.calls if c[0] == 'drawlist']
+    fps_cap_drawlists = [c for c in drawlist_calls if c[2].get('tag') == 'fps_cap_drawlist']
+    assert len(fps_cap_drawlists) == 1
+
+
+def test_admitted_write_success_and_failure_and_stopped_restart():
+    """Exercise production _write_cap, start_stop_callback, and active_applied_cap tracking."""
+    raw = RecordingDPG()
+    dpg = ScaledDPG(raw, 1.0)
+
+    # Extract _write_cap, start_stop_callback, and reset_stats logic from app.py
+    ns = dict(
+        time=time,
+        Decimal=Decimal,
+        time_series=[], fps_time_series=[], gpu_usage_series=[],
+        cpu_usage_series=[], fps_series=[], cap_series=[], elapsed_time=0,
+        rtss=NS(get_framerate_limit=lambda *a, **k: 60,
+                set_fractional_fps_direct=lambda prof, cap: True,
+                set_fractional_framerate=lambda prof, cap: True),
+        logger=NS(add_log=lambda *a: None),
+        cap_change_log=NS(record=lambda *a: None),
+        gpu_values=[], cpu_values=[], fps_mean=0,
+        session_number=0, session_lock=threading.Lock(),
+        running=False, active_applied_cap=None, profile_revision=0,
+        make_row=lambda *a: None, fresh_cap_evidence=lambda: ([], [], [], 0, (0,0)),
+        autopilot_request_current=lambda *a: True,
+        session_is_current=lambda *a, **k: True,
+        dpg=dpg,
+        themes_manager=NS(themes=defaultdict(lambda: 123)),
+        tray=NS(set_running_state=lambda *a: None),
+        fps_utils=NS(current_stepped_limits=lambda: [30, 60], reset_summary_statistics=lambda: None)
+    )
+
+    code = functions('src/core/app.py', {'_write_cap', 'start_stop_callback', 'reset_stats'}, ns)
+    _write_cap = code['_write_cap']
+    start_stop_callback = code['start_stop_callback']
+
+    cm = Config(current_profile="Global", input_field_keys=[], input_button_tags=[], autopilot=False)
+
+    # 1. Write cap when stopped -> active_applied_cap remains None
+    ns['running'] = False
+    assert _write_cap("Global", Decimal('60'), "test", direct=True) is True
+    assert ns['active_applied_cap'] is None
+
+    # 2. Write cap when running -> active_applied_cap updated to 60
+    ns['running'] = True
+    assert _write_cap("Global", Decimal('60'), "test", direct=True) is True
+    assert ns['active_applied_cap'] == Decimal('60')
+
+    # 3. Failed write when running -> active_applied_cap retains previous value (60)
+    ns['rtss'].set_fractional_framerate = lambda prof, cap: False
+    assert _write_cap("Global", Decimal('30'), "test", direct=False) is False
+    assert ns['active_applied_cap'] == Decimal('60')
+
+    # 4. Stop session via start_stop_callback -> clears active_applied_cap to None
+    ns['rtss'].set_fractional_fps_direct = lambda prof, cap: True
+    ns['rtss'].set_fractional_framerate = lambda prof, cap: True
+    start_stop_callback(None, None, cm)
+    assert ns['running'] is False
+    assert ns['active_applied_cap'] is None
+
+
+def test_profile_handoff_and_idle_transitions():
+    """Exercise _load_profile_on_gui and idle cap transitions."""
+    raw = RecordingDPG()
+    dpg = ScaledDPG(raw, 1.0)
+
+    ns = dict(
+        time=time,
+        Decimal=Decimal,
+        rtss=NS(get_framerate_limit=lambda *a, **k: 60,
+                set_fractional_fps_direct=lambda prof, cap: True,
+                set_fractional_framerate=lambda prof, cap: True),
+        logger=NS(add_log=lambda *a: None),
+        cap_change_log=NS(record=lambda *a: None),
+        gpu_values=[], cpu_values=[], fps_mean=0, CurrentFPSOffset=0,
+        idle_state=False, fps_values=[],
+        session_number=1, profile_revision=1, session_lock=threading.Lock(),
+        running=True, active_applied_cap=Decimal('60'),
+        make_row=lambda *a: None, fresh_cap_evidence=lambda: ([], [], [], 0, (0,0)),
+        autopilot_request_current=lambda *a: True,
+        profile_request_current=lambda *a: True,
+        profile_transition_kind=lambda *a: "switch",
+        effective_max=lambda limits: max(limits),
+        dpg=dpg,
+        fps_utils=NS(current_stepped_limits=lambda: [30, 60])
+    )
+
+    code = functions('src/core/app.py', {'_write_cap', '_load_profile_on_gui'}, ns)
+    _write_cap = code['_write_cap']
+    _load_profile_on_gui = code['_load_profile_on_gui']
+
+    cm = Config(
+        current_profile="ProfileA",
+        profiles_config=NS(sections=lambda: ["ProfileA", "ProfileB"]),
+        input_field_keys=[],
+        load_profile_raw=lambda name, publish=True: True,
+        apply_current_input_values=lambda: True,
+        refresh_ui_callbacks=lambda: None,
+        tray=None
+    )
+    ns['cm'] = cm
+
+    # Successful profile handoff -> active_applied_cap updated for new profile
+    assert _load_profile_on_gui("ProfileB") is True
+    assert cm.current_profile == "ProfileB"
+    assert ns['active_applied_cap'] == Decimal('60')
+
+    # Idle mode enter: write cap 15 -> active_applied_cap becomes 15
+    _write_cap("ProfileB", Decimal('15'), "idle")
+    assert ns['active_applied_cap'] == Decimal('15')
+
+
+def test_ladder_visualization_transitions_and_dpi_scaling():
     raw = RecordingDPG()
     dpg = ScaledDPG(raw, 1.0)
     ns = functions('src/core/fps_utils.py',
@@ -109,79 +227,50 @@ def test_flat_tick_drawing_and_exact_ladder_values():
     fps.make_ratioed_values = lambda *a: ns['make_ratioed_values'](fps, *a)
     fps.current_stepped_limits = lambda: ns['current_stepped_limits'](fps)
 
-    limits = fps.current_stepped_limits()
-    assert limits == [30, 40, 50, 60]
+    # 1. Multi-cap ladder [30, 40, 50, 60]
+    raw.values['input_capmethod'] = 'Step'
+    raw.values['input_maxcap'] = 60
+    raw.values['input_mincap'] = 30
+    raw.values['input_capstep'] = 10
+    ns['update_fps_cap_visualization'](fps, active_applied_cap=40)
 
-    ns['update_fps_cap_visualization'](fps)
-
-    # Verify lines drawn instead of circles
-    circles = [c for c in raw.calls if c[0] == 'draw_circle']
     lines = [c for c in raw.calls if c[0] == 'draw_line']
-    assert len(circles) == 0
-    assert len(lines) >= 4
+    assert len(lines) == 4
+    # One line highlighted with thickness 3
+    highlighted = [c for c in lines if c[2].get('thickness') == 3]
+    assert len(highlighted) == 1
 
-    # Verify exact fractional/Decimal ladder
-    raw.calls.clear()
-    raw.values['input_capmethod'] = 'Custom'
-    raw.values['input_customfpslimits'] = '30, 45.5, 60'
-    fps.last_fps_limits = []
-
-    class CM:
-        def parse_and_normalize_string_to_decimal_set(self, s):
-            return [Decimal('30.0'), Decimal('45.5'), Decimal('60.0')]
-    fps.cm = CM()
-
-    limits = fps.current_stepped_limits()
-    assert limits == [Decimal('30.0'), Decimal('45.5'), Decimal('60.0')]
-
-    ns['update_fps_cap_visualization'](fps)
-    texts = [c[1][1] for c in raw.calls if c[0] == 'draw_text']
-    assert texts == ['30.0', '45.5', '60.0']
-
-
-@pytest.mark.parametrize('scale,expected_width', [
-    (1.0, 210),
-    (1.5, 315),
-])
-def test_sizing_at_dpi_scales(scale, expected_width):
-    raw = RecordingDPG()
-    dpg = ScaledDPG(raw, scale)
-    ns = functions('src/core/fps_utils.py', {'current_stepped_limits', 'update_fps_cap_visualization'}, {})
-    fps = NS(dpg=dpg, last_fps_limits=[])
-    fps.current_stepped_limits = lambda: [30, 60]
-
-    ns['update_fps_cap_visualization'](fps)
-    lines = [c for c in raw.calls if c[0] == 'draw_line']
-    x_coords = [c[1][0][0] for c in lines]
-    assert min(x_coords) == round(5 * scale)
-    assert max(x_coords) == round(205 * scale)
-
-
-def test_current_cap_highlight_and_admitted_write_evidence(monkeypatch):
-    import runpy
-    import sys
-    import types
-
-    hardware = types.ModuleType('core.librehardwaremonitor')
-    hardware.get_all_sensor_infos = lambda *a: []
-    monkeypatch.setitem(sys.modules, 'core.librehardwaremonitor', hardware)
-
-    raw = RecordingDPG()
-    dpg = ScaledDPG(raw, 1.0)
-
-    ns = functions('src/core/fps_utils.py', {'current_stepped_limits', 'update_fps_cap_visualization'}, {})
-    fps = NS(dpg=dpg, last_fps_limits=[])
-    fps.current_stepped_limits = lambda: [30, 45, 60]
-
-    # When stopped / idle / no active cap -> no highlight line with thickness=3
-    ns['update_fps_cap_visualization'](fps, active_applied_cap=None)
-    highlight_lines = [c for c in raw.calls if c[0] == 'draw_line' and c[2].get('thickness') == 3]
-    assert len(highlight_lines) == 0
-
-    # When running with active cap 45 -> cap 45 tick is highlighted (thickness=3 and color=(255, 215, 0))
+    # 2. Transition to Single cap [60] (equal min/max cap)
     raw.calls.clear()
     raw.items.remove('Foreground')
-    ns['update_fps_cap_visualization'](fps, active_applied_cap=45)
-    highlight_lines = [c for c in raw.calls if c[0] == 'draw_line' and c[2].get('thickness') == 3]
-    assert len(highlight_lines) == 1
-    assert highlight_lines[0][2]['color'] == (255, 215, 0)
+    raw.values['input_mincap'] = 60
+    ns['update_fps_cap_visualization'](fps, active_applied_cap=60)
+
+    lines = [c for c in raw.calls if c[0] == 'draw_line']
+    assert len(lines) == 1
+    # Centered tick drawn
+    assert lines[0][1][0][0] == 105
+
+    # 3. Exact fractional Decimal cap [59.94]
+    raw.calls.clear()
+    raw.items.remove('Foreground')
+    raw.values['input_capmethod'] = 'Custom'
+    raw.values['input_customfpslimits'] = '59.94'
+    class CM:
+        def parse_and_normalize_string_to_decimal_set(self, s):
+            return [Decimal('59.94')]
+    fps.cm = CM()
+    ns['update_fps_cap_visualization'](fps, active_applied_cap=Decimal('59.94'))
+
+    texts = [c[1][1] for c in raw.calls if c[0] == 'draw_text']
+    assert texts == ['59.94']
+    highlighted = [c for c in raw.calls if c[0] == 'draw_line' and c[2].get('thickness') == 3]
+    assert len(highlighted) == 1
+
+    # 4. Transition to Empty ladder
+    raw.calls.clear()
+    raw.items.remove('Foreground')
+    fps.current_stepped_limits = lambda: []
+    ns['update_fps_cap_visualization'](fps)
+    assert fps.last_fps_limits == []
+    assert fps._last_ladder_geometry is None

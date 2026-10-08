@@ -780,7 +780,7 @@ def plotting_loop(captured_session):
 gui_running = True
 
 def _update_idle_ui():
-    """Refresh warnings, the FPS-cap visualization and HW header counts.
+    """Refresh warnings, the FPS-cap visualization and HW header counts while idle.
 
     Runs on the main DPG thread (submitted through the GuiQueue from
     gui_update_loop). update_fps_cap_visualization() deletes and recreates the
@@ -788,34 +788,36 @@ def _update_idle_ui():
     """
     try:
         if fps_utils.current_stepped_limits():
-            warnings = get_active_warnings(dpg, cm, rtss_manager, int(min(fps_utils.current_stepped_limits())))
-            warning_visible = bool(warnings)
-            warning_message = "\n".join(warnings)
+            if not running:
+                warnings = get_active_warnings(dpg, cm, rtss_manager, int(min(fps_utils.current_stepped_limits())))
+                warning_visible = bool(warnings)
+                warning_message = "\n".join(warnings)
 
-            dpg.configure_item("warning_text", show=warning_visible)
-            dpg.configure_item("warning_tooltip", show=warning_visible)
-            dpg.set_value("warning_tooltip_text", warning_message)
+                dpg.configure_item("warning_text", show=warning_visible)
+                dpg.configure_item("warning_tooltip", show=warning_visible)
+                dpg.set_value("warning_tooltip_text", warning_message)
 
             # Update FPS limit visualization based on current input values
             fps_utils.update_fps_cap_visualization(active_applied_cap=active_applied_cap if running else None)
 
-        try:
-            # Use ConfigManager helper to build a map of enabled params per hw/section
-            enable_map = cm.build_sensor_enable_map(dpg)
-            for hw_id, info in enable_map.items():
-                hw_name = info.get("hw_name", hw_id)
-                enabled_count = info.get("enabled_count", 0)
-                header_tag = info.get("header_tag", f"input_collapsing_{hw_id}")
-                label = f"{hw_name} : +{enabled_count}" if enabled_count > 0 else hw_name
-                if dpg.does_item_exist(header_tag):
-                    try:
-                        dpg.configure_item(header_tag, label=label)
-                    except Exception:
-                        pass
+        if not running:
+            try:
+                # Use ConfigManager helper to build a map of enabled params per hw/section
+                enable_map = cm.build_sensor_enable_map(dpg)
+                for hw_id, info in enable_map.items():
+                    hw_name = info.get("hw_name", hw_id)
+                    enabled_count = info.get("enabled_count", 0)
+                    header_tag = info.get("header_tag", f"input_collapsing_{hw_id}")
+                    label = f"{hw_name} : +{enabled_count}" if enabled_count > 0 else hw_name
+                    if dpg.does_item_exist(header_tag):
+                        try:
+                            dpg.configure_item(header_tag, label=label)
+                        except Exception:
+                            pass
 
-        except Exception as e:
-            if gui_running:
-                logger.add_log(f"Error updating HW header counts: {e}")
+            except Exception as e:
+                if gui_running:
+                    logger.add_log(f"Error updating HW header counts: {e}")
 
     except Exception as e:
         if gui_running:  # Only log if we're still supposed to be running

@@ -114,7 +114,11 @@ class FPSUtils:
         dpg = self.dpg
 
         fps_limits = self.current_stepped_limits()
-        if not fps_limits or len(fps_limits) < 2:
+        if not fps_limits:
+            if dpg.does_item_exist("Foreground"):
+                dpg.delete_item("Foreground")
+            self.last_fps_limits = []
+            self._last_ladder_geometry = None
             return
 
         scale = getattr(dpg, "scale", 1)
@@ -175,9 +179,11 @@ class FPSUtils:
                     )
 
                 if len(fps_limits) < 20:
+                    label_str = str(cap)
+                    text_x = max(0, min(draw_width - 16, x_pos - 8))
                     dpg.draw_text(
-                        (x_pos - 8, y_center + 8),
-                        str(cap),
+                        (text_x, y_center + 8),
+                        label_str,
                         color=(255, 215, 0) if is_highlighted else (200, 200, 200),
                         size=14,
                         parent="Foreground"
