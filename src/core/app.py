@@ -21,14 +21,17 @@ Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(Base_dir)
 
 _acceptance_runtime = globals().get("_acceptance_runtime")
-if _acceptance_runtime is not None:
-    _acceptance_runtime.configure_logging()
-    _early_error_log_file = _acceptance_runtime.error_log_file
-else:
-    _early_error_log_file = os.path.join(parent_dir, "error_log.txt")
 
-from core import logger
-logger.init_logging(_early_error_log_file)
+def _init_early_app_logging():
+    if _acceptance_runtime is not None:
+        _acceptance_runtime.configure_logging()
+        path = _acceptance_runtime.error_log_file
+    else:
+        path = os.path.join(parent_dir, "error_log.txt")
+    from core import logger
+    logger.init_logging(path)
+
+_init_early_app_logging()
 
 from core.single_instance import app_lease
 _instance_lease = app_lease(globals().get("_single_instance_handle"))

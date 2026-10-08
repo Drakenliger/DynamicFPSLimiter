@@ -73,12 +73,11 @@ def run_app():
     import core.app
 
 def build_executable():
-    try:
+    pyi = globals().get("PyInstaller")
+    if pyi is not None and hasattr(pyi, "__main__"):
+        pyi_main = pyi.__main__
+    else:
         import PyInstaller.__main__ as pyi_main
-    except ModuleNotFoundError:
-        pyi_main = getattr(globals().get("PyInstaller"), "__main__", None)
-        if pyi_main is None:
-            raise
 
     from core.version import write_version_txt
 

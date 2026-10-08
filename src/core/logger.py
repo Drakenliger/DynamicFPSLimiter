@@ -29,21 +29,31 @@ def set_dpg(dpg_instance):
 
 def _enable_fatal_sink(log_file_path):
     global _fatal_sink_file
-    active_path = None
     root = logging.getLogger()
+    target_handler = None
     for h in root.handlers:
-        if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None):
-            active_path = h.baseFilename
+        if isinstance(h, logging.FileHandler) and getattr(h, "stream", None) and not getattr(h.stream, "closed", True):
+            target_handler = h
             break
-    if not active_path:
-        active_path = log_file_path
-    if not active_path:
-        return
 
-    abs_path = os.path.abspath(active_path)
+    if target_handler is not None:
+        try:
+            faulthandler.enable(file=target_handler.stream)
+            _fatal_sink_file = target_handler.stream
+            return
+        except Exception:
+            pass
+
+    if not log_file_path:
+        return
+    abs_path = os.path.abspath(log_file_path)
     if _fatal_sink_file is not None and not getattr(_fatal_sink_file, "closed", True):
         if getattr(_fatal_sink_file, "name", None) == abs_path:
             return
+        try:
+            _fatal_sink_file.close()
+        except Exception:
+            pass
     try:
         log_dir = os.path.dirname(abs_path)
         if log_dir and not os.path.exists(log_dir):
@@ -82,8 +92,9 @@ def init_logging(log_file_path):
 
     # Redirect uncaught exceptions to the error_log_exception function
     sys.excepthook = error_log_exception
-    previous = threading.excepthook
-    if not getattr(previous, "_dfl_error_log_hook", False):
+    current_thread_hook = threading.excepthook
+    if not getattr(current_thread_hook, "_dfl_error_log_hook", False):
+        previous = current_thread_hook
         def thread_error_log(args):
             try:
                 if args.exc_type is not SystemExit:
