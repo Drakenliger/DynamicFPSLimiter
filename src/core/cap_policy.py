@@ -10,7 +10,7 @@ def build_cap_model(limits):
     """Snapshot a cap ladder and its extrema and padded plot bounds."""
     ladder = tuple(sorted(set(Decimal(x) for x in limits)))
     minimum, maximum = min(ladder), max(ladder)
-    padding = round((maximum - minimum) * Decimal("0.1"))
+    padding = round((maximum - minimum) * Decimal("0.1")) or Decimal("1")
     return ladder, minimum, maximum, minimum - padding, maximum + padding
 
 

@@ -242,3 +242,32 @@ def test_paused_initial_setup_allows_invalidation_and_discards_old_pass(action, 
     assert not model_calls and not samples
     assert setup_calls == ([0, 1] if action == 'profile' and not setup_fails else [0])
     assert ticks == ([1] if action == 'profile' and setup_fails else [])
+
+
+def test_equal_cap_monitoring_pass_succeeds(caplog):
+    ns, writes, submitted, _ = load_app()
+    ns['update_plot_FPS'] = lambda *a: None
+    ns['fps_utils'].current_stepped_limits = lambda: [Decimal(60)]
+    ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal('59.5'), 'game')
+
+    ticks = []
+    def sleep(seconds):
+        ticks.append(seconds)
+        ns['running'] = False
+    ns['time'].sleep = sleep
+
+    with caplog.at_level(logging.ERROR):
+        ns['monitoring_loop'](1)
+
+    assert ticks == [1]
+    assert 'Monitoring pass failed' not in caplog.text
+    assert 'DivisionByZero' not in caplog.text
+
+    plot_submissions = [args for args in submitted if args[0] is ns['update_plot_FPS']]
+    assert len(plot_submissions) == 1
+    _, scaled_fps, scaled_cap = plot_submissions[0]
+    assert isinstance(scaled_fps, Decimal) and scaled_fps.is_finite()
+    assert isinstance(scaled_cap, Decimal) and scaled_cap.is_finite()
+
+    assert ns['fps_utils'].summary_fps == [Decimal('59.5')]
+    assert ns['fps_utils'].summary_cap == [Decimal(60)]
