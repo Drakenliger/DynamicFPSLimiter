@@ -118,6 +118,9 @@ class RecordingDPG:
         while curr and curr.item_type != "root":
             if curr.tag and self.shown_states.get(curr.tag) is False:
                 return False
+            # A closed header is still visible itself, but hides every descendant.
+            if curr is not node and curr.item_type == "collapsing_header" and not self.get_value(curr.tag):
+                return False
             curr = curr.parent
         return True
 
@@ -234,6 +237,40 @@ def _make_sample_sensors():
     return sensors
 
 
+def _assert_parameter_rows(raw_dpg, sensors):
+    expected = defaultdict(list)
+    for sensor in sensors:
+        expected[(sensor["hw_id"], str(sensor["sensor_type"]))].append(sensor["parameter_id"])
+
+    items = {}
+    for (hw_id, sensor_type), parameter_ids in expected.items():
+        section = raw_dpg.items_by_tag[f"title_section_{hw_id}_{sensor_type}"]
+        assert section.parent is raw_dpg.items_by_tag[f"input_collapsing_{hw_id}"]
+        tables = [child for child in section.children if child.item_type == "table"]
+        assert len(tables) == 1
+        table = tables[0]
+        rows = [child for child in table.children if child.item_type == "table_row"]
+        assert [row.tag for row in rows] == [f"param_row_{param_id}" for param_id in parameter_ids]
+        for row, param_id in zip(rows, parameter_ids):
+            assert raw_dpg.does_item_exist(row.tag)
+            assert raw_dpg.items_by_tag[row.tag] is row
+            assert row.parent is table
+            items[row.tag] = row
+            controls = [child for child in row.children if child.item_type in ("add_checkbox", "add_input_text")]
+            defaults = [("enable", "add_checkbox", False), ("lower", "add_input_text", 0), ("upper", "add_input_text", 100)]
+            assert [ctrl.tag for ctrl in controls] == [f"input_{param_id}_{suffix}" for suffix, _, _ in defaults]
+            for ctrl, (suffix, item_type, default) in zip(controls, defaults):
+                tag = f"input_{param_id}_{suffix}"
+                assert raw_dpg.does_item_exist(tag)
+                assert raw_dpg.items_by_tag[tag] is ctrl
+                assert ctrl.item_type == item_type
+                assert ctrl.kwargs["default_value"] == default
+                assert ctrl.parent is row
+                items[tag] = ctrl
+            assert all(child.parent is row for child in row.children)
+    return items
+
+
 @pytest.mark.parametrize("dpi,scale", [(96, 1.0), (144, 1.5)])
 def test_lhm_group_layout_structure_and_subheadings(dpi, scale):
     """Verify LHM group layout parent stack hierarchy, exact child ordering, and scaled gaps."""
@@ -303,16 +340,7 @@ def test_lhm_group_layout_structure_and_subheadings(dpi, scale):
             assert text_node.parent == sec_group
             assert table_node.parent == sec_group
 
-            # Check table rows and controls hierarchy
-            rows = [c for c in table_node.children if c.item_type == "table_row"]
-            assert len(rows) > 0
-            for row in rows:
-                assert row.parent == table_node
-                assert row.tag.startswith("param_row_")
-                # Check controls inside table row
-                controls = row.children
-                for ctrl in controls:
-                    assert ctrl.parent == row
+    _assert_parameter_rows(raw_dpg, sensors)
 
     # 3. Verify single-type group cpu_0 has zero gap
     sec_cpu_group = raw_dpg.items_by_tag["title_section_cpu_0_Load"]
@@ -330,7 +358,8 @@ def test_lhm_group_layout_structure_and_subheadings(dpi, scale):
     assert len(text_headings) == 6
 
 
-def test_hide_unselected_effective_visibility_and_state(tmp_path):
+@pytest.mark.parametrize("dpi,scale", [(96, 1.0), (144, 1.5)])
+def test_hide_unselected_effective_visibility_and_state(tmp_path, dpi, scale):
     """Test ConfigManager hide_unselected_callback effective visibility, parameters retention, and collapse setting stability."""
     sensors = _make_sample_sensors()
     raw_dpg = RecordingDPG()
@@ -339,7 +368,7 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
 
     cm = ConfigManager(
         logger_instance=type("Logger", (), {"add_log": lambda *a, **k: None})(),
-        dpg_instance=ScaledDPG(raw_dpg, 1.0),
+        dpg_instance=ScaledDPG(raw_dpg, scale),
         rtss_instance=None,
         tray_instance=None,
         themes_manager=type("Themes", (), {"themes": {}})(),
@@ -348,10 +377,23 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
     cm.sensor_infos = sensors
     cm.ui_initialized = True
 
-    _run_lhm_block(raw_dpg, scale=1.0, sensor_infos=sensors, cm_mock=cm)
+    _run_lhm_block(raw_dpg, scale=scale, sensor_infos=sensors, cm_mock=cm)
+    parameter_items = _assert_parameter_rows(raw_dpg, sensors)
+    identities = {tag: (node, node.parent, tuple(node.children)) for tag, node in parameter_items.items()}
+    control_values = {tag: raw_dpg.get_value(tag) for tag, node in parameter_items.items() if node.item_type != "table_row"}
+    assert control_values == {tag: node.kwargs["default_value"] for tag, node in parameter_items.items() if node.item_type != "table_row"}
+
+    def assert_parameter_state():
+        current = _assert_parameter_rows(raw_dpg, sensors)
+        for tag, (node, parent, children) in identities.items():
+            assert current[tag] is node
+            assert current[tag].parent is parent
+            assert tuple(current[tag].children) == children
+        assert {tag: raw_dpg.get_value(tag) for tag in control_values} == control_values
 
     # Initial state: hide_unselected is False -> all sections, headings, tables, spacers, rows effectively visible
     cm.hide_unselected_callback(app_data=False)
+    assert_parameter_state()
     for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
         for st in types:
             sec_tag = f"title_section_{hw_id}_{st}"
@@ -362,6 +404,7 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
 
     # 1. False -> True with ALL off -> False cleanly restores heading, table, gap, and rows
     cm.hide_unselected_callback(app_data=True)
+    assert_parameter_state()
     # When all off and hide=True, all sections are hidden
     for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
         for st in types:
@@ -373,6 +416,7 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
 
     # Toggle back to False -> restores visibility
     cm.hide_unselected_callback(app_data=False)
+    assert_parameter_state()
     for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
         for st in types:
             sec_tag = f"title_section_{hw_id}_{st}"
@@ -389,6 +433,7 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
     # Set custom lower/upper values on enabled controls to verify threshold values are retained
     raw_dpg.set_value("input_gpu0_load_0_lower", "25")
     raw_dpg.set_value("input_gpu0_load_0_upper", "85")
+    control_values = {tag: raw_dpg.get_value(tag) for tag in control_values}
 
     # Capture initial collapse open values of headers
     header_collapse_values = {
@@ -398,6 +443,7 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
 
     # Toggle hide_unselected to True
     cm.hide_unselected_callback(app_data=True)
+    assert_parameter_state()
 
     # Same-named hardware items are independent:
     # gpu_0: Load section visible, Temperature section hidden
@@ -420,6 +466,33 @@ def test_hide_unselected_effective_visibility_and_state(tmp_path):
     # Callback must not reopen or alter header collapse settings
     for hw_id in ["gpu_0", "gpu_1", "cpu_0"]:
         assert raw_dpg.get_value(f"input_collapsing_{hw_id}") == header_collapse_values[hw_id]
+
+    # Start this round with gpu_1 closed despite its enabled Power parameter.
+    raw_dpg.set_value("input_collapsing_gpu_1", False)
+    header_collapse_values["gpu_1"] = False
+    collapse_settings = {f"collapsing_{hw_id}": value for hw_id, value in header_collapse_values.items()}
+    cm.settings.update(collapse_settings)
+    cm.profiles_config["Global"].update({key: str(value) for key, value in collapse_settings.items()})
+    gpu1_header = raw_dpg.items_by_tag["input_collapsing_gpu_1"]
+    for hide in (True, False):
+        cm.hide_unselected_callback(app_data=hide)
+        assert_parameter_state()
+        assert raw_dpg.is_effectively_visible(gpu1_header) is True
+        for hw_id, value in header_collapse_values.items():
+            assert raw_dpg.get_value(f"input_collapsing_{hw_id}") is value
+        assert {key: cm.settings[key] for key in collapse_settings} == collapse_settings
+        assert {key: cm.profiles_config["Global"][key] for key in collapse_settings} == {key: str(value) for key, value in collapse_settings.items()}
+        assert raw_dpg.shown_states["title_section_gpu_1_Power"] is True
+        assert raw_dpg.shown_states["param_row_gpu1_power_0"] is True
+        descendants = list(gpu1_header.children)
+        while descendants:
+            node = descendants.pop()
+            assert raw_dpg.is_effectively_visible(node) is False
+            descendants.extend(node.children)
+        for hw_id in ("gpu_0", "cpu_0"):
+            assert raw_dpg.is_effectively_visible(f"input_collapsing_{hw_id}") is True
+            assert raw_dpg.is_effectively_visible(f"title_section_{hw_id}_Load") is True
+        assert raw_dpg.is_effectively_visible("title_section_gpu_0_Temperature") is (not hide)
 
 
 def test_internal_spacing_regression_fails_on_old_format():
