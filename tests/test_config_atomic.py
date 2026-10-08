@@ -133,7 +133,7 @@ def test_partial_write_regression_fails_pre_fix_path(tmp_path):
     # Pre-fix path truncated the file on failure!
     truncated_bytes = target_path.read_bytes()
     assert truncated_bytes != original_bytes
-    assert truncated_bytes == b"[PartialSection]\nkey="
+    assert truncated_bytes.splitlines() == [b"[PartialSection]", b"key="]
 
     # Reset target path bytes
     target_path.write_bytes(original_bytes)

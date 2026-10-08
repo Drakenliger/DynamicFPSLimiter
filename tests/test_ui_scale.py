@@ -203,11 +203,11 @@ def test_actual_texture_loader_preserves_raw_data():
 
 
 def test_old_config_default_and_persisted_choice(tmp_path):
-    from core.config_io import new_config
+    from core.config_io import new_config, write_config
     cfg = new_config()
     cfg.read_string('[Preferences]\nshowtooltip=True\n[GlobalSettings]\nminvalidfps=14\n')
     ns = functions('src/core/config_manager.py', {'load_preferences', 'update_ui_scale_preference'},
-                   {'normalize_preference': normalize_preference})
+                   {'normalize_preference': normalize_preference, 'write_config': write_config})
     path = tmp_path / 'settings.ini'
     cm = NS(settings_config=cfg, key_type_map={'showtooltip': bool}, settings_path=path,
             logger=NS(add_log=lambda message: None))
