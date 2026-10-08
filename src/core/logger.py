@@ -13,6 +13,7 @@ _gui_queue = None
 _log_lock = threading.Lock()
 _dpg = None
 _fatal_sink_file = None
+_fatal_sink_owned = False
 
 
 def set_gui_queue(queue):
@@ -27,40 +28,71 @@ def set_dpg(dpg_instance):
     _dpg = dpg_instance
 
 
-def _enable_fatal_sink(log_file_path):
-    global _fatal_sink_file
-    root = logging.getLogger()
-    target_handler = None
-    for h in root.handlers:
-        if isinstance(h, logging.FileHandler) and getattr(h, "stream", None) and not getattr(h.stream, "closed", True):
-            target_handler = h
-            break
-
-    if target_handler is not None:
+def close_fatal_sink():
+    """Close and disable the fatal crash sink if owned, or reset reference."""
+    global _fatal_sink_file, _fatal_sink_owned
+    try:
+        faulthandler.disable()
+    except Exception:
+        pass
+    if _fatal_sink_owned and _fatal_sink_file is not None:
         try:
-            faulthandler.enable(file=target_handler.stream)
-            _fatal_sink_file = target_handler.stream
-            return
+            if not getattr(_fatal_sink_file, "closed", True):
+                _fatal_sink_file.close()
         except Exception:
             pass
+    _fatal_sink_file = None
+    _fatal_sink_owned = False
+
+
+def _enable_fatal_sink(log_file_path):
+    global _fatal_sink_file, _fatal_sink_owned
+    root = logging.getLogger()
+
+    matching_handler = None
+    if log_file_path:
+        abs_path = os.path.abspath(log_file_path)
+        for h in root.handlers:
+            if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None):
+                if os.path.abspath(h.baseFilename) == abs_path:
+                    matching_handler = h
+                    break
+
+    if matching_handler is None:
+        for h in root.handlers:
+            if isinstance(h, logging.FileHandler) and getattr(h, "stream", None):
+                matching_handler = h
+                break
+
+    if matching_handler is not None and getattr(matching_handler, "stream", None):
+        stream = matching_handler.stream
+        if stream and not getattr(stream, "closed", True):
+            if _fatal_sink_file is stream and faulthandler.is_enabled():
+                return
+            try:
+                faulthandler.enable(file=stream)
+                _fatal_sink_file = stream
+                _fatal_sink_owned = False
+                return
+            except Exception:
+                pass
 
     if not log_file_path:
         return
     abs_path = os.path.abspath(log_file_path)
     if _fatal_sink_file is not None and not getattr(_fatal_sink_file, "closed", True):
-        if getattr(_fatal_sink_file, "name", None) == abs_path:
+        if getattr(_fatal_sink_file, "name", None) == abs_path and faulthandler.is_enabled():
             return
-        try:
-            _fatal_sink_file.close()
-        except Exception:
-            pass
+
     try:
         log_dir = os.path.dirname(abs_path)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
+        close_fatal_sink()
         sink = open(abs_path, "a", encoding="utf-8", buffering=1)
         faulthandler.enable(file=sink)
         _fatal_sink_file = sink
+        _fatal_sink_owned = True
     except Exception:
         pass
 
@@ -78,8 +110,12 @@ def init_logging(log_file_path):
                 pass
 
         root = logging.getLogger()
-        has_file_handler = any(isinstance(h, logging.FileHandler) for h in root.handlers)
-        if not has_file_handler:
+        has_matching_file_handler = any(
+            isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None)
+            and os.path.abspath(h.baseFilename) == abs_path
+            for h in root.handlers
+        )
+        if not has_matching_file_handler:
             handler = logging.FileHandler(abs_path, encoding='utf-8')
             handler.setLevel(logging.ERROR)
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -91,7 +127,12 @@ def init_logging(log_file_path):
     _enable_fatal_sink(log_file_path)
 
     # Redirect uncaught exceptions to the error_log_exception function
-    sys.excepthook = error_log_exception
+    if not getattr(sys.excepthook, "_dfl_error_log_hook", False):
+        def main_error_log(exc_type, exc_value, exc_traceback):
+            error_log_exception(exc_type, exc_value, exc_traceback)
+        main_error_log._dfl_error_log_hook = True
+        sys.excepthook = main_error_log
+
     current_thread_hook = threading.excepthook
     if not getattr(current_thread_hook, "_dfl_error_log_hook", False):
         previous = current_thread_hook
