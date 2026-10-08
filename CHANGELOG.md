@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## [v5.1.0] - 2026-10-08
+
+This release is a fork of SameSalamander5710's Dynamic FPS Limiter v5.0.1.
+
+### Fixes
+- Repeatedly disabling the RTSS limiter now leaves it disabled. Idle timing handles Windows tick-counter wraparound.
+- Autopilot matches profile names without regard to letter case, uses the foreground application consistently, and rejects outdated pending actions.
+- Profile switches reload the FPS cap model, restore the outgoing profile's maximum, and start the incoming profile at its own maximum. Exiting while monitoring is running restores the active profile's maximum.
+- RTSS profile edits preserve ANSI text and unrelated settings, place cap keys in the Framerate section, and create missing profiles before applying a fractional cap denominator. Deleting a DFL profile clears its RTSS cap without deleting other RTSS settings.
+- Tray capping-method choices now match the values used by the app's controls. Legacy startup profile names containing escaped percent signs can be resolved.
+
+### Hardware
+- LibreHM cap decisions use the selected sensor thresholds and configured confirmation delays. Successful cap writes require fresh decision evidence before another change; missing enabled sensor readings block cap increases.
+- Sensor readings are captured together and tracked by stable identifiers where available, reducing confusion between similarly named sensors. Failed hardware samples are invalidated and polling can continue after an error.
+- Intel GPUs reported by LibreHardwareMonitor are now recognized, while existing AMD/Nvidia GPU setting order is preserved.
+- Corrected the CPU/GPU percentile endpoint calculation to use sorted readings. The .NET lookup uses the executable under Program Files when available.
+
+### Reliability
+- Retired monitoring sessions cannot apply cap changes after a restart. Failed RTSS cap writes preserve the current cap decision state, and monitoring can continue after a failed pass.
+- Settings and DFL profile saves use atomic replacement. Settings retain unknown keys and legacy values, support UTF-8 text, and treat percent signs literally.
+- Startup can use a fallback texture when an image cannot be loaded. A single-instance check runs before startup cap writes.
+- Autostart warns when the executable is outside Program Files. Its scheduled task permits battery operation and has no execution time limit.
+
+### New
+- Automatic UI scaling for monitor DPI, with saved scale overrides applied on restart.
+- Local CSV logs of RTSS cap changes, with retention limited to the latest twenty launch logs when cleanup succeeds.
+
 ## [v5.0.1] - 2026-09-18
 
 ### Changed
