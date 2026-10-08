@@ -1,4 +1,5 @@
 """A1 recovery exercised through the actual AST-loaded production loop."""
+import ast
 import logging
 from decimal import Decimal
 import threading
@@ -7,6 +8,8 @@ import pytest
 
 from test_app_session import load_app, worker, finish, restart
 from test_librehm_policy import real_evaluator
+from test_app_session import APP
+from core.gui_queue import GuiQueue
 
 
 @pytest.mark.parametrize('site', ['setup', 'sample', 'evaluation', 'write', 'dpg'])
@@ -271,3 +274,79 @@ def test_equal_cap_monitoring_pass_succeeds(caplog):
 
     assert ns['fps_utils'].summary_fps == [Decimal('59.5')]
     assert ns['fps_utils'].summary_cap == [Decimal(60)]
+
+
+def _assert_literal_plot_bounds(actual, expected):
+    assert actual == expected
+    lower, upper = actual
+    assert lower.is_finite() and upper.is_finite() and lower < upper
+
+
+@pytest.mark.parametrize(
+    'limits, fps, offset, bounds',
+    [
+        (['60'], '59.5', '0', ('59', '61')),
+        (['59.94'], '59.44', '0', ('58.94', '60.94')),
+        (['60', '60'], '59.5', '0', ('59', '61')),
+        (['59.94', '59.94'], '59.44', '0', ('58.94', '60.94')),
+        (['59.94', '60'], '59.955', '-0.03', ('59.94', '60')),
+        (['59', '60'], '59.25', '-0.5', ('59', '60')),
+        # 15 * 0.1 rounds to 2; 25 * 0.1 also rounds to 2 (ties to even).
+        (['45', '60'], '47.75', '-7.5', ('43', '62')),
+        (['35', '60'], '40.25', '-12.5', ('33', '62')),
+    ],
+)
+def test_monitoring_executes_real_queued_fps_plot(fake_dpg, caplog, limits, fps, offset, bounds):
+    ns, writes, _, _ = load_app()
+    tree = ast.parse(APP.read_text())
+    callback = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == 'update_plot_FPS')
+    exec(compile(ast.Module(body=[callback], type_ignores=[]), str(APP), 'exec'), ns)
+    ns['dpg'] = fake_dpg
+    fake_dpg.values['input_monitoring_method'] = 'Legacy'
+    ns['fps_utils'].current_stepped_limits = lambda: [Decimal(value) for value in limits]
+    ns['fps_utils'].evaluate_cap_change = lambda *args: (False, False)
+    ns['rtss_manager'].get_fps_for_active_window = lambda: (Decimal(fps), 'game')
+    ns['CurrentFPSOffset'] = Decimal(offset)
+    ns['elapsed_time'] = 7
+    queue_errors = []
+    queue = GuiQueue(on_error=lambda fn, exc: queue_errors.append((fn, exc)))
+    ns['_gui_submit'] = queue.submit
+    ticks = []
+
+    def sleep(seconds):
+        ticks.append(seconds)
+        ns['running'] = False
+
+    ns['time'].sleep = sleep
+    with caplog.at_level(logging.ERROR):
+        thread, errors = worker(lambda: ns['monitoring_loop'](1))
+        finish(thread, errors)
+    assert ticks == [1]
+    assert 'Monitoring pass failed' not in caplog.text
+    assert not writes
+    assert ns['CurrentFPSOffset'] == Decimal(offset)
+    assert ns['session_number'] == 1 and ns['profile_revision'] == 0
+    assert len(queue) == 3  # Process label, legend, and the actual plot callback.
+    assert not ns['fps_series'] and not ns['cap_series']
+    assert not any(call[0] in {'set_value', 'set_axis_limits'} for call in fake_dpg.calls)
+
+    assert queue.drain() == 3
+    assert not queue_errors and len(queue) == 0
+    assert fake_dpg.values['fps_series'] == [[7], [Decimal('25')]]
+    assert fake_dpg.values['cap_series'] == [[7], [Decimal('50')]]
+    assert all(value.is_finite() for value in ns['fps_series'] + ns['cap_series'])
+    axes = [call for call in fake_dpg.calls if call[0] == 'set_axis_limits']
+    assert len(axes) == 1 and axes[0][1][0] == 'y_axis_right'
+    _assert_literal_plot_bounds(axes[0][1][1:], tuple(Decimal(value) for value in bounds))
+    assert axes[0][3] == threading.current_thread().name
+    assert ns['fps_utils'].summary_fps == [Decimal(fps)]
+    assert ns['fps_utils'].summary_cap == [Decimal(limits[-1]) + Decimal(offset)]
+
+
+@pytest.mark.parametrize('rung, bounds', [('60', ('59', '61')), ('59.94', ('58.94', '60.94'))])
+def test_plot_bounds_oracle_rejects_collapsed_axis(rung, bounds):
+    # Negative control: the preserved base callback emits precisely these bad limits.
+    with pytest.raises(AssertionError):
+        _assert_literal_plot_bounds((Decimal(rung), Decimal(rung)),
+                                   tuple(Decimal(value) for value in bounds))

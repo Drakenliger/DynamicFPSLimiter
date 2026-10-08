@@ -323,12 +323,7 @@ def update_plot_FPS(fps_val, cap_val):
     dpg.set_value("fps_series", [fps_time_series, fps_series])
     dpg.set_value("cap_series", [fps_time_series, cap_series])  
 
-    fps_limit_list = fps_utils.current_stepped_limits()
-
-    current_mincap = min(fps_limit_list)
-    current_maxcap = max(fps_limit_list)
-    min_ft = current_mincap - round((current_maxcap - current_mincap) * Decimal('0.1'))
-    max_ft = current_maxcap + round((current_maxcap - current_mincap)* Decimal('0.1'))
+    _, _, _, min_ft, max_ft = build_cap_model(fps_utils.current_stepped_limits())
 
     dpg.set_axis_limits("y_axis_right", min_ft, max_ft) 
 
