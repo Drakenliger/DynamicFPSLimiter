@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 
-def _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm):
+def _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm, tmp_path):
     from core.config_manager import ConfigManager
     from core.fps_utils import FPSUtils
 
@@ -20,7 +20,7 @@ def _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm):
         SimpleNamespace(set_profile_property=lambda *a, **k: True),
         None,
         SimpleNamespace(themes={}),
-        base_dir="src",
+        base_dir=str(tmp_path / "core"),
     )
     lhm_sensor = SimpleNamespace(cpu_history_long={}, gpu_history_long={})
     fu = FPSUtils(cm, lhm_sensor, stub_logger, fake_dpg, 610, base_dir=None)
@@ -33,8 +33,8 @@ def _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm):
     return fu, cm
 
 
-def test_copy_from_plot_fractional_custom_caps(fake_dpg, stub_logger, fake_lhm):
-    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm)
+def test_copy_from_plot_fractional_custom_caps(fake_dpg, stub_logger, fake_lhm, tmp_path):
+    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm, tmp_path)
 
     fake_dpg.set_value("input_capmethod", "custom")
     fake_dpg.set_value("input_customfpslimits", "30.01, 45.5, 59.99")
@@ -49,8 +49,8 @@ def test_copy_from_plot_fractional_custom_caps(fake_dpg, stub_logger, fake_lhm):
     assert copied_str == "30.01, 45.50, 59.99"
 
 
-def test_copy_from_plot_unsorted_duplicate_fractional_input(fake_dpg, stub_logger, fake_lhm):
-    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm)
+def test_copy_from_plot_unsorted_duplicate_fractional_input(fake_dpg, stub_logger, fake_lhm, tmp_path):
+    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm, tmp_path)
 
     fake_dpg.set_value("input_capmethod", "custom")
     fake_dpg.set_value("input_customfpslimits", "59.99, 30.01, 45.5, 30.01")
@@ -65,8 +65,8 @@ def test_copy_from_plot_unsorted_duplicate_fractional_input(fake_dpg, stub_logge
     assert copied_str == "30.01, 45.50, 59.99"
 
 
-def test_copy_from_plot_integer_ladders(fake_dpg, stub_logger, fake_lhm):
-    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm)
+def test_copy_from_plot_integer_ladders(fake_dpg, stub_logger, fake_lhm, tmp_path):
+    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm, tmp_path)
 
     # Step method
     fake_dpg.set_value("input_maxcap", 100)
@@ -99,24 +99,7 @@ def test_copy_from_plot_integer_ladders(fake_dpg, stub_logger, fake_lhm):
 
 
 def test_copy_from_plot_persists_to_ini_and_reloads(fake_dpg, stub_logger, fake_lhm, tmp_path):
-    from core.config_manager import ConfigManager
-    from core.fps_utils import FPSUtils
-
-    cm = ConfigManager(
-        stub_logger,
-        fake_dpg,
-        SimpleNamespace(set_profile_property=lambda *a, **k: True),
-        None,
-        SimpleNamespace(themes={}),
-        base_dir=str(tmp_path / "core"),
-    )
-    lhm_sensor = SimpleNamespace(cpu_history_long={}, gpu_history_long={})
-    fu = FPSUtils(cm, lhm_sensor, stub_logger, fake_dpg, 610, base_dir=None)
-
-    fake_dpg.set_value("input_maxcap", 114)
-    fake_dpg.set_value("input_mincap", 40)
-    fake_dpg.set_value("input_capstep", 5)
-    fake_dpg.set_value("input_capratio", 10)
+    fu, cm = _make_fps_utils_and_cm(fake_dpg, stub_logger, fake_lhm, tmp_path)
 
     fake_dpg.set_value("input_capmethod", "custom")
     fake_dpg.set_value("input_customfpslimits", "30.01, 45.5, 59.99")
@@ -133,6 +116,8 @@ def test_copy_from_plot_persists_to_ini_and_reloads(fake_dpg, stub_logger, fake_
     cm.save_to_profile()
 
     # Create a fresh ConfigManager to reload INI from the same directory
+    from core.config_manager import ConfigManager
+
     reloaded_cm = ConfigManager(
         stub_logger,
         fake_dpg,
