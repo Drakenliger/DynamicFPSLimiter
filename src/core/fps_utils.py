@@ -161,7 +161,7 @@ class FPSUtils:
 
     def copy_from_plot(self):
         fps_limits = sorted(set(self.current_stepped_limits()))
-        fps_limits_str = ", ".join(str(int(round(x))) for x in fps_limits)
+        fps_limits_str = ", ".join(str(x) for x in fps_limits)
         self.dpg.set_value("input_customfpslimits", fps_limits_str)
 
     def reset_custom_limits(self):
