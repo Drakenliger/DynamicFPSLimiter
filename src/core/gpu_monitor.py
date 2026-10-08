@@ -57,18 +57,20 @@ class GPUUsageMonitor:
                 pdh.PdhCloseQuery(self.query_handle)
                 self.query_handle = None
                 self.counter_handles = {}
+                self.engine_type = None
 
-    def initialize(self) -> None:
+    def initialize(self, engine_type: str = "engtype_3D") -> None:
         """Initialize PDH query. Serialized on self._pdh_lock (S2)."""
         with self._pdh_lock:
             self._close_query()
             self.query_handle = self._init_gpu_state()
             self.instances = self._setup_gpu_instances()  # Store instances
             self.query_handle, self.counter_handles = self._setup_gpu_query_from_instances(
-                self.query_handle, self.instances, "engtype_3D"
+                self.query_handle, self.instances, engine_type
             )
             if self.query_handle is None:
                 raise RuntimeError("Query handle not set up.")
+            self.engine_type = engine_type
 
     def _init_gpu_state(self) -> ctypes.c_void_p:
         """Initialize PDH query and return the handle."""
@@ -215,11 +217,16 @@ class GPUUsageMonitor:
     def gpu_run(self, engine_type: str = "engtype_3D"):
         try:
             try:
-                # Setup counters for the specified engine type
+                # Setup counters for the specified engine type if not already configured or if different engine type
                 with self._pdh_lock:
-                    _, self.counter_handles = self._setup_gpu_query_from_instances(
-                        self.query_handle, self.instances, engine_type  # Use stored instances
-                    )
+                    if not getattr(self, "counter_handles", None) or getattr(self, "engine_type", None) != engine_type:
+                        if getattr(self, "engine_type", None) is not None and self.engine_type != engine_type:
+                            self.initialize(engine_type)
+                        else:
+                            self.query_handle, self.counter_handles = self._setup_gpu_query_from_instances(
+                                self.query_handle, getattr(self, "instances", []), engine_type
+                            )
+                            self.engine_type = engine_type
 
                     status = pdh.PdhCollectQueryData(self.query_handle)
                     if status != 0:
@@ -358,14 +365,9 @@ class GPUUsageMonitor:
 
     def reinitialize(self, engine_type: str = "engtype_3D"):
         self.logger.add_log("Reinitializing GPU monitor.")
-        self.initialize()
+        self.initialize(engine_type)
 
-        # Setup counters for the specified engine type
         with self._pdh_lock:
-            _, self.counter_handles = self._setup_gpu_query_from_instances(
-                self.query_handle, self.instances, engine_type  # Use stored instances
-            )
-
             pdh.PdhCollectQueryData(self.query_handle)
             time.sleep(0.1)
             pdh.PdhCollectQueryData(self.query_handle)
