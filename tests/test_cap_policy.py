@@ -6,6 +6,7 @@ returning negative), so the intended one-rung step-down never executed.
 The policy was extracted to ``cap_policy.next_cap_on_decrease`` and is
 tested here purely — no DPG, no RTSS, no .NET.
 """
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -56,8 +57,15 @@ def test_app_wired_to_policy_and_dead_check_removed():
     assert "current_index < 0" not in src
 
 
-@pytest.mark.parametrize('limits', [[30, 60, 90], ['12.5', '24.5', '36.5'], [144]])
-def test_cap_model_snapshot(limits):
+@pytest.mark.parametrize(
+    ('limits', 'expected_padding'),
+    [
+        ([30, 60, 90], Decimal('6')),
+        (['12.5', '24.5', '36.5'], Decimal('2')),
+        ([144], Decimal('1')),
+    ]
+)
+def test_cap_model_snapshot(limits, expected_padding):
     from decimal import Decimal
     from core.cap_policy import build_cap_model
     values = [Decimal(x) for x in limits]
@@ -67,8 +75,23 @@ def test_cap_model_snapshot(limits):
     assert ladder == tuple(Decimal(x) for x in limits)
     assert minimum == min(ladder)
     assert maximum == max(ladder)
-    padding = round((maximum - minimum) * Decimal('0.1')) or Decimal('1')
-    assert (lower, upper) == (minimum - padding, maximum + padding)
+    assert (lower, upper) == (minimum - expected_padding, maximum + expected_padding)
+
+
+@pytest.mark.parametrize(
+    ('limits', 'expected_bounds'),
+    [
+        (['59.94', 60], (Decimal('59.94'), Decimal('60'))),
+        ([59, 60], (Decimal('59'), Decimal('60'))),
+    ]
+)
+def test_narrow_multi_rung_bounds_unchanged(limits, expected_bounds):
+    from decimal import Decimal
+    from core.cap_policy import build_cap_model
+
+    values = [Decimal(x) for x in limits]
+    _, _, _, min_ft, max_ft = build_cap_model(values)
+    assert (min_ft, max_ft) == expected_bounds
 
 
 @pytest.mark.parametrize('single_rung', [60, '59.94'])
