@@ -29,8 +29,8 @@ def get_tooltips():
     "button_cpulimit": "(Optional) Set values below 100 to enable CPU-based FPS limiting.",
     "rest_fps_cap_button": "Clears the custom limit input field and resets to Min/Max values",
     "autopilot_checkbox": "Relinquishes control of Start/Stop button to the autopilot, which will automatically shift to the corresponding profile based on the active process. If no profiles are detected, it uses the Global profile. Note: Can be modified to only run when a specific profile is detected in settings.",
-    "monitoring_method": "Selects how hardware load is monitored. LibreHM evaluates upper/lower thresholds on enabled sensors (temperatures, loads, power). Legacy uses Windows Performance Counters for overall GPU 3D and CPU core usage thresholds.",
-    "capmethod": "Selects how FPS limit steps are generated between Max and Min FPS limits. Ratio generates limits using a percentage decrease per step, Step uses fixed-FPS decrements, and Custom uses explicit user-supplied limit values.",
+    "monitoring_method": "Selects how hardware load is monitored. LibreHM evaluates upper and lower thresholds on enabled hardware sensors. Legacy monitors GPU 3D utilization and busiest CPU core load.",
+    "capmethod": "Selects how FPS limit steps are generated. Ratio and Step generate limits between Max and Min FPS (Ratio via percentage decreases, Step via fixed-FPS decrements). Custom uses a supplied list of limit values, falling back to Step if unavailable.",
 }
 
 def add_tooltip(dpg, key, tooltips, ShowTooltip, cm, logger):
