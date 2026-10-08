@@ -189,7 +189,7 @@ def show_loading_popup(message="Loading...", width=300, height=50, title="Dynami
     if themes_manager:
         try:
             # If themes/fonts were already created, bind the regular font (fallback if missing)
-            themes_manager.bind_font_to_item("loading_text", "regular_font")
+            themes_manager.bind_font_to_item("loading_text", "default_font")
             # Bind the main theme so styles match other popups
             dpg_mod.bind_theme(themes_manager.themes["main_theme"])
         except Exception:
