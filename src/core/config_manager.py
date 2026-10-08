@@ -1,5 +1,5 @@
 import os
-from core.config_io import new_config, read_config, merge_defaults
+from core.config_io import new_config, read_config, merge_defaults, write_config
 from core.ui_scale import normalize_preference
 from decimal import Decimal, InvalidOperation
 from core.librehardwaremonitor import get_all_sensor_infos
@@ -123,8 +123,7 @@ class ConfigManager:
         for (config, path, defaults), exists in zip(configs, existing):
             merge_defaults(config, defaults)
             if not exists:
-                with open(path, "w", encoding="utf-8") as stream:
-                    config.write(stream)
+                write_config(config, path)
 
         self.input_field_keys = ["maxcap", "mincap", "capstep", "capratio",
                 "gpucutofffordecrease", "gpucutoffforincrease", "cpucutofffordecrease", "cpucutoffforincrease",
@@ -357,8 +356,7 @@ class ConfigManager:
         if not self.settings_config.has_section("Preferences"):
             self.settings_config.add_section("Preferences")
         self.settings_config["Preferences"]["ui_scale"] = self.ui_scale
-        with open(self.settings_path, "w", encoding="utf-8") as stream:
-            self.settings_config.write(stream)
+        write_config(self.settings_config, self.settings_path)
         self.logger.add_log("UI scale saved; restart required")
 
     def load_preferences(self):
@@ -489,8 +487,7 @@ class ConfigManager:
                 # Store as string for config file
                 self.profiles_config[selected_profile][key] = str(parsed_value)
             
-            with open(self.profiles_path, "w", encoding="utf-8") as configfile:
-                self.profiles_config.write(configfile)
+            write_config(self.profiles_config, self.profiles_path)
 
             self.logger.add_log(f"Settings saved to profile: {selected_profile}")
     
@@ -535,8 +532,7 @@ class ConfigManager:
             value = self.dpg.get_value(f"input_{key}")
             parsed_value = self.parse_input_value(key, value)
             self.profiles_config[profile_name][key] = str(parsed_value)
-        with open(self.profiles_path, 'w', encoding="utf-8") as f:
-            self.profiles_config.write(f)
+        write_config(self.profiles_config, self.profiles_path)
         self.update_profile_dropdown()
         self.load_profile_callback(None, profile_name, None)
 
@@ -568,8 +564,7 @@ class ConfigManager:
                 if self.load_profile_callback(None, "Global", None) is False:
                     return
             self.profiles_config.remove_section(profile_to_delete)
-            with open(self.profiles_path, 'w', encoding="utf-8") as f:
-                self.profiles_config.write(f)
+            write_config(self.profiles_config, self.profiles_path)
 
             try:
                 success = self.rtss.set_profile_property(profile_to_delete, "FramerateLimit", 0, update=True)
@@ -762,8 +757,7 @@ class ConfigManager:
         """
         setattr(self, key, app_data)
         self.settings_config["Preferences"][key] = str(app_data)
-        with open(self.settings_path, 'w', encoding="utf-8") as f:
-            self.settings_config.write(f)
+        write_config(self.settings_config, self.settings_path)
         self.logger.add_log(f"{key.replace('_', ' ').title()} set to: {getattr(self, key)}")
 
     def make_update_preference_callback(self, key):
@@ -779,8 +773,7 @@ class ConfigManager:
             setattr(self, key, new_value)
             self.settings[key] = new_value
             self.settings_config["GlobalSettings"][key] = str(new_value)
-            with open(self.settings_path, 'w', encoding="utf-8") as f:
-                self.settings_config.write(f)
+            write_config(self.settings_config, self.settings_path)
             self.logger.add_log(f"{key} set to: {getattr(self, key)}")
         else:
             self.logger.add_log(f"Invalid value entered for {key}: {app_data}. Reverting.")
@@ -796,6 +789,5 @@ class ConfigManager:
         current_profile = self.dpg.get_value("profile_dropdown")
         self.dpg.set_value("profileonstartup_name", current_profile)
         self.settings_config["GlobalSettings"]["profileonstartup_name"] = current_profile
-        with open(self.settings_path, 'w', encoding="utf-8") as f:
-            self.settings_config.write(f)
+        write_config(self.settings_config, self.settings_path)
         self.logger.add_log(f"Profile on Startup set to: {self.profileonstartup_name}")

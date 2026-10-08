@@ -1,6 +1,8 @@
 """DFL INI parsing and missing-default merging, without GUI/native imports."""
 import configparser
 import locale
+import os
+import tempfile
 from pathlib import Path
 
 
@@ -29,3 +31,36 @@ def merge_defaults(config, defaults):
         for key, value in values.items():
             if key not in config[section]:
                 config[section][key] = str(value)
+
+
+def write_config(config, path):
+    """Write ConfigParser object atomically to path using a temporary file and os.replace."""
+    target_path = Path(path)
+    target_dir = target_path.parent
+    if not target_dir.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=target_dir,
+        prefix=f".{target_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    tmp_path = Path(tmp_file.name)
+    try:
+        try:
+            config.write(tmp_file)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        finally:
+            tmp_file.close()
+        os.replace(tmp_path, target_path)
+    except BaseException:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+        raise
