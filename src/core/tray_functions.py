@@ -29,9 +29,9 @@ def hide_from_taskbar():
     hwnd = get_hwnd_by_title(app_title)
     if hwnd:
         style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
+        ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
         style = style & ~0x40000 | 0x80  # Remove APPWINDOW, add TOOLWINDOW
         ctypes.windll.user32.SetWindowLongW(hwnd, -20, style)
-        ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
 
 def show_to_taskbar():
     hwnd = get_hwnd_by_title(app_title)
