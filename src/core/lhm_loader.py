@@ -101,26 +101,95 @@ def _detect_dotnet_core():
         return max_ver
     return None
 
+def _get_lhm_package_dir(base_dir):
+    """Return the path to the LHM package folder inside assets (e.g. assets/LHM_0.9.6_lib or assets)."""
+    if not base_dir:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    assets_root = os.path.join(base_dir, "assets") if base_dir else None
+    if not assets_root or not os.path.isdir(assets_root):
+        return None
+    pkg_dir = os.path.join(assets_root, "LHM_0.9.6_lib")
+    if os.path.isdir(pkg_dir):
+        return pkg_dir
+    # check if assets itself contains variant directories directly or a single subfolder
+    children = [n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n))]
+    if len(children) == 1:
+        nested = os.path.join(assets_root, children[0])
+        nested_children = [n for n in os.listdir(nested) if os.path.isdir(os.path.join(nested, n))]
+        if nested_children:
+            return nested
+    return assets_root
+
+
+def _get_active_clr_info():
+    """
+    Detect active .NET runtime initialized by pythonnet (clr).
+    Returns dict like {'is_core': False, 'major': 4, 'version': '4.0.30319.42000'}
+    or None if clr is None or active runtime detection fails.
+    """
+    if clr is None:
+        return None
+
+    if hasattr(clr, "_active_runtime_info"):
+        info = getattr(clr, "_active_runtime_info")
+        if isinstance(info, dict):
+            return info
+
+    try:
+        import System
+        ver = System.Environment.Version
+        major = getattr(ver, "Major", 4)
+        is_core = major >= 5
+        version_str = f"{ver.Major}.{ver.Minor}.{getattr(ver, 'Build', 0)}"
+        return {
+            "is_core": is_core,
+            "major": major,
+            "version": version_str,
+        }
+    except Exception:
+        pass
+
+    return None
+
+
 def _choose_asset_variant(base_dir):
     """
-    Pick best asset variant folder name (e.g. 'net472', 'net6.0', 'netstandard2.0').
+    Pick best asset variant folder name (e.g. 'net472', 'net8.0', 'netstandard2.0').
     Returns folder name (string) or None.
     """
-    assets_root = os.path.join(base_dir, "assets") if base_dir else None
-    # available variants are folders under assets
+    pkg_dir = _get_lhm_package_dir(base_dir)
     available = set()
-    if assets_root and os.path.isdir(assets_root):
-        # if assets contains a single package folder (like LHM_0.9.6_lib), descend into it
-        children = [n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n))]
-        if len(children) == 1:
-            nested = os.path.join(assets_root, children[0])
-            # check for variant folders inside nested
-            nested_children = [n for n in os.listdir(nested) if os.path.isdir(os.path.join(nested, n))]
-            if nested_children:
-                assets_root = nested
-        available = set(n for n in os.listdir(assets_root) if os.path.isdir(os.path.join(assets_root, n)))
+    if pkg_dir and os.path.isdir(pkg_dir):
+        available = set(n for n in os.listdir(pkg_dir) if os.path.isdir(os.path.join(pkg_dir, n)))
 
-    # prefer modern .NET runtimes if present
+    clr_info = _get_active_clr_info()
+
+    if clr_info is not None:
+        if clr_info.get("is_core"):
+            major = clr_info.get("major")
+            ver_str = clr_info.get("version", "")
+            candidates = []
+            if major:
+                candidates.append(f"net{major}.0")
+                candidates.append(f"net{major}")
+            if ver_str:
+                candidates.append(f"net{ver_str}")
+            candidates.append("netstandard2.0")
+            for c in candidates:
+                if c in available:
+                    return c
+        else:
+            if "net472" in available:
+                return "net472"
+            if "net48" in available:
+                return "net48"
+            if "netstandard2.0" in available:
+                return "netstandard2.0"
+            for a in sorted(available):
+                if "472" in a or "48" in a:
+                    return a
+
+    # fallback if clr_info is None:
     core_ver = _detect_dotnet_core()
     if core_ver:
         major = core_ver.split('.')[0]
@@ -132,19 +201,18 @@ def _choose_asset_variant(base_dir):
     # fallback to .NET Framework detection
     fx = _detect_dotnet_framework()
     if fx:
-        # normalize 4.7.2 -> net472
         variant = "net" + fx.replace('.', '')
         if variant in available:
             return variant
-        # common alternate folder names
         if "net48" in available:
             return "net48"
         if "net472" in available:
             return "net472"
 
-    # last resort: netstandard2.0 if provided, or any folder containing 'net'
     if "netstandard2.0" in available:
         return "netstandard2.0"
+    if "net472" in available:
+        return "net472"
     for a in sorted(available, reverse=True):
         if a.startswith("net"):
             return a
@@ -174,12 +242,15 @@ def ensure_loaded(base_dir=None, logger=None):
             # swallow logger errors to avoid breaking loading
             pass
 
+    pkg_dir = _get_lhm_package_dir(base_dir)
+    if not pkg_dir:
+        pkg_dir = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib')
     if variant:
-        dll_path = os.path.join(base_dir, 'assets', variant, 'LibreHardwareMonitorLib.dll')
+        dll_path = os.path.join(pkg_dir, variant, 'LibreHardwareMonitorLib.dll')
         if not os.path.isfile(dll_path):
-            dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')  # fallback
+            dll_path = os.path.join(pkg_dir, 'net472', 'LibreHardwareMonitorLib.dll')  # fallback
     else:
-        dll_path = os.path.join(base_dir, 'assets', 'LHM_0.9.6_lib', 'net472', 'LibreHardwareMonitorLib.dll')
+        dll_path = os.path.join(pkg_dir, 'net472', 'LibreHardwareMonitorLib.dll')
 
     if clr is None:
         if isinstance(_clr_import_error, (ImportError, ModuleNotFoundError)):
