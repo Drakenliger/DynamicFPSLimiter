@@ -6,6 +6,7 @@ returning negative), so the intended one-rung step-down never executed.
 The policy was extracted to ``cap_policy.next_cap_on_decrease`` and is
 tested here purely — no DPG, no RTSS, no .NET.
 """
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -56,8 +57,15 @@ def test_app_wired_to_policy_and_dead_check_removed():
     assert "current_index < 0" not in src
 
 
-@pytest.mark.parametrize('limits', [[30, 60, 90], ['12.5', '24.5', '36.5'], [144]])
-def test_cap_model_snapshot(limits):
+@pytest.mark.parametrize(
+    ('limits', 'expected_padding'),
+    [
+        ([30, 60, 90], Decimal('6')),
+        (['12.5', '24.5', '36.5'], Decimal('2')),
+        ([144], Decimal('1')),
+    ]
+)
+def test_cap_model_snapshot(limits, expected_padding):
     from decimal import Decimal
     from core.cap_policy import build_cap_model
     values = [Decimal(x) for x in limits]
@@ -67,5 +75,57 @@ def test_cap_model_snapshot(limits):
     assert ladder == tuple(Decimal(x) for x in limits)
     assert minimum == min(ladder)
     assert maximum == max(ladder)
-    padding = round((maximum - minimum) * Decimal('0.1'))
-    assert (lower, upper) == (minimum - padding, maximum + padding)
+    assert (lower, upper) == (minimum - expected_padding, maximum + expected_padding)
+
+
+@pytest.mark.parametrize(
+    ('limits', 'expected_bounds'),
+    [
+        (['59.94', 60], (Decimal('59.94'), Decimal('60'))),
+        ([59, 60], (Decimal('59'), Decimal('60'))),
+    ]
+)
+def test_narrow_multi_rung_bounds_unchanged(limits, expected_bounds):
+    from decimal import Decimal
+    from core.cap_policy import build_cap_model
+
+    values = [Decimal(x) for x in limits]
+    _, _, _, min_ft, max_ft = build_cap_model(values)
+    assert (min_ft, max_ft) == expected_bounds
+
+
+@pytest.mark.parametrize('single_rung', [60, '59.94'])
+def test_equal_cap_plot_bounds_and_scaling(single_rung):
+    from decimal import Decimal
+    from core.cap_policy import build_cap_model
+
+    rung = Decimal(single_rung)
+    ladder, minimum, maximum, min_ft, max_ft = build_cap_model([rung])
+
+    assert ladder == (rung,)
+    assert minimum == rung
+    assert maximum == rung
+
+    assert min_ft < max_ft
+    assert min_ft.is_finite() and max_ft.is_finite()
+
+    current_maxcap = maximum
+    CurrentFPSOffset = Decimal('0')
+    test_fps_values = [rung - Decimal('0.5'), rung, rung + Decimal('0.5')]
+
+    for fps in test_fps_values:
+        scaled_fps = ((fps - min_ft) / (max_ft - min_ft)) * Decimal('100')
+        scaled_cap = ((Decimal(current_maxcap) + Decimal(CurrentFPSOffset) - min_ft) / (max_ft - min_ft)) * Decimal('100')
+
+        assert scaled_fps.is_finite()
+        assert scaled_cap.is_finite()
+
+
+def test_multi_rung_ordinary_bounds_unchanged():
+    from decimal import Decimal
+    from core.cap_policy import build_cap_model
+
+    ladder, minimum, maximum, min_ft, max_ft = build_cap_model([30, 60, 90])
+    assert ladder == (Decimal(30), Decimal(60), Decimal(90))
+    assert (minimum, maximum) == (Decimal(30), Decimal(90))
+    assert (min_ft, max_ft) == (Decimal(24), Decimal(96))
