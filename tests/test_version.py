@@ -131,9 +131,12 @@ def test_build_regenerates_and_uses_metadata(monkeypatch, tmp_path):
         events.append("package")
 
     monkeypatch.setattr(version, "write_version_txt", regenerate)
+    fake_pyi = SimpleNamespace(__main__=SimpleNamespace(run=package))
+    monkeypatch.setitem(sys.modules, "PyInstaller", fake_pyi)
+    monkeypatch.setitem(sys.modules, "PyInstaller.__main__", fake_pyi.__main__)
     namespace = {"__file__": str(build_path),
                  "os": SimpleNamespace(path=os.path, walk=lambda path: [], pathsep=os.pathsep),
-                 "PyInstaller": SimpleNamespace(__main__=SimpleNamespace(run=package))}
+                 "PyInstaller": fake_pyi}
     module = ast.Module(body=[build], type_ignores=[])
     exec(compile(module, str(build_path), "exec"), namespace)
     namespace["build_executable"]()
