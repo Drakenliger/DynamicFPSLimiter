@@ -110,10 +110,9 @@ def test_reinitialize_assigns_counter_handles(monkeypatch, stub_logger):
     assert "0x1" in m.counter_handles
 
     m.reinitialize()
-    # initialize() inside reinitialize() is call 2; reinitialize's own setup is call 3.
-    assert calls["n"] == 3
-    assert "0x3" in m.counter_handles
-    assert "0x2" not in m.counter_handles
+    # initialize(engine_type) inside reinitialize() executes setup as call 2.
+    assert calls["n"] == 2
+    assert "0x2" in m.counter_handles
 
 
 def test_reinitialize_reentrant_under_pdh_lock(monkeypatch, stub_logger):
