@@ -66,9 +66,33 @@ def test_apply_and_visibility_tooltips_and_preserves_callbacks(fake_dpg, stub_lo
     # Simulate registered callbacks on controls
     fake_dpg.configure_item("input_monitoring_method", callback=mon_callback_sentinel)
     fake_dpg.configure_item("input_capmethod", callback=cap_callback_sentinel)
+    assert fake_dpg.calls[-2][2]["callback"] is mon_callback_sentinel
+    assert fake_dpg.calls[-1][2]["callback"] is cap_callback_sentinel
+    fake_dpg.calls.clear()
 
     tooltips = get_tooltips()
-    apply_all_tooltips(fake_dpg, tooltips, True, cm, stub_logger)
+    for operation, show in (
+        (apply_all_tooltips, True),
+        (apply_all_tooltips, True),
+        (update_all_tooltip_visibility, True),
+        (update_all_tooltip_visibility, False),
+        (update_all_tooltip_visibility, True),
+    ):
+        operation(fake_dpg, show, tooltips, cm, stub_logger) if operation is update_all_tooltip_visibility else operation(fake_dpg, tooltips, show, cm, stub_logger)
+
+        # Every helper must preserve the registered sentinels and selections.
+        assert fake_dpg.get_value("input_monitoring_method") == "LibreHM"
+        assert fake_dpg.get_value("input_capmethod") == "Ratio"
+        for call in fake_dpg.calls:
+            if call[1] and call[1][0] in ("input_monitoring_method", "input_capmethod"):
+                assert call[0] not in ("set_value", "set_item_callback")
+                if call[0] == "configure_item":
+                    assert not {"callback", "value", "default_value"}.intersection(call[2])
+
+        if operation is update_all_tooltip_visibility:
+            for tag in ("input_monitoring_method_tooltip", "input_capmethod_tooltip"):
+                configs = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == tag]
+                assert configs[-1][2]["show"] is show
 
     assert fake_dpg.does_item_exist("input_monitoring_method_tooltip")
     assert fake_dpg.does_item_exist("input_capmethod_tooltip")
@@ -84,34 +108,6 @@ def test_apply_and_visibility_tooltips_and_preserves_callbacks(fake_dpg, stub_lo
     text_contents = [c[1][0] for c in add_text_calls]
     assert tooltips["monitoring_method"] in text_contents
     assert tooltips["capmethod"] in text_contents
-
-    # Verify values and callback sentinels on controls remain completely unaltered
-    assert fake_dpg.get_value("input_monitoring_method") == "LibreHM"
-    assert fake_dpg.get_value("input_capmethod") == "Ratio"
-
-    mon_item_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_monitoring_method"]
-    cap_item_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_capmethod"]
-    assert mon_item_cfg[0][2]["callback"] is mon_callback_sentinel
-    assert cap_item_cfg[0][2]["callback"] is cap_callback_sentinel
-
-    # Test hiding tooltips (ShowTooltip = False)
-    update_all_tooltip_visibility(fake_dpg, False, tooltips, cm, stub_logger)
-
-    mon_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_monitoring_method_tooltip"]
-    cap_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_capmethod_tooltip"]
-
-    assert mon_cfg[-1][2]["show"] is False
-    assert cap_cfg[-1][2]["show"] is False
-
-    # Test showing tooltips again (ShowTooltip = True)
-    update_all_tooltip_visibility(fake_dpg, True, tooltips, cm, stub_logger)
-
-    mon_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_monitoring_method_tooltip"]
-    cap_cfg = [c for c in fake_dpg.calls if c[0] == "configure_item" and c[1][0] == "input_capmethod_tooltip"]
-
-    assert mon_cfg[-1][2]["show"] is True
-    assert cap_cfg[-1][2]["show"] is True
-
 
 def test_no_duplicate_tooltip_tags(fake_dpg, stub_logger):
     _setup_fake_dpg_tooltip(fake_dpg)
