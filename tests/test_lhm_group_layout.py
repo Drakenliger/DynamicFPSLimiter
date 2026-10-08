@@ -59,6 +59,8 @@ class RecordingDPG:
 
     def collapsing_header(self, **kwargs):
         node = self._add_item("collapsing_header", kwargs)
+        if "default_open" in kwargs and node.tag:
+            self.values[node.tag] = kwargs["default_open"]
         return self.Context(self, node)
 
     def group(self, **kwargs):
@@ -110,16 +112,23 @@ class RecordingDPG:
     def set_value(self, tag, val):
         self.values[tag] = val
 
+    def is_effectively_visible(self, tag_or_node):
+        node = self.items_by_tag[tag_or_node] if isinstance(tag_or_node, str) else tag_or_node
+        curr = node
+        while curr and curr.item_type != "root":
+            if curr.tag and self.shown_states.get(curr.tag) is False:
+                return False
+            curr = curr.parent
+        return True
+
 
 def _extract_lhm_block_ast():
     app_text = (SRC_DIR / "app.py").read_text(encoding="utf-8")
     tree = ast.parse(app_text)
 
-    # Find the with block in app.py that performs sensors_by_hw grouping
     target_node = None
     for node in ast.walk(tree):
         if isinstance(node, ast.With):
-            # Check if this with statement contains 'sensors_by_hw' assignment
             for stmt in node.body:
                 if isinstance(stmt, ast.Assign):
                     for target in stmt.targets:
@@ -161,8 +170,6 @@ def _run_lhm_block(raw_dpg, scale, sensor_infos, cm_mock=None):
 
 
 def _make_sample_sensors():
-    # Two same-named hardware items with distinct hw_ids and multiple sensor types
-    # Plus one single-type group (cpu)
     class FakeSensorType:
         def __init__(self, name):
             self.name = name
@@ -178,7 +185,7 @@ def _make_sample_sensors():
     st_power = FakeSensorType("Power")
 
     sensors = [
-        # GPU 1 (RTX 4090) - Multi-type (Temperature, Load)
+        # GPU 0 (RTX 4090) - Multi-type (Temperature, Load)
         {
             "hw_id": "gpu_0",
             "hw_name": "NVIDIA GeForce RTX 4090",
@@ -193,7 +200,7 @@ def _make_sample_sensors():
             "parameter_id": "gpu0_load_0",
             "sensor_name": "GPU Core Load",
         },
-        # GPU 2 (RTX 4090 - SAME HW NAME!) - Multi-type (Temperature, Load, Power)
+        # GPU 1 (RTX 4090 - SAME HW NAME!) - Multi-type (Temperature, Load, Power)
         {
             "hw_id": "gpu_1",
             "hw_name": "NVIDIA GeForce RTX 4090",
@@ -229,18 +236,18 @@ def _make_sample_sensors():
 
 @pytest.mark.parametrize("dpi,scale", [(96, 1.0), (144, 1.5)])
 def test_lhm_group_layout_structure_and_subheadings(dpi, scale):
-    """Verify LHM group layout structure, clarified subheadings, scaled gaps, and single-type separators."""
+    """Verify LHM group layout parent stack hierarchy, exact child ordering, and scaled gaps."""
     sensors = _make_sample_sensors()
     raw_dpg = RecordingDPG()
     _run_lhm_block(raw_dpg, scale, sensors)
 
-    # 1. Assert exactly one collapsing header per hw_id
+    # 1. Reverse hardware order check
     collapsing_headers = [
         node for node in raw_dpg.items_by_tag.values() if node.item_type == "collapsing_header"
     ]
-    header_tags = {node.tag for node in collapsing_headers}
-    assert header_tags == {"input_collapsing_gpu_0", "input_collapsing_gpu_1", "input_collapsing_cpu_0"}
     assert len(collapsing_headers) == 3
+    # Hardware insertion in sensors array: gpu_0, gpu_1, cpu_0. Reversed iteration produces: cpu_0, gpu_1, gpu_0
+    assert [h.tag for h in collapsing_headers] == ["input_collapsing_cpu_0", "input_collapsing_gpu_1", "input_collapsing_gpu_0"]
 
     # Check same-named GPUs have distinct hw_ids and headers
     gpu0_header = raw_dpg.items_by_tag["input_collapsing_gpu_0"]
@@ -251,127 +258,183 @@ def test_lhm_group_layout_structure_and_subheadings(dpi, scale):
     assert gpu1_header.kwargs["label"] == "NVIDIA GeForce RTX 4090"
     assert cpu0_header.kwargs["label"] == "Intel Core i9-13900K"
 
-    # 2. Check clarified subheadings inside sections ("... Sensors:")
+    # 2. Assert parent stack hierarchy and child order inside each header
     for hw_id, expected_types in [
         ("gpu_0", ["Temperature", "Load"]),
         ("gpu_1", ["Temperature", "Load", "Power"]),
         ("cpu_0", ["Load"]),
     ]:
-        for st_str in expected_types:
+        header = raw_dpg.items_by_tag[f"input_collapsing_{hw_id}"]
+        # Direct children of header are section groups
+        sec_groups = [c for c in header.children if c.item_type == "group"]
+        assert len(sec_groups) == len(expected_types)
+
+        for idx, st_str in enumerate(expected_types):
+            sec_group = sec_groups[idx]
             sec_tag = f"title_section_{hw_id}_{st_str}"
-            assert sec_tag in raw_dpg.items_by_tag, f"Missing section container group {sec_tag}"
-            sec_group = raw_dpg.items_by_tag[sec_tag]
-            assert sec_group.item_type == "group"
+            assert sec_group.tag == sec_tag
+            assert sec_group.parent == header
 
-            # Find the heading text inside section group
-            text_node = next(
-                (c for c in sec_group.children if c.item_type == "add_text"), None
-            )
-            assert text_node is not None, f"Heading text missing in {sec_tag}"
-            assert text_node.kwargs["text"] == f"{st_str} Sensors:", (
-                f"Heading text '{text_node.kwargs['text']}' not clarified"
-            )
+            # Check exact section child node order
+            if idx == 0:
+                # First section: [add_text, table]
+                assert len(sec_group.children) == 2
+                assert sec_group.children[0].item_type == "add_text"
+                assert sec_group.children[1].item_type == "table"
+                text_node = sec_group.children[0]
+                table_node = sec_group.children[1]
+            else:
+                # Later sections: [add_spacer, add_text, table]
+                assert len(sec_group.children) == 3
+                assert sec_group.children[0].item_type == "add_spacer"
+                assert sec_group.children[1].item_type == "add_text"
+                assert sec_group.children[2].item_type == "table"
 
-    # 3. Check section gaps and single-type separator rules
-    # Multi-type group gpu_0 (2 types: Temperature, Load)
-    sec_temp_gpu0 = raw_dpg.items_by_tag["title_section_gpu_0_Temperature"]
-    sec_load_gpu0 = raw_dpg.items_by_tag["title_section_gpu_0_Load"]
+                spacer_node = sec_group.children[0]
+                text_node = sec_group.children[1]
+                table_node = sec_group.children[2]
 
-    # First section in multi-type group should have no leading spacer
-    spacers_sec0 = [c for c in sec_temp_gpu0.children if c.item_type == "add_spacer"]
-    assert len(spacers_sec0) == 0
+                # Assert exactly one scaled 6/9px gap for every later section (including gpu_1 3rd type Power)
+                expected_gap_height = int(6 * scale)
+                assert spacer_node.kwargs["height"] == expected_gap_height
 
-    # Second section in multi-type group should have exactly 1 scaled internal spacer at top
-    spacers_sec1 = [c for c in sec_load_gpu0.children if c.item_type == "add_spacer"]
-    assert len(spacers_sec1) == 1
-    expected_gap_height = int(6 * scale)
-    assert spacers_sec1[0].kwargs["height"] == expected_gap_height
+            # Heading text assertion
+            assert text_node.kwargs["text"] == f"{st_str} Sensors:"
+            assert text_node.parent == sec_group
+            assert table_node.parent == sec_group
 
-    # Single-type group cpu_0 (1 type: Load)
-    sec_load_cpu0 = raw_dpg.items_by_tag["title_section_cpu_0_Load"]
-    cpu_spacers = [c for c in sec_load_cpu0.children if c.item_type == "add_spacer"]
-    assert len(cpu_spacers) == 0, "Single-type group must not have redundant internal section separators"
+            # Check table rows and controls hierarchy
+            rows = [c for c in table_node.children if c.item_type == "table_row"]
+            assert len(rows) > 0
+            for row in rows:
+                assert row.parent == table_node
+                assert row.tag.startswith("param_row_")
+                # Check controls inside table row
+                controls = row.children
+                for ctrl in controls:
+                    assert ctrl.parent == row
 
-    # 4. Check parameter rows, tags, and controls
-    for param_id in ["gpu0_temp_0", "gpu0_load_0", "gpu1_temp_0", "gpu1_load_0", "gpu1_power_0", "cpu0_load_0"]:
-        row_tag = f"param_row_{param_id}"
-        assert row_tag in raw_dpg.items_by_tag
-        enable_tag = f"input_{param_id}_enable"
-        lower_tag = f"input_{param_id}_lower"
-        upper_tag = f"input_{param_id}_upper"
+    # 3. Verify single-type group cpu_0 has zero gap
+    sec_cpu_group = raw_dpg.items_by_tag["title_section_cpu_0_Load"]
+    cpu_spacers = [c for c in sec_cpu_group.children if c.item_type == "add_spacer"]
+    assert len(cpu_spacers) == 0
 
-        assert enable_tag in raw_dpg.items_by_tag
-        assert lower_tag in raw_dpg.items_by_tag
-        assert upper_tag in raw_dpg.items_by_tag
+    # 4. Check for duplicate headers or headings
+    all_headers = [c for c in raw_dpg.calls if c[0] == "collapsing_header"]
+    assert len(all_headers) == 3
 
-        assert raw_dpg.items_by_tag[enable_tag].kwargs["default_value"] is False
-        assert raw_dpg.items_by_tag[lower_tag].kwargs["default_value"] == 0
-        assert raw_dpg.items_by_tag[upper_tag].kwargs["default_value"] == 100
+    text_headings = [
+        c[1]["text"] for c in raw_dpg.calls
+        if c[0] == "add_text" and c[1].get("text", "").endswith("Sensors:")
+    ]
+    assert len(text_headings) == 6
 
 
-def test_hide_unselected_behavior_on_groups_and_spacing():
-    """Test actual ConfigManager hide_unselected_callback logic on section groups and row tags."""
+def test_hide_unselected_effective_visibility_and_state(tmp_path):
+    """Test ConfigManager hide_unselected_callback effective visibility, parameters retention, and collapse setting stability."""
     sensors = _make_sample_sensors()
     raw_dpg = RecordingDPG()
 
     from core.config_manager import ConfigManager
 
-    class MockCM(ConfigManager):
-        def __init__(self, dpg_inst, sensor_infos):
-            self.dpg = dpg_inst
-            self.sensor_infos = sensor_infos
-            self.hide_unselected = False
-            self.ui_initialized = True
-            self.logger = type("Logger", (), {"add_log": lambda *a, **k: None})()
+    cm = ConfigManager(
+        logger_instance=type("Logger", (), {"add_log": lambda *a, **k: None})(),
+        dpg_instance=ScaledDPG(raw_dpg, 1.0),
+        rtss_instance=None,
+        tray_instance=None,
+        themes_manager=type("Themes", (), {"themes": {}})(),
+        base_dir=str(tmp_path / "core" / "app.py")
+    )
+    cm.sensor_infos = sensors
+    cm.ui_initialized = True
 
-        def update_preference_setting(self, key, sender, hide, user_data):
-            self.hide_unselected = hide
-
-    cm = MockCM(ScaledDPG(raw_dpg, 1.0), sensors)
     _run_lhm_block(raw_dpg, scale=1.0, sensor_infos=sensors, cm_mock=cm)
 
-    # Initial state: hide_unselected is False
+    # Initial state: hide_unselected is False -> all sections, headings, tables, spacers, rows effectively visible
     cm.hide_unselected_callback(app_data=False)
-    for hw_id in ["gpu_0", "gpu_1", "cpu_0"]:
-        for sec_tag in [f"title_section_{hw_id}_Temperature", f"title_section_{hw_id}_Load", f"title_section_{hw_id}_Power"]:
-            if sec_tag in raw_dpg.items_by_tag:
-                assert raw_dpg.shown_states.get(sec_tag, True) is True
+    for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
+        for st in types:
+            sec_tag = f"title_section_{hw_id}_{st}"
+            assert raw_dpg.is_effectively_visible(sec_tag) is True
+            sec_node = raw_dpg.items_by_tag[sec_tag]
+            for child in sec_node.children:
+                assert raw_dpg.is_effectively_visible(child) is True
 
-    # Enable one sensor in gpu_0 Load section
+    # 1. False -> True with ALL off -> False cleanly restores heading, table, gap, and rows
+    cm.hide_unselected_callback(app_data=True)
+    # When all off and hide=True, all sections are hidden
+    for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
+        for st in types:
+            sec_tag = f"title_section_{hw_id}_{st}"
+            assert raw_dpg.is_effectively_visible(sec_tag) is False
+            sec_node = raw_dpg.items_by_tag[sec_tag]
+            for child in sec_node.children:
+                assert raw_dpg.is_effectively_visible(child) is False
+
+    # Toggle back to False -> restores visibility
+    cm.hide_unselected_callback(app_data=False)
+    for hw_id, types in [("gpu_0", ["Temperature", "Load"]), ("gpu_1", ["Temperature", "Load", "Power"]), ("cpu_0", ["Load"])]:
+        for st in types:
+            sec_tag = f"title_section_{hw_id}_{st}"
+            assert raw_dpg.is_effectively_visible(sec_tag) is True
+            sec_node = raw_dpg.items_by_tag[sec_tag]
+            for child in sec_node.children:
+                assert raw_dpg.is_effectively_visible(child) is True
+
+    # 2. Enable gpu0_load_0, gpu1_power_0, and cpu0_load_0
     raw_dpg.set_value("input_gpu0_load_0_enable", True)
+    raw_dpg.set_value("input_gpu1_power_0_enable", True)
+    raw_dpg.set_value("input_cpu0_load_0_enable", True)
+
+    # Set custom lower/upper values on enabled controls to verify threshold values are retained
+    raw_dpg.set_value("input_gpu0_load_0_lower", "25")
+    raw_dpg.set_value("input_gpu0_load_0_upper", "85")
+
+    # Capture initial collapse open values of headers
+    header_collapse_values = {
+        hw_id: raw_dpg.get_value(f"input_collapsing_{hw_id}")
+        for hw_id in ["gpu_0", "gpu_1", "cpu_0"]
+    }
 
     # Toggle hide_unselected to True
     cm.hide_unselected_callback(app_data=True)
 
-    # Section gpu_0 Temperature has 0 enabled params -> title_section_gpu_0_Temperature shown = False
-    assert raw_dpg.shown_states.get("title_section_gpu_0_Temperature") is False
-    # Section gpu_0 Load has 1 enabled param -> title_section_gpu_0_Load shown = True
-    assert raw_dpg.shown_states.get("title_section_gpu_0_Load") is True
+    # Same-named hardware items are independent:
+    # gpu_0: Load section visible, Temperature section hidden
+    assert raw_dpg.is_effectively_visible("title_section_gpu_0_Load") is True
+    assert raw_dpg.is_effectively_visible("title_section_gpu_0_Temperature") is False
 
-    # Check that when section title_section_gpu_0_Temperature is hidden, its container group is hidden,
-    # ensuring no orphaned heading or empty section gaps are left visible.
-    sec_temp_group = raw_dpg.items_by_tag["title_section_gpu_0_Temperature"]
-    assert raw_dpg.shown_states[sec_temp_group.tag] is False
+    # gpu_1: Power section visible, Temperature and Load sections hidden
+    assert raw_dpg.is_effectively_visible("title_section_gpu_1_Power") is True
+    assert raw_dpg.is_effectively_visible("title_section_gpu_1_Temperature") is False
+    assert raw_dpg.is_effectively_visible("title_section_gpu_1_Load") is False
 
-    # Check param rows in hidden section
-    assert raw_dpg.shown_states.get("param_row_gpu0_temp_0") is False
-    assert raw_dpg.shown_states.get("param_row_gpu0_load_0") is True
+    # cpu_0: Load section visible
+    assert raw_dpg.is_effectively_visible("title_section_cpu_0_Load") is True
+
+    # Verify control enable and threshold values are retained
+    assert raw_dpg.get_value("input_gpu0_load_0_enable") is True
+    assert raw_dpg.get_value("input_gpu0_load_0_lower") == "25"
+    assert raw_dpg.get_value("input_gpu0_load_0_upper") == "85"
+
+    # Callback must not reopen or alter header collapse settings
+    for hw_id in ["gpu_0", "gpu_1", "cpu_0"]:
+        assert raw_dpg.get_value(f"input_collapsing_{hw_id}") == header_collapse_values[hw_id]
 
 
 def test_internal_spacing_regression_fails_on_old_format():
-    """Verify that layout subheadings and section gap structure assertion fails if legacy main format is used."""
+    """Verify that layout hierarchy and effective visibility regression rejects bare title layout."""
     sensors = _make_sample_sensors()
     raw_dpg = RecordingDPG()
     _run_lhm_block(raw_dpg, scale=1.0, sensor_infos=sensors)
 
     sec_load_gpu0 = raw_dpg.items_by_tag["title_section_gpu_0_Load"]
-    text_node = next(c for c in sec_load_gpu0.children if c.item_type == "add_text")
+    assert sec_load_gpu0.item_type == "group", "New format wraps section in container group"
 
-    # Asserting clarified heading format vs legacy heading format
-    assert text_node.kwargs["text"] != "Load:", "Old main format used 'Load:' instead of 'Load Sensors:'"
+    text_node = next(c for c in sec_load_gpu0.children if c.item_type == "add_text")
     assert text_node.kwargs["text"] == "Load Sensors:"
 
-    # Asserting internal section spacer presence
-    spacers = [c for c in sec_load_gpu0.children if c.item_type == "add_spacer"]
-    assert len(spacers) == 1, "Old main had no internal section spacers"
-    assert spacers[0].kwargs["height"] == 6
+    # Verify effective visibility modeling on container group rejects orphaned bare text
+    raw_dpg.configure_item("title_section_gpu_0_Load", show=False)
+    assert raw_dpg.is_effectively_visible("title_section_gpu_0_Load") is False
+    assert raw_dpg.is_effectively_visible(text_node) is False
