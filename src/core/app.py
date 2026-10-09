@@ -1246,7 +1246,7 @@ textures = load_and_create_textures(image_files, Base_dir, dpg)
 
 
 #The actual GUI starts here
-with dpg.window(label=app_title, tag="Primary Window"):
+with dpg.window(label=app_title, tag="Primary Window", no_scrollbar=True, no_scroll_with_mouse=True):
 
     # Title bar
     with dpg.group(horizontal=True):
@@ -1313,10 +1313,11 @@ with dpg.window(label=app_title, tag="Primary Window"):
 
     dpg.add_spacer(height=1)
 
-    with dpg.group(horizontal=True):
-        mid_window_height = 285
+    # Leave room below both columns for a permanent, full-width cap preview.
+    with dpg.group(horizontal=True, tag="limits_and_monitoring"):
+        mid_window_height = 240
         with dpg.group(horizontal=False):
-            with dpg.child_window(width=230, height=mid_window_height+5, border=True):
+            with dpg.child_window(width=230, height=mid_window_height+5, border=True, tag="limits_childwindow"):
                 with dpg.group(horizontal=True):
                     with dpg.drawlist(width=15, height=15):
                         dpg.draw_line((0, 13), (15, 13), color=(180,180,180), thickness=1)
@@ -1325,14 +1326,17 @@ with dpg.window(label=app_title, tag="Primary Window"):
                         dpg.draw_line((0, 13), (75, 13), color=(180,180,180), thickness=1)
                 with dpg.group(horizontal=True):
                     dpg.add_spacer(width=1)
-                    with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingFixedFit):
+                    # The input column receives the actual remaining content width,
+                    # including the child scrollbar and table cell padding. InputInt
+                    # then budgets its own text field and both step buttons.
+                    with dpg.table(header_row=False, resizable=False, width=-1, policy=dpg.mvTable_SizingStretchProp, tag="limits_table"):
                         dpg.add_table_column(width_fixed=True)  # Label
-                        dpg.add_table_column(width_fixed=True)  # Column for input boxes
+                        dpg.add_table_column(width_stretch=True, init_width_or_weight=1)
                         with dpg.table_row():
                             dpg.add_text("Max FPS limit:", tag="label_maxcap")
                             dpg.add_input_int(
                                 tag="input_maxcap", default_value=int(cm.settings["maxcap"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1342,7 +1346,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
                             dpg.add_text("Min FPS limit:", tag="label_mincap")
                             dpg.add_input_int(
                                 tag="input_mincap", default_value=int(cm.settings["mincap"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1352,7 +1356,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
                             dpg.add_text("Framerate ratio:", tag="label_capratio")
                             dpg.add_input_int(
                                 tag="input_capratio", default_value=int(cm.settings["capratio"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1360,17 +1364,17 @@ with dpg.window(label=app_title, tag="Primary Window"):
                         with dpg.table_row():
                             dpg.add_text("Framerate step:", tag="label_capstep")
                             dpg.add_input_int(tag=f"input_capstep", default_value=int(cm.settings["capstep"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1)
                         with dpg.table_row():
                             dpg.add_text("FPS drop delay:", tag="button_delaybeforedecrease")
                             dpg.add_input_int(tag=f"input_delaybeforedecrease", default_value=int(cm.settings["delaybeforedecrease"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1, max_value=99, max_clamped=True)
                         with dpg.table_row():
                             dpg.add_text("FPS raise delay:", tag="button_delaybeforeincrease")
                             dpg.add_input_int(tag=f"input_delaybeforeincrease", default_value=int(cm.settings["delaybeforeincrease"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1, max_value=99, max_clamped=True)
                 dpg.add_spacer(height=5)
                 dpg.add_input_text(
@@ -1383,21 +1387,11 @@ with dpg.window(label=app_title, tag="Primary Window"):
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="Reset", tag="rest_fps_cap_button", width=65, callback=fps_utils.reset_custom_limits)
                     dpg.add_button(label="Copy from above", tag="autofill_fps_caps", width=135, callback=fps_utils.copy_from_plot)
-                dpg.add_spacer(height=5)
-                dpg.add_text("Caps DFL will use", color=(200, 200, 200), tag="label_caps_preview")
-                draw_width = 210
-                draw_height = 35
-                margin = 5
-                with dpg.drawlist(width=draw_width, height=draw_height, tag="fps_cap_drawlist"):
-                    with dpg.draw_layer(tag="Baseline"):
-                        dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
-                    with dpg.draw_layer(tag="Foreground"):
-                        dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
 
 
             dpg.add_spacer(height=1)
 
-            with dpg.child_window(width=230, height=85, border=True):
+            with dpg.child_window(width=230, height=85, border=True, tag="limit_actions_childwindow"):
                 with dpg.group(horizontal=True):
                     dpg.add_image_button(
                         texture_tag=textures["icon_settings"],
@@ -1539,6 +1533,19 @@ with dpg.window(label=app_title, tag="Primary Window"):
             dpg.add_button(label="Detect Render GPU", callback=toggle_luid_selection, tag="luid_button", width=260)
             dpg.add_spacer(height=5)
             build_plot_window()
+
+    # Normal layout flow puts this after the taller column, with no absolute
+    # positions to collide with the settings/profile footer or monitoring panel.
+    with dpg.group(tag="caps_preview_strip"):
+        dpg.add_text("Caps DFL will use", color=(200, 200, 200), tag="label_caps_preview")
+        draw_width = Viewport_width - 20  # Primary-window horizontal padding.
+        draw_height = 60  # Ticks and up to two rows of complete labels.
+        margin = 5
+        with dpg.drawlist(width=draw_width, height=draw_height, tag="fps_cap_drawlist"):
+            with dpg.draw_layer(tag="Baseline"):
+                dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
+            with dpg.draw_layer(tag="Foreground"):
+                dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
 
 build_readings_window()
 build_settings_window()

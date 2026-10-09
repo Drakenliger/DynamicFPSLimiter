@@ -1,4 +1,4 @@
-"""Tests for the read-only FPS cap ladder preview in the Framerate Limits box."""
+"""Read-only cap preview: layout calls/geometry, not native visual acceptance."""
 import ast
 import contextlib
 import threading
@@ -36,10 +36,13 @@ class RecordingDPG:
         self.stack = []
         self.ancestry = []
         self.parents = {}
+        self.configurations = {}
         self.live_draws = {}
         self.call_threads = []
         self.next_id = 0
         self.width = 610
+        self.font_height = 18
+        self.metric_scale = 1
         self.values = {
             "input_maxcap": 60,
             "input_mincap": 30,
@@ -68,8 +71,19 @@ class RecordingDPG:
                 self.items.difference_update(removed)
                 for item in removed:
                     self.parents.pop(item, None)
+                    self.configurations.pop(item, None)
                     self.live_draws.pop(item, None)
                 return
+            if name == 'get_item_configuration':
+                return self.configurations[args[0]]
+            if name == 'configure_item':
+                self.configurations.setdefault(args[0], {}).update(kwargs)
+                return
+            if name == 'get_text_size':
+                # Proportional numeric advances, a narrow decimal point, and a
+                # physical font height. No full-em-per-character approximation.
+                width = sum(8 if c.isdigit() or c.isupper() else 4 if c in '. :,' else 6.7 for c in args[0])
+                return (width * self.metric_scale, self.font_height * self.metric_scale)
             if name == 'get_viewport_width':
                 return self.width
             if name == 'get_value':
@@ -81,6 +95,7 @@ class RecordingDPG:
                 self.next_id += 1
                 item = kwargs.get('tag', self.next_id)
                 self.items.add(item)
+                self.configurations[item] = dict(kwargs)
                 self.parents[item] = kwargs.get('parent', self.stack[-1][1] if self.stack else None)
                 if name.startswith('draw_') and name not in self.contexts:
                     self.live_draws[item] = (name, args, kwargs)
@@ -101,14 +116,17 @@ class RecordingDPG:
         return next(k for n, a, k in self.calls if n == name and k.get('tag') == tag)
 
 
-class Config(NS):
-    def __getattr__(self, name):
-        return lambda *a, **kw: None
-
-
-def test_ui_construction_parent_stack_and_no_old_drawlist():
+@pytest.mark.parametrize('dpi', [96, 120, 144, 168, 192, 240, 288])
+def test_ui_construction_parent_stack_and_no_old_drawlist(dpi, monkeypatch):
+    from core.themes import ThemesManager
+    monkeypatch.setenv('WINDIR', '/windows')
     raw = RecordingDPG()
-    dpg = ScaledDPG(raw, 1.0)
+    dpg = ScaledDPG(raw, dpi / 96)
+    raw.metric_scale = dpg.scale
+    themes = ThemesManager('/app', dpg)
+    themes.create_themes()
+    themes.create_fonts()
+    raw.metric_scale = round(18 * dpg.scale) / 18
     tree = ast.parse((ROOT / 'src/core/app.py').read_text())
 
     main_window = next(n for n in tree.body if isinstance(n, ast.With)
@@ -117,34 +135,229 @@ def test_ui_construction_parent_stack_and_no_old_drawlist():
                                and k.value.value == 'Primary Window' for k in n.items[0].context_expr.keywords))
 
     noop = lambda *a, **kw: None
-    cm = Config(settings=defaultdict(lambda: 40, customfpslimits='30, 60'),
-                sensor_infos=[])
+    # Typed Global profile defaults from ConfigManager, shared by the controls
+    # and plot attributes. Missing data must raise rather than become a callback.
+    settings = dict(maxcap=114, mincap=40, capratio=10, capstep=5,
+                    gpucutofffordecrease=85, gpucutoffforincrease=70,
+                    cpucutofffordecrease=105, cpucutoffforincrease=101,
+                    delaybeforedecrease=2, delaybeforeincrease=10,
+                    capmethod='ratio', customfpslimits='30.01, 45.00, 59.99',
+                    monitoring_method='LibreHM')
+    # Construction registers these callbacks without invoking them.
+    cm = NS(settings=settings, **settings, sensor_infos=[],
+            autopilot=False, hide_unselected=False,
+            load_profile_callback=noop, delete_selected_profile_callback=noop,
+            add_new_profile_callback=noop, add_process_profile_callback=noop,
+            monitoring_method_callback=noop, current_method_callback=noop,
+            sort_customfpslimits_callback=noop, quick_save_settings=noop,
+            quick_load_settings=noop, reset_to_program_default=noop,
+            save_to_profile=noop, hide_unselected_callback=noop)
     ns = dict(dpg=dpg, cm=cm,
-              themes_manager=NS(themes=defaultdict(lambda: 123)), bold_font=123, app_title='Test',
+              themes_manager=themes, bold_font=themes.fonts['bold_font'], app_title='Test',
               display_version=lambda: '1.0', textures=defaultdict(lambda: 'raw'),
               tray=NS(minimize_to_tray=noop, drag_viewport=noop, on_mouse_release=noop, on_mouse_click=noop),
               exit_gui=noop, start_stop_callback=noop, toggle_luid_selection=noop,
-              build_profile_section=noop, build_plot_window=noop,
+              autopilot_checkbox_callback=noop,
               fps_utils=NS(reset_custom_limits=noop, copy_from_plot=noop), Viewport_width=610)
 
+    functions('src/core/app.py', {'build_profile_section', 'build_plot_window'}, ns)
     exec(compile(ast.Module(body=[main_window], type_ignores=[]), 'app.py', 'exec'), ns)
 
     text_call = next(c for c in raw.calls if c[0] == 'add_text' and c[2].get('tag') == 'label_caps_preview')
     assert (text_call[1][0] if text_call[1] else text_call[2]['default_value']) == "Caps DFL will use"
     drawlist_cfg = raw.tagged('drawlist', 'fps_cap_drawlist')
-    assert drawlist_cfg['width'] == 210
-    assert drawlist_cfg['height'] == 35
-    heading = next(c for c in raw.ancestry if c[0] == 'add_text' and c[1] == ('Framerate Limits',))
-    limits_child = next(parent for parent in reversed(heading[3]) if parent[0] == 'child_window')
+    assert drawlist_cfg['width'] == round(590 * dpg.scale)
+    assert drawlist_cfg['height'] == round(60 * dpg.scale)
     for tag in ('label_caps_preview', 'fps_cap_drawlist'):
         record = next(c for c in raw.ancestry if c[2].get('tag') == tag)
-        assert next(parent for parent in reversed(record[3]) if parent[0] == 'child_window') is limits_child
-        assert raw.parents[tag] == limits_child[1]
+        assert not any(parent[0] == 'child_window' for parent in record[3])
+        assert raw.parents[tag] == 'caps_preview_strip'
+    primary = raw.tagged('window', 'Primary Window')
+    assert primary['no_scrollbar'] and primary['no_scroll_with_mouse']
+    columns = raw.tagged('group', 'limits_and_monitoring')
+    strip = raw.tagged('group', 'caps_preview_strip')
+    assert 'pos' not in columns and 'pos' not in strip  # Native flow prevents collisions.
+    assert raw.calls.index(('group', (), columns)) < raw.calls.index(('group', (), strip))
+    assert raw.parents['caps_preview_strip'] == 'Primary Window'
+
+    # Budget the actual AST's emitted outer sizes against its actual viewport.
+    # Use loaded font sizes and emitted theme spacing (physical units), including
+    # table cell padding, rather than the failed attempt's absolute coordinates.
+    viewport_nodes = [n for n in tree.body if isinstance(n, ast.Expr)
+                      and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute)
+                      and n.value.func.attr == 'create_viewport']
+    ns.update(Viewport_height=700, viewport_x_pos=0, viewport_y_pos=0)
+    exec(compile(ast.Module(body=viewport_nodes, type_ignores=[]), 'app.py', 'exec'), ns)
+    viewport = next(k for n, a, k in raw.calls if n == 'create_viewport')
+    styles = {}
+    for n, a, k, parents in raw.ancestry:
+        if n == 'add_theme_style' and any(p[1] == themes.themes['main_theme'] for p in parents):
+            styles.setdefault(a[0], a[1:])
+    padding_x, padding_y = styles['mvStyleVar_WindowPadding']
+    spacing = styles['mvStyleVar_ItemSpacing'][1]
+    font = next(a[1] for n, a, k in raw.calls if n == 'add_font')
+    profile = next(k for n, a, k in raw.calls if n == 'child_window' and k.get('height') == round(140 * dpg.scale))
+    method_row = font + 2 * styles['mvStyleVar_FramePadding'][1] + 2 * styles['mvStyleVar_CellPadding'][1]
+    column_height = max(raw.tagged('child_window', 'legacy_childwindow')['height'],
+                        raw.tagged('child_window', 'LHwM_childwindow')['height'],
+                        raw.tagged('child_window', 'limits_childwindow')['height'] +
+                        raw.tagged('child_window', 'limit_actions_childwindow')['height'] +
+                        round(dpg.scale) + 2 * spacing)
+    # Title, spacer, real profile section, two method rows, spacer, columns,
+    # preview heading and drawlist: seven inter-item gaps plus the heading gap.
+    total_height = (2 * padding_y + max(font, round(20 * dpg.scale)) + round(5 * dpg.scale)
+                    + profile['height'] + 2 * method_row + round(dpg.scale) + column_height
+                    + font + drawlist_cfg['height'] + 8 * spacing)
+    assert total_height <= viewport['height']
+    assert drawlist_cfg['width'] + 2 * padding_x <= viewport['width'] + 1
+    assert raw.tagged('plot', 'plot')['height'] == round(190 * dpg.scale)
+    table = raw.tagged('table', 'limits_table')
+    assert table['width'] == -1 and table['policy'] == raw.mvTable_SizingStretchProp
+    table_records = [c for c in raw.ancestry if any(p[1] == 'limits_table' for p in c[3])]
+    columns_cfg = [k for n, a, k, parents in table_records if n == 'add_table_column']
+    assert columns_cfg == [dict(width_fixed=True), dict(width_stretch=True, init_width_or_weight=1)]
+    inputs = [k for n, a, k, parents in table_records if n == 'add_input_int']
+    assert len(inputs) == 6 and all(k['width'] == -1 and k['step'] == 1 and k['step_fast'] == 10 for k in inputs)
+    label_width = max(raw.get_text_size(a[0])[0] for n, a, k, parents in table_records if n == 'add_text')
+    available = (raw.tagged('child_window', 'limits_childwindow')['width'] - 2 * padding_x
+                 - styles['mvStyleVar_ScrollbarSize'][0] - round(dpg.scale)
+                 - 4 * styles['mvStyleVar_CellPadding'][0] - label_width)
+    # InputInt subtracts two square frame-height buttons and two inner gaps
+    # from this total width. Even with the child scrollbar, both buttons and
+    # a text field fit; the native text editor handles long numeric values.
+    internals = 2 * (font + 2 * styles['mvStyleVar_FramePadding'][1]) + 2 * styles['mvStyleVar_ItemInnerSpacing'][0]
+    assert available > internals + 2 * styles['mvStyleVar_FramePadding'][0]
+    for tag in ('input_delaybeforedecrease', 'input_delaybeforeincrease'):
+        cfg = raw.tagged('add_input_int', tag)
+        assert cfg['min_clamped'] and cfg['max_clamped'] and cfg['max_value'] == 99
+    # Editing/reset/copy, profile/Start, settings and save actions still exist.
+    for tag in ('input_customfpslimits', 'rest_fps_cap_button', 'autofill_fps_caps',
+                'profile_dropdown', 'start_stop_button', 'show_settings_button',
+                'quick_save', 'quick_load', 'Reset_Default', 'SaveToProfile'):
+        assert tag in raw.items
     assert raw.stack == []
 
     drawlist_calls = [c for c in raw.calls if c[0] == 'drawlist']
     fps_cap_drawlists = [c for c in drawlist_calls if c[2].get('tag') == 'fps_cap_drawlist']
     assert len(fps_cap_drawlists) == 1
+
+    fps = FPSUtils.__new__(FPSUtils)
+    fps.dpg, fps.last_fps_limits, fps.logger = dpg, [], None
+    fps.cm = NS(parse_and_normalize_string_to_decimal_set=lambda text: sorted({Decimal(v) for v in text.split(',')}))
+    raw.values.update(input_capmethod='Custom', input_customfpslimits='24,36,48,60,72,90,120,144')
+    fps.update_fps_cap_visualization(active_applied_cap=144)
+    assert_label_bounds(raw)
+    texts = [c for c in raw.live_draws.values() if c[0] == 'draw_text']
+    assert [c[1][1] for c in texts] == ['24', '36', '48', '60', '72', '90', '120', '144']
+    assert texts[-1][2]['color'] == (255, 215, 0)
+
+
+def assert_label_bounds(raw):
+    """Independent measured glyph envelopes, with one physical-pixel rounding slack."""
+    cfg = raw.configurations['fps_cap_drawlist']
+    texts = [c for c in raw.live_draws.values() if c[0] == 'draw_text']
+    bounds = []
+    for _, (pos, label), options in texts:
+        width, height = raw.get_text_size(label)
+        extent = width / height * options['size']
+        assert pos[0] >= -0.5
+        assert pos[0] + extent <= cfg['width'] + 0.5
+        assert pos[1] >= 0
+        assert pos[1] + options['size'] <= cfg['height'] + 0.5
+        bounds.append((pos[0], pos[1], pos[0] + extent, pos[1] + options['size']))
+    for i, (left, top, right, bottom) in enumerate(bounds):
+        for other_left, other_top, other_right, other_bottom in bounds[i + 1:]:
+            assert (right < other_left or other_right < left or bottom < other_top or other_bottom < top)
+
+
+@pytest.mark.parametrize('dpi', [96, 120, 144, 168, 192, 240, 288])
+@pytest.mark.parametrize('caps', ['24,36,48,60,72,90,120,144',
+                                  '23.976,59.94,119.88,143.999',
+                                  '143.999', '23.976,23.977,23.978,144',
+                                  '23.976,23.977,23.978,23.979,59.940,119.880,143.999'])
+def test_full_glyph_bounds_and_container_metric_cache(dpi, caps):
+    raw, fps = preview(dpi / 96)
+    fps.dpg.configure_item('fps_cap_drawlist', width=590, height=60)
+    raw.values.update(input_capmethod='Custom', input_customfpslimits=caps)
+    active = Decimal(caps.split(',')[-1])
+    fps.update_fps_cap_visualization(active_applied_cap=active)
+    assert_label_bounds(raw)
+    labels = [c[1][1] for c in raw.live_draws.values() if c[0] == 'draw_text']
+    assert labels == caps.split(',')
+    assert fps._last_ladder_geometry[0] == raw.configurations['fps_cap_drawlist']['width'] / fps.dpg.scale
+    raw.calls.clear()  # Configuration is persistent state, not the cleared call log.
+    fps.update_fps_cap_visualization(active_applied_cap=active)
+    assert not any(c[0] == 'draw_text' for c in raw.calls)
+    # Width changes with identical caps, scale and observer must redraw.
+    for width in (570, 180, 90):
+        fps.dpg.configure_item('fps_cap_drawlist', width=width)
+        raw.calls.clear()
+        fps.update_fps_cap_visualization(active_applied_cap=active)
+        assert any(c[0] == 'draw_text' for c in raw.calls)
+        assert_label_bounds(raw)
+        assert fps._last_ladder_geometry[0] == round(width * fps.dpg.scale) / fps.dpg.scale
+        assert [c[1][1] for c in raw.live_draws.values() if c[0] == 'draw_text'] == labels
+    # Changing proportional font advances also invalidates the cache.
+    raw.font_height = 16
+    raw.calls.clear()
+    fps.update_fps_cap_visualization(active_applied_cap=active)
+    assert any(c[0] == 'draw_text' for c in raw.calls)
+    assert_label_bounds(raw)
+
+
+def test_measurement_not_ready_is_retried_without_guessing():
+    raw, fps = preview()
+    raw.get_text_size = lambda label: None
+    fps.update_fps_cap_visualization()
+    assert not any(c[0] == 'draw_text' for c in raw.calls)
+    assert fps.last_fps_limits == []
+    del raw.get_text_size
+    fps.update_fps_cap_visualization()
+    assert fps.last_fps_limits == [30, 40, 50, 60]
+
+
+@pytest.mark.parametrize('scale', [1, 1.25, 1.5, 1.75, 2, 2.5, 3])
+def test_cap_method_theme_contrast_and_disabled_enforcement(scale, monkeypatch):
+    from core.themes import ThemesManager, bg_colour_2_child
+    monkeypatch.setenv('WINDIR', '/windows')
+    raw = RecordingDPG()
+    manager = ThemesManager('/app', ScaledDPG(raw, scale))
+    manager.create_themes()
+
+    def contrast(color):
+        alpha = color[3] / 255
+        rgb = [((c * alpha + b * (1 - alpha)) / 255) for c, b in zip(color[:3], bg_colour_2_child)]
+        def luminance(values):
+            linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in values]
+            return sum(v * w for v, w in zip(linear, (.2126, .7152, .0722)))
+        return (luminance(rgb) + .05) / (luminance([c / 255 for c in bg_colour_2_child[:3]]) + .05)
+
+    disabled_theme = manager.themes['disabled_text_theme']
+    colors = [a[1] for n, a, k, parents in raw.ancestry
+              if n == 'add_theme_color' and a[0] == raw.mvThemeCol_Text
+              and any(p[1] == disabled_theme for p in parents)]
+    assert colors and all(contrast(color) >= 4.5 for color in colors)
+    for theme in ('disabled_text_theme', 'enabled_text_theme'):
+        records = [c for c in raw.ancestry if any(p[1] == manager.themes[theme] for p in c[3])]
+        assert any(n == 'theme_component' and a == (raw.mvInputInt,) and k.get('enabled_state') is False
+                   for n, a, k, parents in records)
+        assert any(n == 'add_theme_style' and a == (raw.mvStyleVar_DisabledAlpha, 1.0)
+                   and parents[-1][2].get('enabled_state') is False for n, a, k, parents in records)
+
+    ns = functions('src/core/config_manager.py', {'current_method_callback'}, {})
+    cm = NS(dpg=manager.dpg, themes=manager.themes, tray=None, logger=NS(add_log=lambda *a: None))
+    expected_tags = {'input_capratio', 'label_capratio', 'label_capstep', 'input_capstep',
+                     'input_customfpslimits', 'label_maxcap', 'label_mincap', 'input_maxcap', 'input_mincap'}
+    for method in ('Ratio', 'Step', 'Custom'):
+        raw.calls.clear()
+        ns['current_method_callback'](cm, app_data=method)
+        bindings = {a[0]: a[1] for n, a, k in raw.calls if n == 'bind_item_theme'}
+        assert set(bindings) == expected_tags  # Every consumer of these two themes.
+        assert not any(n == 'configure_item' for n, a, k in raw.calls)
+        # An already disabled control stays disabled through a method/theme change.
+        manager.dpg.configure_item('input_maxcap', enabled=False)
+        ns['current_method_callback'](cm, app_data=method)
+        assert raw.configurations['input_maxcap']['enabled'] is False
 
 
 def preview(scale=1):
@@ -152,6 +365,7 @@ def preview(scale=1):
     raw = RecordingDPG()
     fps = FPSUtils.__new__(FPSUtils)
     fps.dpg = ScaledDPG(raw, scale)
+    raw.metric_scale = scale
     fps.last_fps_limits = []
     fps.logger = None
     fps.cm = NS(parse_and_normalize_string_to_decimal_set=lambda text: sorted({Decimal(v) for v in text.split(',')}))
@@ -165,7 +379,7 @@ def assert_preview(raw, fps, caps_and_x, active):
     """Check surviving primitives, so missing deletion cannot hide behind call-log clearing."""
     scale = fps.dpg.scale
     assert fps.last_fps_limits == [cap for cap, x in caps_and_x]
-    assert fps._last_ladder_geometry == (210, scale, active)
+    assert fps._last_ladder_geometry[:3] == (210, scale, active)
     assert raw.parents['Foreground'] == 'fps_cap_drawlist'
     lines = [c for c in raw.live_draws.values() if c[0] == 'draw_line']
     texts = [c for c in raw.live_draws.values() if c[0] == 'draw_text']

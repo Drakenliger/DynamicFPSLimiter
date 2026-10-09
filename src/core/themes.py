@@ -276,12 +276,20 @@ class ThemesManager:
 
         with self.dpg.theme() as disabled_text_theme:
             with self.dpg.theme_component(self.dpg.mvAll):
-                self.dpg.add_theme_color(self.dpg.mvThemeCol_Text, bg_colour_9_text_disabled)
+                # Only the capping-method rows consume this theme. Opaque muted
+                # text remains readable without changing their enabled state.
+                self.dpg.add_theme_color(self.dpg.mvThemeCol_Text, (170, 174, 184, 255))
+            with self.dpg.theme_component(self.dpg.mvInputInt, enabled_state=False):
+                self.dpg.add_theme_color(self.dpg.mvThemeCol_Text, (170, 174, 184, 255))
+                self.dpg.add_theme_style(self.dpg.mvStyleVar_DisabledAlpha, 1.0)
         self.themes["disabled_text_theme"] = disabled_text_theme
 
         with self.dpg.theme() as enabled_text_theme:
             with self.dpg.theme_component(self.dpg.mvAll):
                 self.dpg.add_theme_color(self.dpg.mvThemeCol_Text, bg_colour_8_text_enabled)
+            with self.dpg.theme_component(self.dpg.mvInputInt, enabled_state=False):
+                self.dpg.add_theme_color(self.dpg.mvThemeCol_Text, (170, 174, 184, 255))
+                self.dpg.add_theme_style(self.dpg.mvStyleVar_DisabledAlpha, 1.0)
         self.themes["enabled_text_theme"] = enabled_text_theme
 
         with self.dpg.theme() as warning_text_theme:

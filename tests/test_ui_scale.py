@@ -31,6 +31,8 @@ class RecordingDPG:
     def __init__(self):
         self.calls = []
         self.items = set()
+        self.configurations = {}
+        self.metric_scale = 1
         self.width = 610
         self.values = {}
 
@@ -45,6 +47,14 @@ class RecordingDPG:
                 self.items.discard(args[0])
             if 'tag' in kwargs:
                 self.items.add(kwargs['tag'])
+                self.configurations[kwargs['tag']] = dict(kwargs)
+            if name == 'get_item_configuration':
+                return self.configurations[args[0]]
+            if name == 'configure_item':
+                self.configurations.setdefault(args[0], {}).update(kwargs)
+            if name == 'get_text_size':
+                return (sum(8 if c.isdigit() or c.isupper() else 4 if c in '. :,' else 6.7 for c in args[0]) * self.metric_scale,
+                        18 * self.metric_scale)
             if name == 'get_viewport_width':
                 return self.width
             if name == 'get_value':
@@ -66,10 +76,13 @@ class Config(NS):
 
 
 @pytest.mark.parametrize('choice,viewport,plot,child,font,mono,large,ladder', [
-    ('100%', (610, 700), 190, (590, 450), 18, 14, 24, (5, 205, 9, 21, 14)),
-    ('150%', (915, 1050), 285, (885, 675), 27, 21, 36, (8, 308, 14, 32, 21)),
-    ('200%', (1220, 1400), 380, (1180, 900), 36, 28, 48, (10, 410, 18, 42, 28)),
-    ('300%', (1830, 2100), 570, (1770, 1350), 54, 42, 72, (15, 615, 27, 63, 42)),
+    ('100%', (610, 700), 190, (590, 450), 18, 14, 24, (5, 585, 9, 21, 14)),
+    ('125%', (762, 875), 238, (738, 562), 22, 18, 30, (6, 731, 11, 26, 17.5)),
+    ('150%', (915, 1050), 285, (885, 675), 27, 21, 36, (8, 878, 14, 32, 21)),
+    ('175%', (1068, 1225), 332, (1032, 788), 32, 24, 42, (9, 1024, 16, 37, 24.5)),
+    ('200%', (1220, 1400), 380, (1180, 900), 36, 28, 48, (10, 1170, 18, 42, 28)),
+    ('250%', (1525, 1750), 475, (1475, 1125), 45, 35, 60, (12, 1462, 22, 52, 35)),
+    ('300%', (1830, 2100), 570, (1770, 1350), 54, 42, 72, (15, 1755, 27, 63, 42)),
 ])
 def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, mono, large, ladder, monkeypatch):
     from core.themes import ThemesManager
@@ -82,9 +95,11 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
                    'build_readings_window', 'build_settings_window', 'build_profile_section', 'load_and_create_textures'},
                    dict(ScaledDPG=ScaledDPG, resolve_scale=resolve_scale, UI_SCALE_CHOICES=UI_SCALE_CHOICES))
     dpg = ns['configure_ui_scale'](raw, cm, themes, 288)
+    raw.metric_scale = dpg.scale
     assert cm.dpg is dpg and themes.dpg is dpg
     themes.create_themes()
     fonts = themes.create_fonts()
+    raw.metric_scale = font / 18
     assert [a[1] for n, a, k in raw.calls if n == 'add_font'] == [font, font, mono, large]
     style = next(a for n, a, k in raw.calls if n == 'add_theme_style' and a[0] == 'mvStyleVar_WindowPadding')
     assert style[1:] == (10 * dpg.scale, 8 * dpg.scale)
@@ -104,7 +119,7 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
     for tag in ('settings_window', 'readings_popup_window'):
         cfg = raw.tagged('window', tag)
         assert (cfg['width'], cfg['height']) == child
-        assert cfg['pos'] == {'100%': (10,195), '150%': (15,292), '200%': (20,390), '300%': (30,585)}[choice]
+        assert cfg['pos'] == (round(10 * dpg.scale), round(195 * dpg.scale))
     assert 'restart required' in raw.tagged('add_combo', 'ui_scale_preference')['label']
     # Execute the actual viewport setup statements from app.py.
     tree = ast.parse((ROOT / 'src/core/app.py').read_text())
@@ -131,15 +146,11 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
                        and any(k.arg == 'tag' and isinstance(k.value, ast.Constant)
                                and k.value.value == 'Primary Window' for k in n.items[0].context_expr.keywords))
     exec(compile(ast.Module(body=[main_window], type_ignores=[]), 'app.py', 'exec'), ns)
-    assert raw.tagged('drawlist', 'fps_cap_drawlist')['width'] == {
-        '100%': 210, '150%': 315, '200%': 420, '300%': 630}[choice]
-    assert raw.tagged('child_window', 'LHwM_childwindow')['height'] == {
-        '100%': 385, '150%': 578, '200%': 770, '300%': 1155}[choice]
-    assert raw.tagged('add_image', 'icon')['width'] == {
-        '100%': 20, '150%': 30, '200%': 40, '300%': 60}[choice]
+    assert raw.tagged('drawlist', 'fps_cap_drawlist')['width'] == round(590 * dpg.scale)
+    assert raw.tagged('child_window', 'LHwM_childwindow')['height'] == round(340 * dpg.scale)
+    assert raw.tagged('add_image', 'icon')['width'] == round(20 * dpg.scale)
     assert raw.tagged('add_input_text', 'input_cpu_load_upper')['default_value'] == 100
-    assert raw.tagged('add_input_text', 'input_cpu_load_upper')['width'] == {
-        '100%': 40, '150%': 60, '200%': 80, '300%': 120}[choice]
+    assert raw.tagged('add_input_text', 'input_cpu_load_upper')['width'] == round(40 * dpg.scale)
     assert raw.tagged('add_input_int', 'input_maxcap')['step_fast'] == 10
     # Only the dynamic ladder calls below are counted.
     raw.calls.clear()
@@ -149,7 +160,13 @@ def test_actual_app_theme_and_ladder_calls(choice, viewport, plot, child, font, 
              current_stepped_limits=lambda: [30, 60])
     ladder_ns['update_fps_cap_visualization'](fps)
     lines = [(a, k) for n, a, k in raw.calls if n == 'draw_line']
-    x1, x2, y1, y2, text_size = ladder
+    _, _, y1, y2, text_size = ladder
+    # The configured drawlist is rounded once by the real adapter. Convert that
+    # physical result back to logical coordinates before the renderer's floor
+    # and drawing transform, especially at 125% and 175%.
+    physical_width = raw.configurations['fps_cap_drawlist']['width']
+    x1 = round(5 * dpg.scale)
+    x2 = round((5 + int(physical_width / dpg.scale - 10)) * dpg.scale)
     assert [a for a, k in lines] == [((x1, y1), (x1, y2)), ((x2, y1), (x2, y2))]
     assert [k['thickness'] for a, k in lines] == [dpg.scale, dpg.scale]
     texts = [(a, k) for n, a, k in raw.calls if n == 'draw_text']
@@ -463,6 +480,9 @@ def test_actual_decimal_parser_and_ladder(scale, width, expected, monkeypatch):
     cm.logger = NS(add_log=lambda *a: None)
     raw = RecordingDPG()
     raw.width = width
+    raw.metric_scale = scale
+    with ScaledDPG(raw, scale).drawlist(width=210, height=60, tag='fps_cap_drawlist'):
+        pass
     raw.values.update(input_maxcap=60, input_mincap=30, input_capstep=5,
                       input_capratio=10, input_capmethod='Custom',
                       input_customfpslimits='30, 45.5, 59.99')

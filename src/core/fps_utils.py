@@ -122,10 +122,29 @@ class FPSUtils:
             return
 
         scale = getattr(dpg, "scale", 1)
-        if not isinstance(scale, (int, float)):
+        if not isinstance(scale, (int, float)) or scale <= 0:
             scale = 1
-        panel_width = 210
-        geometry = (panel_width, scale, active_applied_cap)
+        # ScaledDPG getters return physical pixels; drawing takes logical pixels.
+        # Configuration also works before an item has a rendered rectangle.
+        configuration = dpg.get_item_configuration("fps_cap_drawlist")
+        panel_width = configuration["width"] / scale
+        panel_height = configuration["height"] / scale
+        labels = []
+        metrics = []
+        if len(fps_limits) < 20:
+            for cap in fps_limits:
+                label = str(cap)
+                extent = dpg.get_text_size(label)
+                # DPG documents text measurement as available after the first
+                # frame. Retry next refresh rather than caching guessed metrics.
+                if not extent or extent[1] <= 0:
+                    return
+                labels.append(label)
+                # Normalize the current font's advance to draw_text's explicit
+                # size. Both measurements are physical, so their ratio is unitless;
+                # neither is sent through the pixel adapter a second time.
+                metrics.append(extent[0] / extent[1])
+        geometry = (panel_width, scale, active_applied_cap, panel_height, tuple(metrics))
         if (fps_limits == self.last_fps_limits
                 and geometry == getattr(self, "_last_ladder_geometry", None)
                 and dpg.does_item_exist("Foreground")):
@@ -146,11 +165,40 @@ class FPSUtils:
             max_fps = max(fps_limits)
             fps_range = max_fps - min_fps
 
-            for cap in fps_limits:
-                if fps_range == 0:
-                    x_pos = margin + usable_width // 2
-                else:
-                    x_pos = margin + int(float((cap - min_fps) / fps_range) * usable_width)
+            positions = [margin + usable_width // 2 if fps_range == 0 else
+                         margin + int(float((cap - min_fps) / fps_range) * usable_width)
+                         for cap in fps_limits]
+            label_positions = {}
+            text_size = 14
+            if labels:
+                # Pack complete glyph bounds, including two pixels of bearing/
+                # rounding slack. Close fractional caps can share nearly the same
+                # tick; move their labels apart, or use the second reserved row.
+                gap = 4
+                rows = 1
+                if sum(m * text_size + 2 for m in metrics) + gap * (len(labels) - 1) > draw_width:
+                    rows = 2 if panel_height >= 57 else 1
+                lanes = [list(range(row, len(labels), rows)) for row in range(rows)]
+                for lane in lanes:
+                    available = draw_width - 2 * len(lane) - gap * (len(lane) - 1)
+                    text_size = min(text_size, available / sum(metrics[i] for i in lane))
+                for row, lane in enumerate(lanes):
+                    right = -gap
+                    for index in lane:
+                        width = metrics[index] * text_size + 2
+                        left = max(right + gap, min(draw_width - width, positions[index] - width / 2))
+                        label_positions[index] = [left, y_center + 8 + row * (text_size + gap)]
+                        right = left + width
+                    # Backward packing keeps the final glyph inside the container,
+                    # without losing any labels or changing their Decimal strings.
+                    left = draw_width + gap
+                    for index in reversed(lane):
+                        width = metrics[index] * text_size + 2
+                        label_positions[index][0] = min(label_positions[index][0], left - gap - width)
+                        left = label_positions[index][0]
+
+            for index, cap in enumerate(fps_limits):
+                x_pos = positions[index]
 
                 is_highlighted = False
                 if active_applied_cap is not None:
@@ -179,13 +227,11 @@ class FPSUtils:
                     )
 
                 if len(fps_limits) < 20:
-                    label_str = str(cap)
-                    text_x = max(0, min(draw_width - 16, x_pos - 8))
                     dpg.draw_text(
-                        (text_x, y_center + 8),
-                        label_str,
+                        tuple(label_positions[index]),
+                        labels[index],
                         color=(255, 215, 0) if is_highlighted else (200, 200, 200),
-                        size=14,
+                        size=text_size,
                         parent="Foreground"
                     )
 
