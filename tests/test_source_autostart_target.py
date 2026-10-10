@@ -117,7 +117,8 @@ def _assert_source_task(root, interpreter, launcher, flags):
     assert Path(command or "").is_file(), f"Autostart Command is missing: {command!r}"
     assert command == str(interpreter)
     arguments = root.findtext("t:Actions/t:Exec/t:Arguments", namespaces=NS)
-    assert arguments == subprocess.list2cmdline([str(launcher.resolve()), *flags])
+    assert launcher.is_absolute() and launcher.is_file()
+    assert arguments == subprocess.list2cmdline([os.path.normcase(str(launcher)), *flags])
 
 
 def _assert_unchanged(manager, scheduler):
@@ -155,6 +156,26 @@ def test_source_task_create_and_repair(
     }[initial]
     assert all(not path.exists() for path in scheduler.files)
     _assert_unchanged(manager, scheduler)
+
+
+def test_app_source_alias_keeps_lexical_path_from_arbitrary_cwd(
+        tmp_path, monkeypatch, stub_logger, scheduler):
+    _, interpreter, launcher, flags, _ = _source_fixture(
+        tmp_path, monkeypatch, stub_logger, pythonw=True, debug=False)
+    alias = tmp_path / "Logical source alias"
+    try:
+        alias.symlink_to(launcher.parent, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"Directory symlinks unavailable: {error}")
+    lexical_launcher = alias / "__main__.py"
+    assert lexical_launcher.resolve() != lexical_launcher
+    unrelated = tmp_path / "Unrelated working directory"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+    manager = _app_manager(alias / "core", stub_logger)
+    manager.create()
+    _assert_source_task(scheduler.created[-1], interpreter, lexical_launcher, flags)
+    _assert_unchanged(_app_manager(alias / "core", stub_logger), scheduler)
 
 
 @pytest.mark.parametrize("broken", ["missing-arguments", "wrong-script"])
@@ -214,11 +235,12 @@ def test_frozen_task_keeps_packaged_executable_without_arguments(
 
 
 @pytest.mark.parametrize("broken", [None, "missing-arguments", "wrong-script",
-                                    "wrong-debug", "wrong-command"])
+                                    "wrong-debug", "wrong-debug-case", "extra-flag",
+                                    "wrong-command"])
 def test_source_sid_alias_still_checks_command_and_arguments(
         tmp_path, monkeypatch, stub_logger, scheduler, broken):
     manager, interpreter, launcher, flags, old_exe = _source_fixture(
-        tmp_path, monkeypatch, stub_logger, pythonw=True, debug=False)
+        tmp_path, monkeypatch, stub_logger, pythonw=True, debug=broken == "wrong-debug-case")
     manager.create()
     root = ET.fromstring(scheduler.xml)
     root.find("t:Triggers/t:LogonTrigger/t:UserId", NS).text = USER.lower()
@@ -231,6 +253,10 @@ def test_source_sid_alias_still_checks_command_and_arguments(
         arguments.text = subprocess.list2cmdline([str(launcher.with_name("wrong.py"))])
     elif broken == "wrong-debug":
         arguments.text = subprocess.list2cmdline([str(launcher), "--debug"])
+    elif broken in ("wrong-debug-case", "extra-flag"):
+        arguments.text = subprocess.list2cmdline([
+            os.path.normcase(str(launcher)),
+            "--DEBUG" if broken == "wrong-debug-case" else "--other"])
     elif broken == "wrong-command":
         action.find("t:Command", NS).text = str(old_exe)
     scheduler.xml = ET.tostring(root, encoding="unicode")
@@ -256,3 +282,63 @@ def test_standalone_positional_constructor_and_default_xml_helpers(
     xml = autostart.build_task_xml(str(executable), SID)
     assert autostart.task_xml_matches(xml, str(executable), USER, (SID,))
     assert not autostart.task_xml_matches(xml, str(executable), USER, (SID,), "wrong.py")
+
+
+def _windows_runtime(monkeypatch):
+    import ntpath
+    from types import SimpleNamespace
+    monkeypatch.setattr(autostart, "os", SimpleNamespace(
+        path=ntpath, environ=os.environ, unlink=os.unlink))
+    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    monkeypatch.setenv("ProgramW6432", r"C:\Program Files")
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\Program Files\Python312\python.exe")
+    monkeypatch.setattr(sys, "argv", ["source.py"])
+
+
+@pytest.mark.parametrize("source,python,warns", [
+    (r"C:\Users\Public\DFL\src\__main__.py", r"C:\Program Files\Python312\python.exe", True),
+    (r"C:\Program Files\DFL\src\__main__.py", r"C:\Users\Public\Python\python.exe", False),
+])
+def test_source_install_warning_checks_source_not_python(
+        monkeypatch, stub_logger, scheduler, source, python, warns):
+    _windows_runtime(monkeypatch)
+    monkeypatch.setattr(sys, "executable", python)
+    manager = autostart.AutoStartManager(source_path=source, logger=stub_logger)
+    manager.create()
+    assert len(scheduler.created) == 1
+    warnings = [msg for msg in stub_logger.messages if "outside Program Files" in msg]
+    assert len(warnings) == int(warns)
+    if warns:
+        assert f"Autostart source path '{source}'" in warnings[0]
+
+
+@pytest.mark.parametrize("frozen", [False, True])
+def test_explicit_and_frozen_warning_keep_executable_contract(
+        monkeypatch, stub_logger, scheduler, frozen):
+    _windows_runtime(monkeypatch)
+    executable = r"C:\Users\Public\DFL\DynamicFPSLimiter.exe"
+    monkeypatch.setattr(sys, "frozen", frozen)
+    monkeypatch.setattr(sys, "executable", executable)
+    manager = autostart.AutoStartManager(
+        app_path=None if frozen else executable,
+        source_path=r"C:\Program Files\DFL\src\__main__.py", logger=stub_logger)
+    assert manager.is_in_program_files(path=r"C:\Program Files\DFL\app.exe")
+    assert not manager.is_in_program_files(path=executable)
+    manager.create()
+    assert stub_logger.messages == [
+        f"Warning: Autostart executable path '{executable}' is outside Program Files. "
+        "It is recommended to install under Program Files before enabling autostart."]
+    assert len(scheduler.created) == 1
+
+
+def test_windows_source_path_case_does_not_replace_task(
+        monkeypatch, stub_logger, scheduler):
+    _windows_runtime(monkeypatch)
+    upper = autostart.AutoStartManager(
+        source_path=r"C:\Users\Public\DFL\src\__main__.py", logger=stub_logger)
+    lower = autostart.AutoStartManager(
+        source_path=r"c:\users\public\dfl\src\__main__.py", logger=stub_logger)
+    upper.create()
+    _assert_unchanged(lower, scheduler)

@@ -140,8 +140,11 @@ def task_xml_matches(xml, app_path, user_id, known_aliases=(), arguments=""):
 class AutoStartManager:
     def __init__(self, app_path=None, task_name=TASK_NAME, logger=None, *, source_path=None):
         self.arguments = ""
+        self.source_path = None
         if source_path is not None and not app_path:
             self.app_path, self.arguments = self.get_runtime_target(source_path)
+            if not getattr(sys, "frozen", False):
+                self.source_path = os.path.abspath(source_path)
         else:
             self.app_path = app_path or self.get_current_app_path()
         self.task_name = task_name
@@ -158,7 +161,8 @@ class AutoStartManager:
             pythonw = os.path.join(os.path.dirname(executable), "pythonw.exe")
             if os.path.isfile(pythonw):
                 executable = pythonw
-        return executable, subprocess.list2cmdline([os.path.abspath(source_path), *flags])
+        source = os.path.normcase(os.path.abspath(source_path))
+        return executable, subprocess.list2cmdline([source, *flags])
 
     @staticmethod
     def get_current_app_path():
@@ -223,9 +227,11 @@ class AutoStartManager:
 
     @report_operational_failure
     def create(self):
-        if not self.is_in_program_files():
+        install_path = self.source_path or self.app_path
+        if not self.is_in_program_files(path=install_path):
+            path_kind = "source" if self.source_path else "executable"
             msg = (
-                f"Autostart executable path '{self.app_path}' is outside Program Files. "
+                f"Autostart {path_kind} path '{install_path}' is outside Program Files. "
                 "It is recommended to install under Program Files before enabling autostart."
             )
             try:
