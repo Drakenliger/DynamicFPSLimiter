@@ -1,9 +1,11 @@
-# Dynamic FPS Limiter v5
+# Dynamic FPS Limiter v5.1.0
+
+This repository is a v5.1.0 fork of SameSalamander5710's Dynamic FPS Limiter (upstream v5.0.1).
 
 A lightweight companion app for RTSS that leverages its profile-modification API to dynamically adjust framerate limits based on real-time GPU and CPU conditions. It uses LibreHardwareMonitor to read GPU/CPU usage, power draw, and temperatures, with Windows Performance Counters available as a fallback.
 
 - Instead of relying on a fixed FPS cap set below average framerates, it intelligently raises the limit when performance headroom is available. This maintains consistently smooth frametimes, with the only trade-off being a brief stutter when the framerate limit transitions.
-- With LibreHardwareMonitor support, you can now define power and temperature constraints as well, across all detected GPUs (Nvidia and AMD), making it particularly useful for multi-GPU setups.
+- With LibreHardwareMonitor support, you can now define power and temperature constraints as well, across all detected GPUs (Nvidia, AMD, and Intel), making it particularly useful for multi-GPU setups.
 - Especially effective for reducing input latency when using frame-generation tools like Lossless Scaling, by ensuring sufficient GPU headroom is always preserved.
 - When paired with adaptive frame generation in Lossless Scaling, it provides a consistently high-refresh visual experience with reduced power draw and lower GPU temperatures.
 
@@ -14,14 +16,19 @@ A lightweight companion app for RTSS that leverages its profile-modification API
 
 ## Installation
 
-### To Build It Yourself,
-If you'd like to inspect or customize the source code, follow the instructions in [BUILD.md](/src/BUILD.md)
+### Running from Source and Building Locally
+To inspect the code, run directly from source, or build a standalone executable locally, follow the instructions in [BUILD.md](src/BUILD.md).
+- To run directly from source: `python src/__main__.py` (automatically requests administrator elevation; use `--debug` to retain console output).
+- To build the standalone executable: `python src/__main__.py --build` (creates `output/dist/DynamicFPSLimiter/DynamicFPSLimiter.exe`).
 
-### To Use Prebuilt Executable,
-1. Download the `DynamicFPSLimiter_vX.X.X.zip` file from the latest release [here.](https://github.com/SameSalamander5710/DynamicFPSLimiter/releases)
+### Upstream Prebuilt Releases
+Prebuilt release archives for upstream releases are published on the upstream repository [releases page](https://github.com/SameSalamander5710/DynamicFPSLimiter/releases). Note that no prebuilt release binary is currently published for this v5.1.0 fork; build locally or run from source using the steps above.
+
+For upstream prebuilt executables:
+1. Download the `DynamicFPSLimiter_vX.X.X.zip` file from the upstream releases [here.](https://github.com/SameSalamander5710/DynamicFPSLimiter/releases)
 2. Extract the zip file to a desired location (e.g. under `Program Files` or `Program Files (x86)`).
-3. Run `DynamicFPSLimiter.exe`  as Administrator.
-4. **Recommended**: Add `DynamicFPSLimiter.exe`as an exclusion in RTSS to reduce the app's CPU performance overhead. 
+3. Run `DynamicFPSLimiter.exe` as Administrator.
+4. **Recommended**: Add `DynamicFPSLimiter.exe` as an exclusion in RTSS to reduce the app's CPU performance overhead.
     - This can be done by holding the **Shift** key and clicking **Add** in RTSS, while the app is running.
     - **Note**: While not strictly necessary, this step is strongly recommended if you have disabled 'passive waiting' for the Global profile in RTSS
 5. **Autostart Recommendation**: If enabling autostart, it is strongly recommended to install the app under `Program Files` or `Program Files (x86)` before enabling autostart to prevent elevated execution from user-writable directories.
@@ -37,9 +44,9 @@ Watch the demo here! (App version v5.0.1)
 > - Since RTSS runs with elevated privileges, DynamicFPSLimiter must also be run as Administrator to function fully.
 
 > [!CAUTION]
-> - The executable in the release was packaged using PyInstaller and may be flagged by some antivirus software as a Trojan.
+> - The executable in upstream releases was packaged using PyInstaller and may be flagged by some antivirus software as a Trojan.
 > - Unblock the downloaded release `.zip` file to ensure it works correctly.
-> - You can confirm whether the app is signed by me using the public certificate [here](/src/Public_SameSalamander5710_2026.cer).
+> - You can confirm whether upstream releases are signed by SameSalamander5710 using the public certificate [here](src/Public_SameSalamander5710_2026.cer).
 
 ## The Concept
 This app was initially developed to enhance gaming experience in situations where the GPU load/demand varies greatly during a session. This was especially useful when using Lossless Scaling Frame Generation (LSFG). In a single-GPU system, LSFG works best when the game runs with an FPS cap that leaves enough GPU headroom for frame generation. However, if GPU usage hits 100%—which may also cause the game’s base FPS to drop—you may experience input lag, which is undesirable.
