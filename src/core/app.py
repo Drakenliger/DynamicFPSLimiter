@@ -137,6 +137,8 @@ def autostart_checkbox_callback(sender, app_data, user_data):
     if is_checked:
         result = autostart.create()
         cm.update_preference_setting('launchonstartup', sender, result is not False, user_data)
+        if result is False:
+            dpg.set_value("autostart_checkbox", False)
     else:
         cm.update_preference_setting('launchonstartup', sender, app_data, user_data)
         autostart.delete()
@@ -1637,6 +1639,7 @@ if _acceptance_runtime is None:
     autostart_result = autostart.update_if_needed(cm.launchonstartup)
     if cm.launchonstartup and autostart_result is False:
         cm.update_preference_setting('launchonstartup', None, False, None)
+        dpg.set_value("autostart_checkbox", False)
 
 if cm.autopilot:
     dpg.configure_item("start_stop_button", enabled=False)
