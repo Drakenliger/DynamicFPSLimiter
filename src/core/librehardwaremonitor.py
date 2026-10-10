@@ -378,7 +378,7 @@ class LHMSensor:
                     p = round(calculate_percentile(self.cpu_history[canon_key], self.percentile), 2)
                     self.cpu_percentiles[canon_key] = p
                     refreshed_cpu_keys.add(canon_key)
-                    display_history[key] = list(self.cpu_history[canon_key])
+                    display_history[key] = (val,)
                     display_percentiles[key] = p
 
                     # Mirror to display key and identifier for display / backward compatibility without mixing histories
@@ -414,7 +414,7 @@ class LHMSensor:
                     p = round(calculate_percentile(self.gpu_history[canon_key], self.percentile), 2)
                     self.gpu_percentiles[canon_key] = p
                     refreshed_gpu_keys.add(canon_key)
-                    display_history[key] = list(self.gpu_history[canon_key])
+                    display_history[key] = (val,)
                     display_percentiles[key] = p
 
                     # Mirror to display key and identifier for display / backward compatibility without mixing histories
