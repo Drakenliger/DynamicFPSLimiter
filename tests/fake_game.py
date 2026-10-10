@@ -20,6 +20,7 @@ CSV closes and flushes on normal, interrupted and error exits.
 
 Run:
     python tests/fake_game.py --title "DFL Fake Game" --ready-file <path>
+        [--preset light|medium|heavy|extreme]
         [--width 1024] [--height 768] [--load 8] [--fps-file <path>] [--duration 0]
 
 The process writes ``--ready-file`` (JSON) once the first frame has been presented,
@@ -35,13 +36,30 @@ import os
 import time
 
 
+DEFAULT_WIDTH = 1024
+DEFAULT_HEIGHT = 768
+DEFAULT_LOAD = 8
+
+# Initial Surface 60s 144Hz calibration: light 143.93, medium 135.12, heavy 83.12, extreme 67.57 FPS.
+PRESETS = {
+    "light": {"width": 1280, "height": 720, "load": 2},
+    "medium": {"width": 1920, "height": 1080, "load": 8},
+    "heavy": {"width": 1920, "height": 1080, "load": 24},
+    "extreme": {"width": 1920, "height": 1080, "load": 48},
+}
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Fake 3D game (DearPyGui D3D11 render loop)")
+    ap.add_argument("--preset", choices=list(PRESETS.keys()), default=None,
+                    help="canned workload preset (light, medium, heavy, extreme)")
     ap.add_argument("--title", default="DFL Fake Game", help="window title (identifies the process)")
-    ap.add_argument("--width", type=int, default=1024)
-    ap.add_argument("--height", type=int, default=768)
-    ap.add_argument("--load", type=int, default=8,
-                    help="number of full-screen filled quads drawn per frame (3D engine load)")
+    ap.add_argument("--width", type=int, default=None,
+                    help=f"viewport width (default: {DEFAULT_WIDTH} or from --preset)")
+    ap.add_argument("--height", type=int, default=None,
+                    help=f"viewport height (default: {DEFAULT_HEIGHT} or from --preset)")
+    ap.add_argument("--load", type=int, default=None,
+                    help=f"number of full-screen filled quads drawn per frame (default: {DEFAULT_LOAD} or from --preset)")
     ap.add_argument("--ready-file", default=None, help="write JSON readiness signal here after first frame")
     ap.add_argument("--fps-file", default=None, help="write measured FPS here every ~0.5s")
     ap.add_argument("--frametime-file", help="per-present CSV: timestamp epoch seconds and frame_time_ms; first interval starts before first render")
@@ -49,6 +67,52 @@ def build_arg_parser() -> argparse.ArgumentParser:
                     help="auto-exit after N seconds (0 = run until window closed/killed)")
     ap.add_argument("--no-vsync", action="store_true", help="disable vsync (uncapped, heavier load)")
     return ap
+
+
+def resolve_options(args=None, *, preset=None, width=None, height=None, load=None):
+    """Resolve preset and explicit overrides with pure logic.
+
+    Precedence:
+    1. Explicit --width, --height, --load override preset values.
+    2. Selected --preset supplies base width, height, load.
+    3. Default (no preset): width=1024, height=768, load=8.
+    """
+    if isinstance(args, dict):
+        p = args.get("preset", preset)
+        w = args.get("width", width)
+        h = args.get("height", height)
+        l = args.get("load", load)
+    elif args is not None:
+        p = getattr(args, "preset", preset)
+        w = getattr(args, "width", width)
+        h = getattr(args, "height", height)
+        l = getattr(args, "load", load)
+    else:
+        p, w, h, l = preset, width, height, load
+
+    if p is not None:
+        if p not in PRESETS:
+            raise ValueError(f"Unknown preset: {p!r}")
+        base = PRESETS[p]
+        base_w, base_h, base_l = base["width"], base["height"], base["load"]
+    else:
+        base_w, base_h, base_l = DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_LOAD
+
+    res_w = w if w is not None else base_w
+    res_h = h if h is not None else base_h
+    res_l = l if l is not None else base_l
+
+    if isinstance(args, dict):
+        args["width"] = res_w
+        args["height"] = res_h
+        args["load"] = res_l
+        return args
+    if args is not None:
+        args.width = res_w
+        args.height = res_h
+        args.load = res_l
+        return args
+    return {"preset": p, "width": res_w, "height": res_h, "load": res_l}
 
 
 
@@ -89,6 +153,7 @@ class FrameTiming:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    resolve_options(args)
     import dearpygui.dearpygui as dpg
 
     frame_file = None
@@ -125,7 +190,7 @@ def main() -> int:
                                    fill=(tint, 60, 90, 255), parent=dl)
             x, angle = motion(now - timing.start, width)
             dpg.draw_rectangle((x, 0), (x + 8, height),
-                               color=(255, 255, 0, 255), fill=(255, 255, 0, 255), parent=dl)
+                                color=(255, 255, 0, 255), fill=(255, 255, 0, 255), parent=dl)
             center = (width / 2, height / 3)
             tip = (center[0] + 35 * math.cos(angle), center[1] + 35 * math.sin(angle))
             dpg.draw_line(center, tip, color=(0, 255, 255, 255), thickness=6, parent=dl)
@@ -145,8 +210,18 @@ def main() -> int:
                 writer.writerow((wall, timing.last_ms))
             if payload is not None and args.fps_file:
                 try:
-                    with open(args.fps_file, "w", encoding="utf-8") as f:
-                        json.dump(payload, f)
+                    prefix = ""
+                    try:
+                        with open(args.fps_file, "rb") as f_check:
+                            f_check.seek(0, os.SEEK_END)
+                            if f_check.tell() > 0:
+                                f_check.seek(-1, os.SEEK_END)
+                                if f_check.read(1) != b"\n":
+                                    prefix = "\n"
+                    except OSError:
+                        pass
+                    with open(args.fps_file, "a", encoding="utf-8") as f:
+                        f.write(prefix + json.dumps(payload) + "\n")
                 except OSError:
                     pass
             if first_frame:
