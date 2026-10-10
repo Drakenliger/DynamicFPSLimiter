@@ -1,4 +1,4 @@
-"""Real app callers must persist disabled autostart after failed task creation.
+"""Real app callers must persist and display disabled autostart on failure.
 
 Execute app.py's source AST without importing its GUI/native startup. Only the
 Windows identity and subprocess boundaries are replaced; ConfigManager reads
@@ -7,6 +7,7 @@ and writes real temporary INIs, with the existing fake DPG/LHM fixtures.
 import ast
 import configparser
 import subprocess
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -93,6 +94,22 @@ def harness(tmp_path, fake_dpg, fake_lhm, stub_logger, monkeypatch):
             "cm": cm, "dpg": fake_dpg, "autostart": manager,
             "_acceptance_runtime": None, "logger": stub_logger,
         }
+        # FakeDPG's add_checkbox fallback does not initialize values. Seed its
+        # value from the actual UI default expression before startup executes.
+        tree = ast.parse(APP_SOURCE.read_text(encoding="utf-8"))
+        widgets = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "add_checkbox"
+                   and any(kw.arg == "tag" and isinstance(kw.value, ast.Constant)
+                           and kw.value.value == "autostart_checkbox"
+                           for kw in node.keywords)]
+        assert len(widgets) == 1
+        default = next(kw.value for kw in widgets[0].keywords
+                       if kw.arg == "default_value")
+        initial = eval(compile(ast.Expression(default), str(APP_SOURCE), "eval"),
+                       namespace)
+        fake_dpg.set_value("autostart_checkbox", initial)
+        assert fake_dpg.get_value("autostart_checkbox") is enabled
         return cm, native, namespace
 
     return prepare
@@ -108,6 +125,8 @@ def assert_preference(cm, expected):
 
 
 def execute_caller(caller, namespace, enabled=True):
+    namespace["caller_thread"] = threading.current_thread().name
+    namespace["widget_setter_start"] = len(namespace["dpg"].calls)
     tree = ast.parse(APP_SOURCE.read_text(encoding="utf-8"))
     if caller == "checkbox":
         nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef)
@@ -126,7 +145,21 @@ def execute_caller(caller, namespace, enabled=True):
          namespace)
     if caller == "checkbox":
         namespace["dpg"].set_value("autostart_checkbox", enabled)
+        # Exclude the simulated user's change from app setter assertions.
+        namespace["widget_setter_start"] = len(namespace["dpg"].calls)
         namespace["autostart_checkbox_callback"]("autostart_checkbox", enabled, None)
+
+
+def assert_checkbox_value(namespace, expected, *, require_write=False):
+    dpg = namespace["dpg"]
+    assert dpg.get_value("autostart_checkbox") is expected
+    setters = [call for call in dpg.calls[namespace["widget_setter_start"]:]
+               if call[0] == "set_value" and call[1][0] == "autostart_checkbox"]
+    if require_write:
+        assert setters and setters[-1][1] == ("autostart_checkbox", expected)
+    # This proves only FakeDPG calls on this seam's caller/owner thread; it
+    # cannot prove native widget rendering or delivery of a real GUI click.
+    assert all(call[3] == namespace["caller_thread"] for call in setters)
 
 
 @pytest.mark.parametrize("caller", ["checkbox", "startup"])
@@ -144,6 +177,7 @@ def test_creation_result_persists_through_real_app_caller(harness, caller, fail_
         assert any("Autostart create failed:" in message
                    for message in namespace["logger"].messages)
     assert_preference(cm, not fail_create)
+    assert_checkbox_value(namespace, not fail_create, require_write=fail_create)
 
 
 def test_startup_matching_task_noop_keeps_enabled_preference(harness):
@@ -153,6 +187,7 @@ def test_startup_matching_task_noop_keeps_enabled_preference(harness):
     assert native.commands == ["/Query", "/Query"]
     assert native.create_files == []
     assert_preference(cm, True)
+    assert_checkbox_value(namespace, True)
 
 
 def test_checkbox_disabling_persists_and_deletes_existing_task(harness):
@@ -161,3 +196,4 @@ def test_checkbox_disabling_persists_and_deletes_existing_task(harness):
     assert native.commands == ["/Query", "/Delete"]
     assert native.create_files == []
     assert_preference(cm, False)
+    assert_checkbox_value(namespace, False)
