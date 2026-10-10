@@ -1478,31 +1478,34 @@ with dpg.window(label=app_title, tag="Primary Window"):
                             sensor_type_str = sensor['sensor_type'].ToString() if hasattr(sensor['sensor_type'], 'ToString') else str(sensor['sensor_type'])
                             sensors_by_type.setdefault(sensor_type_str, []).append(sensor)
 
-                        for sensor_type, params in sensors_by_type.items():
+                        for idx, (sensor_type, params) in enumerate(sensors_by_type.items()):
                             section_tag = f"title_section_{hw_id}_{sensor_type}"
-                            dpg.add_text(f"{sensor_type}:", color=(180, 220, 255), tag=section_tag)  # Sensor type as section title
-                            with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingFixedFit):
-                                dpg.add_table_column(label="Enable")
-                                dpg.add_table_column(label="Parameter", width_fixed=True, init_width_or_weight=145)
-                                dpg.add_table_column(label="Lower")
-                                dpg.add_table_column(label="-")
-                                dpg.add_table_column(label="Upper")
-                                dpg.add_table_column(label="Unit")
-                                for param in params:
-                                    param_id = param['parameter_id']
-                                    label = param['sensor_name']#[:18] + ("..." if len(param['sensor_name']) > 18 else "")
-                                    indexed = param.get('sensor_name_indexed', None)
-                                    unit = "°C" if "temp" in param_id or "temperature" in param_id else "%" if "load" in param_id else "W" if "power" in param_id else ""
-                                    with dpg.table_row(tag=f"param_row_{param_id}"):
-                                        dpg.add_checkbox(tag=f"input_{param_id}_enable", default_value=False)
-                                        dpg.add_text(label)
-                                        #if indexed and indexed != label:
-                                            #dpg.add_text(f"({indexed})", color=(150,150,150))
-                                            #TODO: Add this as a tooltip instead
-                                        dpg.add_input_text(tag=f"input_{param_id}_lower", width=40, default_value=0)
-                                        dpg.add_text("-", wrap=300)
-                                        dpg.add_input_text(tag=f"input_{param_id}_upper", width=40, default_value=100)
-                                        dpg.add_text(unit, wrap=300)
+                            with dpg.group(tag=section_tag):
+                                if idx > 0:
+                                    dpg.add_spacer(height=6)
+                                dpg.add_text(f"{sensor_type} Sensors:", color=(180, 220, 255))  # Sensor type as section title
+                                with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingFixedFit):
+                                    dpg.add_table_column(label="Enable")
+                                    dpg.add_table_column(label="Parameter", width_fixed=True, init_width_or_weight=145)
+                                    dpg.add_table_column(label="Lower")
+                                    dpg.add_table_column(label="-")
+                                    dpg.add_table_column(label="Upper")
+                                    dpg.add_table_column(label="Unit")
+                                    for param in params:
+                                        param_id = param['parameter_id']
+                                        label = param['sensor_name']#[:18] + ("..." if len(param['sensor_name']) > 18 else "")
+                                        indexed = param.get('sensor_name_indexed', None)
+                                        unit = "°C" if "temp" in param_id or "temperature" in param_id else "%" if "load" in param_id else "W" if "power" in param_id else ""
+                                        with dpg.table_row(tag=f"param_row_{param_id}"):
+                                            dpg.add_checkbox(tag=f"input_{param_id}_enable", default_value=False)
+                                            dpg.add_text(label)
+                                            #if indexed and indexed != label:
+                                                #dpg.add_text(f"({indexed})", color=(150,150,150))
+                                                #TODO: Add this as a tooltip instead
+                                            dpg.add_input_text(tag=f"input_{param_id}_lower", width=40, default_value=0)
+                                            dpg.add_text("-", wrap=300)
+                                            dpg.add_input_text(tag=f"input_{param_id}_upper", width=40, default_value=100)
+                                            dpg.add_text(unit, wrap=300)
                         dpg.add_spacer(height=1)
             dpg.add_spacer(height=5)
             with dpg.group(horizontal=True):
