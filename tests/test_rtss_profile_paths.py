@@ -155,6 +155,62 @@ def test_actual_app_start_direct_then_api_rejects_outside(paths, monkeypatch):
     assert ns["running"] and len(spawned) == 2
 
 
+def test_actual_app_stop_rejects_outside(paths, monkeypatch):
+    ctrl, _, _, _ = paths
+    ns, _, _, _ = load_app()
+    ns["rtss"] = ctrl
+    ns["cm"].current_profile = "../outside"
+    ns["running"] = True
+    attempts = []
+
+    def record(method):
+        actual = getattr(ctrl, method)
+
+        def call(*args, **kwargs):
+            result = actual(*args, **kwargs)
+            attempts.append((method, args[0], result))
+            return result
+        monkeypatch.setattr(ctrl, method, call)
+
+    for method in ("set_fractional_fps_direct", "set_fractional_framerate"):
+        record(method)
+    ns["start_stop_callback"](None, None, ns["cm"])
+    assert_untouched(paths)
+    assert attempts == [
+        ("set_fractional_fps_direct", "../outside", False),
+        ("set_fractional_framerate", "../outside", False),
+    ]
+    assert not ns["running"]
+
+
+def test_actual_app_exit_rejects_outside(paths, monkeypatch):
+    ctrl, _, _, _ = paths
+    ns, _, _, _ = load_app()
+    ns["rtss"] = ctrl
+    ns["cm"].current_profile = "../outside"
+    ns["running"] = True
+    attempts = []
+
+    def record(method):
+        actual = getattr(ctrl, method)
+
+        def call(*args, **kwargs):
+            result = actual(*args, **kwargs)
+            attempts.append((method, args[0], result))
+            return result
+        monkeypatch.setattr(ctrl, method, call)
+
+    for method in ("set_fractional_fps_direct", "set_fractional_framerate"):
+        record(method)
+    ns["exit_gui"]()
+    assert_untouched(paths)
+    assert attempts == [
+        ("set_fractional_fps_direct", "../outside", False),
+        ("set_fractional_framerate", "../outside", False),
+    ]
+    assert not ns["running"]
+
+
 @pytest.mark.parametrize("name", VALID)
 def test_valid_file_names_keep_spelling_encoding_and_contents(paths, name):
     ctrl, outside, native, _ = paths
@@ -203,5 +259,5 @@ def test_higher_level_global_aliases_still_use_global_file_and_empty_api(paths, 
     assert b"LimitDenominator=100\n" in global_file.read_bytes()
     assert all(args[0] == b"" for method, args in native
                if method in ("LoadProfile", "SaveProfile"))
-    assert all(Path(path) == global_file for _, path in access)
+    assert all(Path(path) in (global_file, Path(f"{global_file}.tmp")) for _, path in access)
     assert outside.read_bytes() == SEED
