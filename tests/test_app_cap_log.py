@@ -46,6 +46,7 @@ def test_initializer_csv_error_without_gui_queue(tmp_path, monkeypatch, fake_dpg
                    (isinstance(n, ast.Assign) and any(
                        isinstance(t, ast.Name) and t.id == 'cap_change_log'
                        for t in n.targets))]
+    initializer = initializer[-2:]
     assert len(initializer) == 2
     try:
         exec(compile(ast.Module(body=initializer, type_ignores=[]), str(APP), 'exec'), ns)

@@ -16,26 +16,36 @@ _root = os.path.dirname(_this_dir)  # Gets src directory
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+# Always get absolute path to EXE or script location
+Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+parent_dir = os.path.dirname(Base_dir)
+
+_acceptance_runtime = globals().get("_acceptance_runtime")
+
+from core import logger
+
+def _init_early_app_logging():
+    if _acceptance_runtime is not None:
+        _acceptance_runtime.configure_logging()
+        path = _acceptance_runtime.error_log_file
+    else:
+        path = os.path.join(parent_dir, "error_log.txt")
+    logger.init_logging(path)
+
+_init_early_app_logging()
+
 from core.single_instance import app_lease
 _instance_lease = app_lease(globals().get("_single_instance_handle"))
 
 import dearpygui.dearpygui as dpg
 
-# Always get absolute path to EXE or script location
-Base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-parent_dir = os.path.dirname(Base_dir)
-
 from core.ui_scale import (ScaledDPG, UI_SCALE_CHOICES, enable_native_dpi,
                            primary_monitor_dpi, read_preference, resolve_scale, pixels)
 
 from core.pre_launch import _unblock_alternate_data_streams, mark_first_launch_done
-_acceptance_runtime = globals().get("_acceptance_runtime")
-if _acceptance_runtime is not None:
-    _acceptance_runtime.configure_logging()
 DLLs_unblocked = (False if _acceptance_runtime is not None
                   else _unblock_alternate_data_streams([parent_dir]))
 
-from core import logger
 logger.set_dpg(dpg)
 from core.rtss_interface import RTSSInterface
 from core.cpu_monitor import CPUUsageMonitor
@@ -951,6 +961,10 @@ def toggle_luid_selection():
 
 # Defining short sections of the GUI
 def build_profile_section():
+    def start_stop_gui_callback(sender, app_data, user_data):
+        # DPG 2.0.0 counts all parameters, including defaults, when dispatching jobs.
+        start_stop_callback(sender, app_data, user_data)
+
     with dpg.child_window(width=-1, height=140):
         with dpg.group(horizontal=True):
             #dpg.add_spacer(width=1)
@@ -965,7 +979,7 @@ def build_profile_section():
                             callback=autopilot_checkbox_callback
             )
             dpg.add_spacer(width=5)
-            dpg.add_button(label="Start", tag="start_stop_button", callback=start_stop_callback, width=50, user_data=cm)
+            dpg.add_button(label="Start", tag="start_stop_button", callback=start_stop_gui_callback, width=50, user_data=cm)
             dpg.bind_item_theme("start_stop_button", themes_manager.themes["start_button_theme"])  # Apply start button theme
 
         dpg.add_spacer(height=5)

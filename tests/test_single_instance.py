@@ -59,7 +59,7 @@ def test_fake_mutex_publishes_error_on_win32(monkeypatch, native_factory, error,
         with pytest.raises(OSError) as exc:
             si.acquire(native)
         assert exc.value.errno == 5
-        assert native.closed == []
+        assert native.closed == [BIG + 1]
         assert native.signals == []
     elif error == 183:
         assert si.acquire(native) is None
@@ -72,7 +72,7 @@ def test_fake_mutex_publishes_error_on_win32(monkeypatch, native_factory, error,
         assert native.closed == []
         assert native.signals == []
         lease.close()
-        assert native.closed == [BIG]
+        assert native.closed == [BIG + 1, BIG]
     assert ctypes.get_last_error() == error
 
 
@@ -98,7 +98,7 @@ def test_null_fails_closed(native_factory):
     native = native_factory(5, None)
     with pytest.raises(OSError):
         si.acquire(native)
-    assert native.closed == []
+    assert native.closed == [BIG + 1]
 
 
 def test_inherited_validation_and_ownership(native_factory):
@@ -106,12 +106,197 @@ def test_inherited_validation_and_ownership(native_factory):
     lease = si.acquire(native, BIG)
     assert native.closed == [BIG + 2]
     lease.close()
-    assert native.closed == [BIG + 2, BIG]
+    assert native.closed == [BIG + 2, BIG + 1, BIG]
     native = native_factory()
     native.kernel.CompareObjectHandles = lambda *a: False
     with pytest.raises(OSError):
         si.acquire(native, BIG)
     assert native.closed == [BIG, BIG + 2]
+
+
+def test_event_creation_failure_fails_closed(native_factory):
+    native = native_factory()
+    native.kernel.CreateEventW = lambda *a: None
+    with pytest.raises(OSError) as exc:
+        si.acquire(native)
+    assert 'Cannot create DFL activation event' in str(exc.value)
+
+    native_inherited = native_factory()
+    native_inherited.kernel.CreateEventW = lambda *a: None
+    with pytest.raises(OSError) as exc:
+        si.acquire(native_inherited, BIG)
+    assert 'Cannot create DFL activation event' in str(exc.value)
+    assert native_inherited.closed == [BIG + 2, BIG]
+
+
+class KernelEvent:
+    def __init__(self, name, manual_reset=False, initial_state=False):
+        self.name = name
+        self.manual_reset = manual_reset
+        self.signaled = initial_state
+        self.refcount = 0
+
+
+class KernelMutex:
+    def __init__(self, name):
+        self.name = name
+        self.refcount = 0
+
+
+class SharedFakeKernel:
+    def __init__(self):
+        self.named_objects = {}
+        self.handles = {}
+        self.next_handle = 1000
+
+    def alloc_handle(self, kobj):
+        h = self.next_handle
+        self.next_handle += 1
+        kobj.refcount += 1
+        self.handles[h] = kobj
+        return h
+
+    def CreateMutexW(self, native, lpMutexAttributes, bInitialOwner, lpName):
+        if lpName in self.named_objects:
+            kobj = self.named_objects[lpName]
+            native.last_error = 183
+        else:
+            kobj = KernelMutex(lpName)
+            self.named_objects[lpName] = kobj
+            native.last_error = 0
+        return self.alloc_handle(kobj)
+
+    def CreateEventW(self, native, lpEventAttributes, bManualReset, bInitialState, lpName):
+        if lpName in self.named_objects:
+            kobj = self.named_objects[lpName]
+            native.last_error = 183
+        else:
+            kobj = KernelEvent(lpName, bManualReset, bInitialState)
+            self.named_objects[lpName] = kobj
+            native.last_error = 0
+        return self.alloc_handle(kobj)
+
+    def OpenMutexW(self, native, dwDesiredAccess, bInheritHandle, lpName):
+        if lpName in self.named_objects:
+            kobj = self.named_objects[lpName]
+            native.last_error = 0
+            return self.alloc_handle(kobj)
+        native.last_error = 2
+        return 0
+
+    def SetEvent(self, native, h):
+        if h in self.handles:
+            kobj = self.handles[h]
+            if isinstance(kobj, KernelEvent):
+                kobj.signaled = True
+                return True
+        return False
+
+    def WaitForSingleObject(self, native, h, dwMilliseconds):
+        if h in self.handles:
+            kobj = self.handles[h]
+            if isinstance(kobj, KernelEvent):
+                if kobj.signaled:
+                    if not kobj.manual_reset:
+                        kobj.signaled = False
+                    return 0
+                return 258
+        return 258
+
+    def CloseHandle(self, native, h):
+        if h not in self.handles:
+            return False
+        kobj = self.handles[h]
+        del self.handles[h]
+        kobj.refcount -= 1
+        if kobj.refcount == 0:
+            if kobj.name in self.named_objects and self.named_objects[kobj.name] is kobj:
+                del self.named_objects[kobj.name]
+        return True
+
+    def CompareObjectHandles(self, native, h1, h2):
+        return self.handles.get(h1) is not None and self.handles.get(h1) is self.handles.get(h2)
+
+    def SetHandleInformation(self, native, h, dwMask, dwFlags):
+        return h in self.handles
+
+
+class FakeNativeShared:
+    def __init__(self, shared_kernel):
+        self.shared = shared_kernel
+        self.last_error = 0
+        self.foregrounds = 0
+        self.kernel = SimpleNamespace(
+            CreateMutexW=lambda *a: self.shared.CreateMutexW(self, *a),
+            CreateEventW=lambda *a: self.shared.CreateEventW(self, *a),
+            OpenMutexW=lambda *a: self.shared.OpenMutexW(self, *a),
+            CloseHandle=lambda h: self.shared.CloseHandle(self, h),
+            SetEvent=lambda h: self.shared.SetEvent(self, h),
+            WaitForSingleObject=lambda h, ms: self.shared.WaitForSingleObject(self, h, ms),
+            CompareObjectHandles=lambda h1, h2: self.shared.CompareObjectHandles(self, h1, h2),
+            SetHandleInformation=lambda h, m, f: self.shared.SetHandleInformation(self, h, m, f),
+        )
+
+    def foreground(self):
+        self.foregrounds += 1
+
+
+def test_retained_activation_event_prevents_lost_signal_on_duplicate_interleaving(monkeypatch):
+    import threading
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+
+    last_error = 0
+    monkeypatch.setattr(ctypes, 'get_last_error', lambda: last_error, raising=False)
+
+    shared = SharedFakeKernel()
+    primary_native = FakeNativeShared(shared)
+    duplicate_native = FakeNativeShared(shared)
+
+    def make_mutex_wrapper(native):
+        orig_mutex = native.kernel.CreateMutexW
+        def create_mutex(*args):
+            nonlocal last_error
+            res = orig_mutex(*args)
+            last_error = native.last_error
+            return res
+        return create_mutex
+
+    primary_native.kernel.CreateMutexW = make_mutex_wrapper(primary_native)
+    duplicate_native.kernel.CreateMutexW = make_mutex_wrapper(duplicate_native)
+
+    primary_lease = si.acquire(primary_native)
+    assert primary_lease is not None
+
+    dup_lease = si.acquire(duplicate_native)
+    assert dup_lease is None
+
+    calls = []
+    tray = SimpleNamespace(is_tray_active=True)
+
+    def restore():
+        calls.append(threading.get_ident())
+        tray.is_tray_active = False
+
+    tray.restore_from_tray = restore
+
+    def foreground():
+        calls.append('foreground')
+        primary_native.foregrounds += 1
+
+    primary_native.foreground = foreground
+
+    primary_lease.poll_activation(tray)
+    assert calls == [threading.get_ident(), 'foreground']
+    assert not tray.is_tray_active
+    assert primary_native.foregrounds == 1
+
+    primary_lease.poll_activation(tray)
+    assert calls == [threading.get_ident(), 'foreground']
+    assert primary_native.foregrounds == 1
+
+    primary_lease.close()
+    assert shared.handles == {}
+    assert shared.named_objects == {}
 
 
 def test_activation_uses_real_tray_restore_on_poll_thread(native_factory):
