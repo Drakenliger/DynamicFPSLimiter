@@ -22,13 +22,14 @@ parent_dir = os.path.dirname(Base_dir)
 
 _acceptance_runtime = globals().get("_acceptance_runtime")
 
+from core import logger
+
 def _init_early_app_logging():
     if _acceptance_runtime is not None:
         _acceptance_runtime.configure_logging()
         path = _acceptance_runtime.error_log_file
     else:
         path = os.path.join(parent_dir, "error_log.txt")
-    from core import logger
     logger.init_logging(path)
 
 _init_early_app_logging()
@@ -960,6 +961,10 @@ def toggle_luid_selection():
 
 # Defining short sections of the GUI
 def build_profile_section():
+    def start_stop_gui_callback(sender, app_data, user_data):
+        # DPG 2.0.0 counts all parameters, including defaults, when dispatching jobs.
+        start_stop_callback(sender, app_data, user_data)
+
     with dpg.child_window(width=-1, height=140):
         with dpg.group(horizontal=True):
             #dpg.add_spacer(width=1)
@@ -974,7 +979,7 @@ def build_profile_section():
                             callback=autopilot_checkbox_callback
             )
             dpg.add_spacer(width=5)
-            dpg.add_button(label="Start", tag="start_stop_button", callback=start_stop_callback, width=50, user_data=cm)
+            dpg.add_button(label="Start", tag="start_stop_button", callback=start_stop_gui_callback, width=50, user_data=cm)
             dpg.bind_item_theme("start_stop_button", themes_manager.themes["start_button_theme"])  # Apply start button theme
 
         dpg.add_spacer(height=5)
