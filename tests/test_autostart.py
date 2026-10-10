@@ -359,9 +359,20 @@ def test_actual_callers_report_failure_and_continue(
                 results.append(result)
                 return result
             return invoke
+    dpg_values = {"autostart_checkbox": enabled}
+    dpg_setters = []
+    def set_value(tag, value):
+        dpg_values[tag] = value
+        dpg_setters.append((tag, value))
+    dpg = SimpleNamespace(
+        get_value=lambda tag: dpg_values.get(tag, enabled),
+        set_value=set_value,
+        values=dpg_values,
+        calls=dpg_setters,
+    )
     namespace = {"autostart": ObservedManager(), "_acceptance_runtime": None,
         "cm": SimpleNamespace(launchonstartup=enabled, update_preference_setting=Mock()),
-        "dpg": SimpleNamespace(get_value=lambda tag: enabled)}
+        "dpg": dpg}
     if caller == "startup":
         node = next(n for n in tree.body if isinstance(n, ast.If)
                     and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
@@ -373,6 +384,11 @@ def test_actual_callers_report_failure_and_continue(
     if caller == "checkbox":
         namespace[node.name](None, enabled, None)
     assert results == [False]
+    assert dpg.get_value("autostart_checkbox") is False
+    if enabled:
+        assert dpg_setters == [("autostart_checkbox", False)]
+    else:
+        assert dpg_setters == []
     assert "failed" in caplog.text
     messages = [call.args[0] for call in mgr.logger.add_log.call_args_list]
     if operation == "create" or (caller == "checkbox" and operation == "identity"):

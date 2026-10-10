@@ -133,13 +133,15 @@ def tooltip_checkbox_callback(sender, app_data, user_data):
     update_all_tooltip_visibility(dpg, app_data, get_tooltips(), cm, logger)
 
 def autostart_checkbox_callback(sender, app_data, user_data):
-    cm.update_preference_setting('launchonstartup', sender, app_data, user_data)
-
     is_checked = dpg.get_value("autostart_checkbox")
     if is_checked:
-        autostart.create() 
+        result = autostart.create()
+        cm.update_preference_setting('launchonstartup', sender, result is not False, user_data)
+        if result is False:
+            dpg.set_value("autostart_checkbox", False)
     else:
-        autostart.delete() 
+        cm.update_preference_setting('launchonstartup', sender, app_data, user_data)
+        autostart.delete()
 
 def autopilot_checkbox_callback(sender, app_data, user_data):
     cm.update_preference_setting('autopilot', sender, app_data, user_data)
@@ -1634,7 +1636,10 @@ cm.refresh_ui_callbacks()
 
 autostart = AutoStartManager(source_path=os.path.join(os.path.dirname(Base_dir), "__main__.py"), logger=logger)
 if _acceptance_runtime is None:
-    autostart.update_if_needed(cm.launchonstartup)
+    autostart_result = autostart.update_if_needed(cm.launchonstartup)
+    if cm.launchonstartup and autostart_result is False:
+        cm.update_preference_setting('launchonstartup', None, False, None)
+        dpg.set_value("autostart_checkbox", False)
 
 if cm.autopilot:
     dpg.configure_item("start_stop_button", enabled=False)
