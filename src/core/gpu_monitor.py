@@ -83,7 +83,29 @@ class GPUUsageMonitor:
         return query_handle
 
     def _setup_gpu_instances(self) -> List[str]:
-        """Set up GPU instances and return a list of them."""
+        """Refresh and enumerate GPU instances under initialize's PDH lock."""
+        # PdhEnumObjectItemsW reuses cached instances even after opening a new
+        # query. A sizing-only PdhEnumObjectsW call refreshes that cache; the
+        # object names themselves are not needed. Windows LONG/BOOL and DWORD
+        # are explicitly 32-bit, independent of the host's ctypes.c_long size.
+        refresh_objects = pdh.PdhEnumObjectsW
+        refresh_objects.argtypes = [
+            ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_wchar),
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_uint32, ctypes.c_int32,
+        ]
+        refresh_objects.restype = ctypes.c_int32
+        object_buf_size = ctypes.c_uint32(0)
+        status = refresh_objects(
+            None, None, None, ctypes.byref(object_buf_size), 400, 1
+        )  # PERF_DETAIL_WIZARD, bRefresh=TRUE
+        # PDH_STATUS is signed LONG: compare the unsigned 32-bit error bits.
+        if (status & 0xFFFFFFFF) not in (0, PDH_MORE_DATA):
+            # initialize has already retired the old query and opened this one.
+            # Abort before stale enumeration/counter use and release it too.
+            self._close_query()
+            self.instances = []
+            raise RuntimeError(f"Failed to refresh PDH object cache. Error: {status}")
+
         counter_buf_size = ctypes.c_ulong(0)
         instance_buf_size = ctypes.c_ulong(0)
 
