@@ -44,8 +44,8 @@ class Native:
 
 
 class Lease:
-    def __init__(self, native, handle):
-        self.native, self.handle, self.event = native, handle, None
+    def __init__(self, native, handle, event=None):
+        self.native, self.handle, self.event = native, handle, event
         atexit.register(self.close)
 
     def close(self):
@@ -91,21 +91,28 @@ def acquire(native=None, inherited=None):
         finally:
             if named:
                 kernel.CloseHandle(named)
-        return Lease(native, inherited)
+        event = kernel.CreateEventW(None, False, False, EVENT)
+        if not event:
+            kernel.CloseHandle(inherited)
+            raise OSError('Cannot create DFL activation event')
+        return Lease(native, inherited, event=event)
+    event = kernel.CreateEventW(None, False, False, EVENT)
+    if not event:
+        raise OSError('Cannot create DFL activation event')
     handle = kernel.CreateMutexW(None, False, MUTEX)
-    error = ctypes.get_last_error() if sys.platform == 'win32' else native.last_error
+    get_last_error = getattr(ctypes, 'get_last_error', None)
+    error = get_last_error() if (sys.platform == 'win32' and get_last_error) else native.last_error
     if not handle:
+        kernel.CloseHandle(event)
         raise OSError(error, 'Cannot acquire DFL instance lease')
     if error == 183:
         kernel.CloseHandle(handle)
-        event = kernel.CreateEventW(None, False, False, EVENT)
-        if event:
-            try:
-                kernel.SetEvent(event)
-            finally:
-                kernel.CloseHandle(event)
+        try:
+            kernel.SetEvent(event)
+        finally:
+            kernel.CloseHandle(event)
         return None
-    return Lease(native, handle)
+    return Lease(native, handle, event=event)
 
 
 def app_lease(inherited=None):

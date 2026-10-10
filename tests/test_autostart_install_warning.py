@@ -89,6 +89,8 @@ class TestAutoStartInstallWarning(unittest.TestCase):
             finally:
                 for handler in root.handlers:
                     handler.close()
+                if hasattr(app_logger, "close_fatal_sink"):
+                    app_logger.close_fatal_sink()
                 # Restore level through the public API to clear logging's cache.
                 root.setLevel(logging.NOTSET)
 
