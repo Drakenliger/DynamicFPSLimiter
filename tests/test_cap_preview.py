@@ -37,6 +37,7 @@ class RecordingDPG:
         self.ancestry = []
         self.parents = {}
         self.configurations = {}
+        self.component_types = {}
         self.live_draws = {}
         self.call_threads = []
         self.next_id = 0
@@ -97,6 +98,8 @@ class RecordingDPG:
                 self.items.add(item)
                 self.configurations[item] = dict(kwargs)
                 self.parents[item] = kwargs.get('parent', self.stack[-1][1] if self.stack else None)
+                if name == 'theme_component':
+                    self.component_types[item] = args[0]
                 if name.startswith('draw_') and name not in self.contexts:
                     self.live_draws[item] = (name, args, kwargs)
             if name in self.contexts:
@@ -317,7 +320,9 @@ def test_measurement_not_ready_is_retried_without_guessing():
 
 
 @pytest.mark.parametrize('scale', [1, 1.25, 1.5, 1.75, 2, 2.5, 3])
-def test_cap_method_theme_contrast_and_disabled_enforcement(scale, monkeypatch):
+@pytest.mark.parametrize('theme_name', ['disabled_text_theme', 'enabled_text_theme'])
+@pytest.mark.parametrize('component_type', ['mvInputInt', 'mvInputText'])
+def test_cap_method_theme_contrast_and_disabled_enforcement(scale, theme_name, component_type, monkeypatch):
     from core.themes import ThemesManager, bg_colour_2_child
     monkeypatch.setenv('WINDIR', '/windows')
     raw = RecordingDPG()
@@ -337,12 +342,18 @@ def test_cap_method_theme_contrast_and_disabled_enforcement(scale, monkeypatch):
               if n == 'add_theme_color' and a[0] == raw.mvThemeCol_Text
               and any(p[1] == disabled_theme for p in parents)]
     assert colors and all(contrast(color) >= 4.5 for color in colors)
-    for theme in ('disabled_text_theme', 'enabled_text_theme'):
-        records = [c for c in raw.ancestry if any(p[1] == manager.themes[theme] for p in c[3])]
-        assert any(n == 'theme_component' and a == (raw.mvInputInt,) and k.get('enabled_state') is False
-                   for n, a, k, parents in records)
-        assert any(n == 'add_theme_style' and a == (raw.mvStyleVar_DisabledAlpha, 1.0)
-                   and parents[-1][2].get('enabled_state') is False for n, a, k, parents in records)
+    components = [item for item, parent in raw.parents.items()
+                  if parent == manager.themes[theme_name]
+                  and raw.component_types.get(item) == getattr(raw, component_type)
+                  and raw.configurations[item].get('enabled_state') is False]
+    assert len(components) == 1, f'{theme_name} lacks a unique disabled {component_type} component'
+    records = [c for c in raw.ancestry if c[3] and c[3][-1][1] == components[0]]
+    assert [a for n, a, k, parents in records
+            if n == 'add_theme_color' and a[0] == raw.mvThemeCol_Text] == [
+                (raw.mvThemeCol_Text, (170, 174, 184, 255))]
+    assert [a for n, a, k, parents in records
+            if n == 'add_theme_style' and a[0] == raw.mvStyleVar_DisabledAlpha] == [
+                (raw.mvStyleVar_DisabledAlpha, 1.0)]
 
     ns = functions('src/core/config_manager.py', {'current_method_callback'}, {})
     cm = NS(dpg=manager.dpg, themes=manager.themes, tray=None, logger=NS(add_log=lambda *a: None))
@@ -355,9 +366,11 @@ def test_cap_method_theme_contrast_and_disabled_enforcement(scale, monkeypatch):
         assert set(bindings) == expected_tags  # Every consumer of these two themes.
         assert not any(n == 'configure_item' for n, a, k in raw.calls)
         # An already disabled control stays disabled through a method/theme change.
-        manager.dpg.configure_item('input_maxcap', enabled=False)
+        for tag in ('input_maxcap', 'input_customfpslimits'):
+            manager.dpg.configure_item(tag, enabled=False)
         ns['current_method_callback'](cm, app_data=method)
-        assert raw.configurations['input_maxcap']['enabled'] is False
+        for tag in ('input_maxcap', 'input_customfpslimits'):
+            assert raw.configurations[tag]['enabled'] is False
 
 
 def preview(scale=1):
