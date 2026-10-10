@@ -221,9 +221,13 @@ def test_valid_file_names_keep_spelling_encoding_and_contents(paths, name):
     assert ctrl.set_fractional_framerate(name, 59.94) == (5994, 100)
     assert ctrl.get_framerate_limit(name) == 6000
     assert ctrl.get_framerate_limit(name, get_denominator=True) == 60
-    content = profile.read_bytes()
-    assert b"Limit=5994\n" in content and b"LimitDenominator=100\n" in content
-    assert b"[Other]\nKeep=sentinel\n" in content
+    assert profile.read_bytes().splitlines() == [
+        b"[Framerate]",
+        b"Limit=5994",
+        b"LimitDenominator=100",
+        b"[Other]",
+        b"Keep=sentinel",
+    ]
     encoded = name.encode(backend.PROFILE_ENCODING)
     assert [args[0] for method, args in native if method == "SaveProfile"] == [encoded]
     assert all(args[0] == encoded for method, args in native if method == "LoadProfile")
@@ -256,7 +260,13 @@ def test_higher_level_global_aliases_still_use_global_file_and_empty_api(paths, 
     assert ctrl.set_fractional_framerate(name, 59.94) == (5994, 100)
     assert ctrl.get_framerate_limit(name) == 6000
     assert ctrl.get_framerate_limit(name, get_denominator=True) == 60
-    assert b"LimitDenominator=100\n" in global_file.read_bytes()
+    assert global_file.read_bytes().splitlines() == [
+        b"[Framerate]",
+        b"Limit=5994",
+        b"LimitDenominator=100",
+        b"[Other]",
+        b"Keep=sentinel",
+    ]
     assert all(args[0] == b"" for method, args in native
                if method in ("LoadProfile", "SaveProfile"))
     assert all(Path(path) in (global_file, Path(f"{global_file}.tmp")) for _, path in access)
