@@ -14,6 +14,44 @@ try:
 except LookupError:
     PROFILE_ENCODING = "latin1"
 
+
+def _is_valid_profile_name(name, allow_empty=True):
+    if not isinstance(name, str):
+        return False
+    if allow_empty and name == "":
+        return True
+    if not name:
+        return False
+    if "\0" in name:
+        return False
+    if "/" in name or "\\" in name:
+        return False
+    if ":" in name:
+        return False
+    if name in (".", ".."):
+        return False
+    try:
+        name.encode(PROFILE_ENCODING)
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _resolve_high_level_profile(profile_name):
+    """Resolve high-level profile alias to (profile_file_name, dll_profile_name).
+
+    Returns (profile_file_name, dll_profile_name) if valid, or (None, None) if invalid.
+    Global contract: None, empty string, or case-insensitive 'global' maps to
+    file 'Global' and DLL name ''.
+    Valid profile names map to '{profile_name}.cfg' and DLL name '{profile_name}'.
+    """
+    if profile_name is None or profile_name == "" or (isinstance(profile_name, str) and profile_name.lower() == "global"):
+        return "Global", ""
+    if not _is_valid_profile_name(profile_name, allow_empty=False):
+        return None, None
+    return f"{profile_name}.cfg", profile_name
+
+
 class RTSSController:
     RTSSHOOKSFLAG_LIMITER_DISABLED = 4
 
@@ -95,12 +133,18 @@ class RTSSController:
         return r"C:\Program Files (x86)\RivaTuner Statistics Server"
 
     def delete_profile(self, profile_name):
+        if not _is_valid_profile_name(profile_name, allow_empty=True):
+            return False
         self.DeleteProfile(profile_name.encode(PROFILE_ENCODING))
 
     def reset_profile(self, profile_name):
+        if not _is_valid_profile_name(profile_name, allow_empty=True):
+            return False
         self.ResetProfile(profile_name.encode(PROFILE_ENCODING))
 
     def get_profile_property(self, profile_name, property_name, size=4):
+        if not _is_valid_profile_name(profile_name, allow_empty=True):
+            return None
         with self._profile_lock:
             self.LoadProfile(profile_name.encode(PROFILE_ENCODING))
             buf = (ctypes.c_byte * size)()
@@ -110,6 +154,8 @@ class RTSSController:
             return bytes(buf)
 
     def set_profile_property(self, profile_name, property_name, value, size=4, update=True):
+        if not _is_valid_profile_name(profile_name, allow_empty=True):
+            return False
         # SaveProfile writes the profile .cfg, so serialize it with the file writers
         # (re-entrant: safe when called from set_fractional_framerate holding the lock).
         with self._profile_lock:
@@ -129,6 +175,8 @@ class RTSSController:
             return success
 
     def create_profile(self, profile_name, properties):
+        if not _is_valid_profile_name(profile_name, allow_empty=True):
+            return False
         # Load global profile as a base
         self.LoadProfile(b"")
         # Set each property
@@ -250,14 +298,12 @@ class RTSSController:
         return lines
 
     def set_limit_denominator(self, profile_name, new_denominator, update=True):
+        file_name, profile_name_for_api = _resolve_high_level_profile(profile_name)
+        if file_name is None:
+            return False
         with self._profile_lock:
             profiles_dir = os.path.join(self.rtss_install_path, "Profiles")
-            if not profile_name or profile_name.lower() == "global":
-                profile_file = os.path.join(profiles_dir, "Global")
-                profile_name_for_api = ""
-            else:
-                profile_file = os.path.join(profiles_dir, f"{profile_name}.cfg")
-                profile_name_for_api = profile_name
+            profile_file = os.path.join(profiles_dir, file_name)
 
             if not os.path.isfile(profile_file):
                 self.LoadProfile(b"")
@@ -279,11 +325,13 @@ class RTSSController:
             return True
 
     def set_fractional_framerate(self, profile_name, framerate, update=False, denominator=False):
+        file_name, profile_name_for_api = _resolve_high_level_profile(profile_name)
+        if file_name is None:
+            return False
         # Hold the lock for the whole file+API sequence so it is atomic with respect to
         # other writers (re-entrant: the nested set_limit_denominator/set_profile_property
         # calls re-acquire the same lock).
         with self._profile_lock:
-            profile_name_for_api = "" if not profile_name or profile_name.lower() == "global" else profile_name
             fr_str = str(framerate)
             if '.' in fr_str:
                 decimals = len(fr_str.split('.')[1])
@@ -308,14 +356,12 @@ class RTSSController:
             return limit, denominator
 
     def set_fractional_fps_direct(self, profile_name, framerate, update=True):
+        file_name, profile_name_for_api = _resolve_high_level_profile(profile_name)
+        if file_name is None:
+            return False
         with self._profile_lock:
             profiles_dir = os.path.join(self.rtss_install_path, "Profiles")
-            if not profile_name or profile_name.lower() == "global":
-                profile_file = os.path.join(profiles_dir, "Global")
-                profile_name_for_api = ""
-            else:
-                profile_file = os.path.join(profiles_dir, f"{profile_name}.cfg")
-                profile_name_for_api = profile_name
+            profile_file = os.path.join(profiles_dir, file_name)
 
             if not os.path.isfile(profile_file):
                 self.logger.add_log(f"Profile file not found: {profile_file}")
@@ -347,7 +393,9 @@ class RTSSController:
             return True
     
     def get_framerate_limit(self, profile_name, get_denominator=False):
-        profile_name_for_api = "" if not profile_name or profile_name.lower() == "global" else profile_name
+        file_name, profile_name_for_api = _resolve_high_level_profile(profile_name)
+        if file_name is None:
+            return None
         limit = self.get_profile_property(profile_name_for_api, "FramerateLimit", 4)
         if limit is None:
             return None
@@ -358,10 +406,7 @@ class RTSSController:
             return limit_int
 
         profiles_dir = os.path.join(self.rtss_install_path, "Profiles")
-        if not profile_name or profile_name.lower() == "global":
-            profile_file = os.path.join(profiles_dir, "Global")
-        else:
-            profile_file = os.path.join(profiles_dir, f"{profile_name}.cfg")
+        profile_file = os.path.join(profiles_dir, file_name)
 
         denominator = 1
         if os.path.isfile(profile_file):
