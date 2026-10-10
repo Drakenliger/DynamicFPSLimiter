@@ -155,6 +155,7 @@ def autopilot_checkbox_callback(sender, app_data, user_data):
 running = False  # Flag to control the monitoring loop
 session_number = 0
 profile_revision = 0
+active_applied_cap = None
 # Serialize session/profile invalidation with cap admission and the ensuing write.
 session_lock = threading.Lock()
 
@@ -170,6 +171,7 @@ fps_utils = FPSUtils(cm, lhm_sensor, logger, dpg, pixels(Viewport_width, dpg.sca
 
 def _write_cap(profile, cap, reason, *, direct=False):
     """Called only inside the existing admitted session/profile blocks."""
+    global active_applied_cap
     old_cap = None
     try:
         old_cap = rtss.get_framerate_limit(profile, get_denominator=True)
@@ -191,6 +193,10 @@ def _write_cap(profile, cap, reason, *, direct=False):
         except Exception:
             pass
         return result
+    if running:
+        active_applied_cap = cap
+    else:
+        active_applied_cap = None
     try:
         cap_change_log.record(make_row(timestamp, session_number, profile, old_cap,
                                        cap, reason, gpu, cpu, mean))
@@ -206,7 +212,7 @@ def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
 
     cm = user_data
 
-    global running, session_number
+    global running, session_number, active_applied_cap
     global fps_values, CurrentFPSOffset, fps_mean, gpu_values, cpu_values, idle_state
     with session_lock:
         if expected_autopilot is not None and not autopilot_request_current(
@@ -214,6 +220,8 @@ def start_stop_callback(sender, app_data, user_data, expected_autopilot=None):
             return
         session_number += 1
         running = not running
+        if not running:
+            active_applied_cap = None
         captured_session = session_number
         observer = globals().get("_acceptance_runtime")
         if observer is not None:
@@ -790,34 +798,36 @@ def _update_idle_ui():
     """
     try:
         if fps_utils.current_stepped_limits():
-            warnings = get_active_warnings(dpg, cm, rtss_manager, int(min(fps_utils.current_stepped_limits())))
-            warning_visible = bool(warnings)
-            warning_message = "\n".join(warnings)
+            if not running:
+                warnings = get_active_warnings(dpg, cm, rtss_manager, int(min(fps_utils.current_stepped_limits())))
+                warning_visible = bool(warnings)
+                warning_message = "\n".join(warnings)
 
-            dpg.configure_item("warning_text", show=warning_visible)
-            dpg.configure_item("warning_tooltip", show=warning_visible)
-            dpg.set_value("warning_tooltip_text", warning_message)
+                dpg.configure_item("warning_text", show=warning_visible)
+                dpg.configure_item("warning_tooltip", show=warning_visible)
+                dpg.set_value("warning_tooltip_text", warning_message)
 
             # Update FPS limit visualization based on current input values
-            fps_utils.update_fps_cap_visualization()
+            fps_utils.update_fps_cap_visualization(active_applied_cap=active_applied_cap if running else None)
 
-        try:
-            # Use ConfigManager helper to build a map of enabled params per hw/section
-            enable_map = cm.build_sensor_enable_map(dpg)
-            for hw_id, info in enable_map.items():
-                hw_name = info.get("hw_name", hw_id)
-                enabled_count = info.get("enabled_count", 0)
-                header_tag = info.get("header_tag", f"input_collapsing_{hw_id}")
-                label = f"{hw_name} : +{enabled_count}" if enabled_count > 0 else hw_name
-                if dpg.does_item_exist(header_tag):
-                    try:
-                        dpg.configure_item(header_tag, label=label)
-                    except Exception:
-                        pass
+        if not running:
+            try:
+                # Use ConfigManager helper to build a map of enabled params per hw/section
+                enable_map = cm.build_sensor_enable_map(dpg)
+                for hw_id, info in enable_map.items():
+                    hw_name = info.get("hw_name", hw_id)
+                    enabled_count = info.get("enabled_count", 0)
+                    header_tag = info.get("header_tag", f"input_collapsing_{hw_id}")
+                    label = f"{hw_name} : +{enabled_count}" if enabled_count > 0 else hw_name
+                    if dpg.does_item_exist(header_tag):
+                        try:
+                            dpg.configure_item(header_tag, label=label)
+                        except Exception:
+                            pass
 
-        except Exception as e:
-            if gui_running:
-                logger.add_log(f"Error updating HW header counts: {e}")
+            except Exception as e:
+                if gui_running:
+                    logger.add_log(f"Error updating HW header counts: {e}")
 
     except Exception as e:
         if gui_running:  # Only log if we're still supposed to be running
@@ -857,9 +867,8 @@ def gui_update_loop():
         while tray.is_tray_active and gui_running:
             time.sleep(1)  # Sleep until tray is not active
 
-        if not running:
-            # Idle-UI refresh runs on the main DPG thread via the GuiQueue
-            _gui_submit(_update_idle_ui)
+        # UI refresh runs on the main DPG thread via the GuiQueue
+        _gui_submit(_update_idle_ui)
         time.sleep(0.1)
 
 def _autopilot_start_on_gui(target, expected):
@@ -1251,7 +1260,7 @@ textures = load_and_create_textures(image_files, Base_dir, dpg)
 
 
 #The actual GUI starts here
-with dpg.window(label=app_title, tag="Primary Window"):
+with dpg.window(label=app_title, tag="Primary Window", no_scrollbar=True, no_scroll_with_mouse=True):
 
     # Title bar
     with dpg.group(horizontal=True):
@@ -1316,25 +1325,13 @@ with dpg.window(label=app_title, tag="Primary Window"):
             dpg.add_text("", tag="warning_tooltip_text", wrap=300)
         dpg.bind_item_font("warning_text", bold_font)
 
-    with dpg.group(horizontal=False):
-        draw_height = 40
-        layer1_height = 30
-        layer2_height = 30
-        draw_width = Viewport_width - 60
-        margin = 10
-        with dpg.drawlist(width= draw_width + 5, height=draw_height, tag="fps_cap_drawlist"):
-            with dpg.draw_layer(tag="Baseline"):
-                dpg.draw_line((margin, layer1_height // 2), (draw_width, layer1_height // 2), color=(200, 200, 200), thickness=2)
-            with dpg.draw_layer(tag="Foreground"):
-                dpg.draw_line((margin, layer2_height // 2), (draw_width, layer2_height // 2), color=(200, 200, 200), thickness=2)
-        dpg.add_spacer(height=1)
-
     dpg.add_spacer(height=1)
 
-    with dpg.group(horizontal=True):
-        mid_window_height = 285
+    # Leave room below both columns for a permanent, full-width cap preview.
+    with dpg.group(horizontal=True, tag="limits_and_monitoring"):
+        mid_window_height = 240
         with dpg.group(horizontal=False):
-            with dpg.child_window(width=230, height=mid_window_height+5, border=True):
+            with dpg.child_window(width=230, height=mid_window_height+5, border=True, tag="limits_childwindow"):
                 with dpg.group(horizontal=True):
                     with dpg.drawlist(width=15, height=15):
                         dpg.draw_line((0, 13), (15, 13), color=(180,180,180), thickness=1)
@@ -1343,14 +1340,17 @@ with dpg.window(label=app_title, tag="Primary Window"):
                         dpg.draw_line((0, 13), (75, 13), color=(180,180,180), thickness=1)
                 with dpg.group(horizontal=True):
                     dpg.add_spacer(width=1)
-                    with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingFixedFit):
+                    # The input column receives the actual remaining content width,
+                    # including the child scrollbar and table cell padding. InputInt
+                    # then budgets its own text field and both step buttons.
+                    with dpg.table(header_row=False, resizable=False, width=-1, policy=dpg.mvTable_SizingStretchProp, tag="limits_table"):
                         dpg.add_table_column(width_fixed=True)  # Label
-                        dpg.add_table_column(width_fixed=True)  # Column for input boxes
+                        dpg.add_table_column(width_stretch=True, init_width_or_weight=1)
                         with dpg.table_row():
                             dpg.add_text("Max FPS limit:", tag="label_maxcap")
                             dpg.add_input_int(
                                 tag="input_maxcap", default_value=int(cm.settings["maxcap"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1360,7 +1360,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
                             dpg.add_text("Min FPS limit:", tag="label_mincap")
                             dpg.add_input_int(
                                 tag="input_mincap", default_value=int(cm.settings["mincap"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1370,7 +1370,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
                             dpg.add_text("Framerate ratio:", tag="label_capratio")
                             dpg.add_input_int(
                                 tag="input_capratio", default_value=int(cm.settings["capratio"]),
-                                width=90,
+                                width=-1,
                                 step=1,
                                 step_fast=10,
                                 min_clamped=True,
@@ -1378,17 +1378,17 @@ with dpg.window(label=app_title, tag="Primary Window"):
                         with dpg.table_row():
                             dpg.add_text("Framerate step:", tag="label_capstep")
                             dpg.add_input_int(tag=f"input_capstep", default_value=int(cm.settings["capstep"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1)
                         with dpg.table_row():
                             dpg.add_text("FPS drop delay:", tag="button_delaybeforedecrease")
                             dpg.add_input_int(tag=f"input_delaybeforedecrease", default_value=int(cm.settings["delaybeforedecrease"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1, max_value=99, max_clamped=True)
                         with dpg.table_row():
                             dpg.add_text("FPS raise delay:", tag="button_delaybeforeincrease")
                             dpg.add_input_int(tag=f"input_delaybeforeincrease", default_value=int(cm.settings["delaybeforeincrease"]), 
-                                                width=90, step=1, step_fast=10, 
+                                                width=-1, step=1, step_fast=10,
                                                 min_clamped=True, min_value=1, max_value=99, max_clamped=True)
                 dpg.add_spacer(height=5)
                 dpg.add_input_text(
@@ -1405,7 +1405,7 @@ with dpg.window(label=app_title, tag="Primary Window"):
 
             dpg.add_spacer(height=1)
 
-            with dpg.child_window(width=230, height=85, border=True):
+            with dpg.child_window(width=230, height=85, border=True, tag="limit_actions_childwindow"):
                 with dpg.group(horizontal=True):
                     dpg.add_image_button(
                         texture_tag=textures["icon_settings"],
@@ -1547,6 +1547,19 @@ with dpg.window(label=app_title, tag="Primary Window"):
             dpg.add_button(label="Detect Render GPU", callback=toggle_luid_selection, tag="luid_button", width=260)
             dpg.add_spacer(height=5)
             build_plot_window()
+
+    # Normal layout flow puts this after the taller column, with no absolute
+    # positions to collide with the settings/profile footer or monitoring panel.
+    with dpg.group(tag="caps_preview_strip"):
+        dpg.add_text("Caps DFL will use", color=(200, 200, 200), tag="label_caps_preview")
+        draw_width = Viewport_width - 20  # Primary-window horizontal padding.
+        draw_height = 60  # Ticks and up to two rows of complete labels.
+        margin = 5
+        with dpg.drawlist(width=draw_width, height=draw_height, tag="fps_cap_drawlist"):
+            with dpg.draw_layer(tag="Baseline"):
+                dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
+            with dpg.draw_layer(tag="Foreground"):
+                dpg.draw_line((margin, 15), (draw_width - margin, 15), color=(200, 200, 200), thickness=2)
 
 build_readings_window()
 build_settings_window()
