@@ -29,6 +29,8 @@ def get_tooltips():
     "button_cpulimit": "(Optional) Set values below 100 to enable CPU-based FPS limiting.",
     "rest_fps_cap_button": "Clears the custom limit input field and resets to Min/Max values",
     "autopilot_checkbox": "Relinquishes control of Start/Stop button to the autopilot, which will automatically shift to the corresponding profile based on the active process. If no profiles are detected, it uses the Global profile. Note: Can be modified to only run when a specific profile is detected in settings.",
+    "monitoring_method": "Selects how hardware load is monitored. LibreHM evaluates upper and lower thresholds on enabled hardware sensors. Legacy monitors GPU 3D utilization and busiest CPU core load.",
+    "capmethod": "Selects how FPS limit steps are generated. Ratio and Step generate limits between Max and Min FPS (Ratio via percentage decreases, Step via fixed-FPS decrements). Custom uses a supplied list of limit values, falling back to Step if unavailable.",
 }
 
 def add_tooltip(dpg, key, tooltips, ShowTooltip, cm, logger):
@@ -43,8 +45,9 @@ def add_tooltip(dpg, key, tooltips, ShowTooltip, cm, logger):
         # Only create tooltip if widget exists
         if dpg.does_item_exist(widget_id):
             tooltip_tag = f"{widget_id}_tooltip"
-            with dpg.tooltip(parent=widget_id, tag=tooltip_tag, show=ShowTooltip, delay=0.5):
-                dpg.add_text(tooltips[key], wrap=200)
+            if not dpg.does_item_exist(tooltip_tag):
+                with dpg.tooltip(parent=widget_id, tag=tooltip_tag, show=ShowTooltip, delay=0.5):
+                    dpg.add_text(tooltips[key], wrap=200)
 
 def apply_all_tooltips(dpg, tooltips, ShowTooltip, cm, logger):
     """Automatically adds tooltips to all widgets that have entries in the tooltips dictionary"""
