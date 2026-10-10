@@ -1,4 +1,6 @@
 import os
+import json
+from collections import Counter
 from core.config_io import new_config, read_config, merge_defaults, write_config
 from core.ui_scale import normalize_preference
 from decimal import Decimal, InvalidOperation
@@ -287,6 +289,19 @@ class ConfigManager:
         if added_keys:
             self.logger.add_log(f"Added dynamic key_type_map entries: {added_keys}")
 
+        # Widgets exist at this point. Seed Global before the first-launch save,
+        # and include dynamic values in the initial in-memory quick-load snapshot.
+        section = self.profiles_config["Global"]
+        sensor_values = self._lhm_input_values(section)
+        for key in self.input_field_keys:
+            if key in self.Default_settings:
+                continue
+            value = sensor_values.get(key, section.get(key, self.Default_settings_original[key]))
+            value = self.parse_input_value(key, value)
+            self.Default_settings[key] = value
+            self.settings[key] = value
+            self.dpg.set_value(f"input_{key}", value)
+
     def build_sensor_enable_map(self, dpg_instance):
         """
         Build and return a dict summarizing which parameters are enabled.
@@ -437,6 +452,7 @@ class ConfigManager:
             raw_value = self.settings_config["GlobalSettings"].get(key, self.Default_settings_original[key])
         else:
             raw_value = self.profiles_config["Global"].get(key, self.Default_settings_original[key])
+            raw_value = self._lhm_input_values(self.profiles_config["Global"]).get(key, raw_value)
 
         # Convert to the correct type
         if value_type is set:
@@ -476,16 +492,74 @@ class ConfigManager:
             except Exception:
                 return self.Default_settings_original[key]
             
+    def _lhm_policies(self, section):
+        # JSON values preserve Identifier case/Unicode even though INI option
+        # names are case-insensitive. Absence alone means a legacy ordinal file.
+        raw = section.get("lhm_sensor_policies")
+        if raw is None:
+            return None
+        policies = json.loads(raw)
+        if not isinstance(policies, dict) or any(
+            not isinstance(policy, dict) or
+            not all(suffix in policy for suffix in ("enable", "lower", "upper"))
+            for policy in policies.values()
+        ):
+            raise ValueError("Invalid lhm_sensor_policies; saved policies were not replaced")
+        return policies
+
+    def _lhm_input_values(self, section):
+        policies = self._lhm_policies(section)
+        sensors = getattr(self, "sensor_infos", [])
+        counts = Counter(sensor.get("identifier") for sensor in sensors)
+        values = {}
+        for sensor in sensors:
+            param = sensor["parameter_id"]
+            identifier = sensor.get("identifier")
+            unique = bool(identifier and identifier.strip() and counts[identifier] == 1)
+            if not unique:
+                self.logger.add_log(f"Ambiguous LibreHM Identifier for {param}; saved policy not assigned")
+            for suffix, default in (("enable", False), ("lower", 0), ("upper", 100)):
+                key = f"{param}_{suffix}"
+                if unique and policies is None:
+                    # Historical files cannot tell us who previously owned an
+                    # ordinal. Retain legacy reading until an explicit save.
+                    values[key] = section.get(key, default)
+                else:
+                    values[key] = policies.get(identifier, {}).get(suffix, default) if unique else default
+        return values
+
+    def _save_profile_inputs(self, section):
+        policies = self._lhm_policies(section)
+        if policies is None:
+            policies = {}
+            self.logger.add_log("Saving LibreHM identities from current discovery; historical ordinal ownership is unknown")
+        sensors = getattr(self, "sensor_infos", [])
+        counts = Counter(sensor.get("identifier") for sensor in sensors)
+        sensor_keys = set()
+        for sensor in sensors:
+            param = sensor["parameter_id"]
+            keys = {suffix: f"{param}_{suffix}" for suffix in ("enable", "lower", "upper")}
+            sensor_keys.update(keys.values())
+            identifier = sensor.get("identifier")
+            if not identifier or not identifier.strip() or counts[identifier] != 1:
+                self.logger.add_log(f"Ambiguous LibreHM Identifier for {param}; saved policy retained")
+                continue
+            policy = {suffix: self.parse_input_value(key, self.dpg.get_value(f"input_{key}"))
+                      for suffix, key in keys.items()}
+            policies[identifier] = policy
+            for suffix, key in keys.items():
+                section[key] = str(policy[suffix])
+        for key in self.input_field_keys:
+            if key not in sensor_keys:
+                section[key] = str(self.parse_input_value(key, self.dpg.get_value(f"input_{key}")))
+        # Merge: temporarily absent or ambiguous identities retain their policy.
+        section["lhm_sensor_policies"] = json.dumps(policies, ensure_ascii=False)
+
     def save_to_profile(self):
         selected_profile = self.dpg.get_value("profile_dropdown")
 
         if selected_profile:
-            # Update profile-specific settings
-            for key in self.input_field_keys:
-                value = self.dpg.get_value(f"input_{key}")
-                parsed_value = self.parse_input_value(key, value)
-                # Store as string for config file
-                self.profiles_config[selected_profile][key] = str(parsed_value)
+            self._save_profile_inputs(self.profiles_config[selected_profile])
             
             write_config(self.profiles_config, self.profiles_path)
 
@@ -510,8 +584,9 @@ class ConfigManager:
         """GUI-only loader beneath the session-serialized transition hook."""
         if profile_name not in self.profiles_config:
             return False
+        sensor_values = self._lhm_input_values(self.profiles_config[profile_name])
         for key in self.input_field_keys:
-            value = self.profiles_config[profile_name].get(key, self.Default_settings_original[key])
+            value = sensor_values.get(key, self.profiles_config[profile_name].get(key, self.Default_settings_original[key]))
             parsed_value = self.parse_input_value(key, value)
             self.dpg.set_value(f"input_{key}", parsed_value)
         self.update_global_variables()
@@ -526,12 +601,9 @@ class ConfigManager:
         return True
 
     def save_profile(self, profile_name):
-        self.profiles_config[profile_name] = {}
-        # Save input fields
-        for key in self.input_field_keys:
-            value = self.dpg.get_value(f"input_{key}")
-            parsed_value = self.parse_input_value(key, value)
-            self.profiles_config[profile_name][key] = str(parsed_value)
+        if not self.profiles_config.has_section(profile_name):
+            self.profiles_config.add_section(profile_name)
+        self._save_profile_inputs(self.profiles_config[profile_name])
         write_config(self.profiles_config, self.profiles_path)
         self.update_profile_dropdown()
         self.load_profile_callback(None, profile_name, None)
