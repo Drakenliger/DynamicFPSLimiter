@@ -90,12 +90,12 @@ def scheduler(monkeypatch):
 
 
 def _source_fixture(tmp_path, monkeypatch, stub_logger, pythonw, debug):
-    src = tmp_path / "Source checkout with spaces" / "src"
+    src = tmp_path / "Sourcé checkout & spaces" / "src"
     core = src / "core"
     core.mkdir(parents=True)
     launcher = src / "__main__.py"
     launcher.write_text("# source launcher\n", encoding="utf-8")
-    interpreter = tmp_path / "Python with spaces" / "python.exe"
+    interpreter = tmp_path / "Pythön & spaces" / "python.exe"
     interpreter.parent.mkdir()
     interpreter.touch()
     windowless = interpreter.with_name("pythonw.exe")
@@ -183,17 +183,18 @@ def test_source_task_repairs_broken_arguments(
 
 
 @pytest.mark.parametrize("initial", ["direct-create", "missing-task"])
+@pytest.mark.parametrize("exe_name", ["DynamicFPSLimiter.exe", "Límiter & renamed.exe"])
 def test_frozen_task_keeps_packaged_executable_without_arguments(
-        tmp_path, monkeypatch, stub_logger, scheduler, initial):
+        tmp_path, monkeypatch, stub_logger, scheduler, initial, exe_name):
     package = tmp_path / "Packaged app with spaces"
     bundle = package / "_internal"
     bundle.mkdir(parents=True)
-    executable = package / "DynamicFPSLimiter.exe"
+    executable = package / exe_name
     executable.touch()
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
     monkeypatch.setattr(sys, "executable", str(executable))
-    monkeypatch.setattr(sys, "argv", [str(executable)])
+    monkeypatch.setattr(sys, "argv", [str(executable), "--debug"])
     manager = _app_manager(bundle, stub_logger)
     if initial == "direct-create":
         manager.create()
@@ -207,3 +208,51 @@ def test_frozen_task_keeps_packaged_executable_without_arguments(
     assert len(scheduler.created) == 1
     assert all(not path.exists() for path in scheduler.files)
     _assert_unchanged(manager, scheduler)
+    moved_bundle = tmp_path / "Unrelated extraction directory"
+    monkeypatch.setattr(sys, "_MEIPASS", str(moved_bundle), raising=False)
+    _assert_unchanged(_app_manager(moved_bundle, stub_logger), scheduler)
+
+
+@pytest.mark.parametrize("broken", [None, "missing-arguments", "wrong-script",
+                                    "wrong-debug", "wrong-command"])
+def test_source_sid_alias_still_checks_command_and_arguments(
+        tmp_path, monkeypatch, stub_logger, scheduler, broken):
+    manager, interpreter, launcher, flags, old_exe = _source_fixture(
+        tmp_path, monkeypatch, stub_logger, pythonw=True, debug=False)
+    manager.create()
+    root = ET.fromstring(scheduler.xml)
+    root.find("t:Triggers/t:LogonTrigger/t:UserId", NS).text = USER.lower()
+    root.find("t:Principals/t:Principal/t:UserId", NS).text = SID
+    action = root.find("t:Actions/t:Exec", NS)
+    arguments = action.find("t:Arguments", NS)
+    if broken == "missing-arguments":
+        action.remove(arguments)
+    elif broken == "wrong-script":
+        arguments.text = subprocess.list2cmdline([str(launcher.with_name("wrong.py"))])
+    elif broken == "wrong-debug":
+        arguments.text = subprocess.list2cmdline([str(launcher), "--debug"])
+    elif broken == "wrong-command":
+        action.find("t:Command", NS).text = str(old_exe)
+    scheduler.xml = ET.tostring(root, encoding="unicode")
+    manager.update_if_needed(True)
+    assert len(scheduler.created) == (2 if broken else 1)
+    _assert_source_task(ET.fromstring(scheduler.xml), interpreter, launcher, flags)
+    _assert_unchanged(manager, scheduler)
+    assert all(not path.exists() for path in scheduler.files)
+
+
+def test_standalone_positional_constructor_and_default_xml_helpers(
+        tmp_path, monkeypatch, stub_logger, scheduler):
+    executable = tmp_path / "Explicit standalone.exe"
+    executable.touch()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "different-runtime.exe")
+    manager = autostart.AutoStartManager(str(executable), "Standalone", stub_logger)
+    assert manager.task_name == "Standalone" and manager.logger is stub_logger
+    manager.create()
+    root = scheduler.created[-1]
+    assert root.findtext("t:Actions/t:Exec/t:Command", namespaces=NS) == str(executable)
+    assert not root.findtext("t:Actions/t:Exec/t:Arguments", namespaces=NS)
+    xml = autostart.build_task_xml(str(executable), SID)
+    assert autostart.task_xml_matches(xml, str(executable), USER, (SID,))
+    assert not autostart.task_xml_matches(xml, str(executable), USER, (SID,), "wrong.py")
