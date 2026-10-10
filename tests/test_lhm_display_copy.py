@@ -1,4 +1,4 @@
-"""Actual-source equivalence and an intentionally red display-copy requirement.
+"""Independent candidate contracts plus optional actual-source equivalence.
 
 Boundary stubs exercise Python behavior, not .NET/driver or GUI acceptance.
 The benchmark imports these helpers; importing this file executes no checks.
@@ -7,10 +7,12 @@ import builtins
 from collections import defaultdict, deque
 from contextlib import contextmanager
 import importlib
+import os
 from pathlib import Path
 import subprocess
 import threading
 from types import ModuleType, SimpleNamespace
+import warnings
 
 import pytest
 
@@ -19,14 +21,33 @@ BASELINE = "c5aaa5115b92ec3e1349c340cf7c491ca6ded186"
 HT = SimpleNamespace(Cpu="Cpu", GpuAmd="AMD", GpuNvidia="NVIDIA", GpuIntel="Intel")
 
 
-def load_modules():
+def load_modules(*, optional_baseline=False):
+    """Tests may omit extra historical comparisons; benchmarks require source."""
+    candidate = importlib.import_module("core.librehardwaremonitor")
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+    available = (ROOT / ".git").exists()
+    if optional_baseline and available:
+        # Batch-check reports an absent object explicitly with exit status zero.
+        # Git/process errors, corrupt objects and unexpected replies remain fatal.
+        reply = subprocess.check_output(
+            ["git", "cat-file", "--batch-check"], input=(BASELINE + "\n").encode("ascii"),
+            cwd=ROOT, env=env).decode("ascii").strip()
+        available = reply != f"{BASELINE} missing"
+        parts = reply.split()
+        if available and not (len(parts) == 3 and parts[:2] == [BASELINE, "commit"]
+                              and parts[2].isdigit()):
+            raise RuntimeError(f"Unexpected historical object response: {reply!r}")
+    if optional_baseline and not available:
+        warnings.warn("Historical object unavailable: extra baseline comparisons omitted; "
+                      "all independent candidate checks still run.", stacklevel=2)
+        return (candidate,)
     source = subprocess.check_output(
         ["git", "show", f"{BASELINE}:src/core/librehardwaremonitor.py"],
-        cwd=ROOT, text=True)
+        cwd=ROOT, env=env).decode("utf-8")
     baseline = ModuleType("lhm_display_copy_baseline")
     baseline.__file__ = str(ROOT / "src/core/librehardwaremonitor.py")
     exec(compile(source, f"{BASELINE}:librehardwaremonitor.py", "exec"), baseline.__dict__)
-    return baseline, importlib.import_module("core.librehardwaremonitor")
+    return baseline, candidate
 
 
 def sensor(kind, name, value, identifier=None):
@@ -112,6 +133,65 @@ def expected_text(title, rows):
         for kind, name, value, percentile in rows])
 
 
+def assert_expected_data(m, tick, invalid=False):
+    """Declarative rounded sample/percentile trace, independent of either backend.
+
+    Includes seeded tails, missing canonicals, detached/rebound aliases, partial
+    failure before invalidation, and fresh recovery after invalidation.
+    """
+    cpu_temp, gpu_temp = ("Temperature", "Package"), ("Temperature", "1 Hot")
+    traces = {
+        "cpu": {
+            "/cpu/shared": (((10.13, 90.99), (11.13, 89.99), (12.13, 88.99), (13.13, 87.99)), (14.3, 15.3, 16.3, 65.53)),
+            cpu_temp: (((50.56,), (51.56,), (52.56,), (53.56,)), (14.3, 15.3, 16.3, 53.56)),
+            "/cpu/none": (((), (26.33,), (27.33,), (28.33,)), (None, 26.33, 27.03, 28.33))},
+        "gpu": {
+            "/amd/a": (((20.23,), (), (), ()), (14.3, None, None, None)),
+            "/amd/b": (((30.46,), (31.46,), (32.46,), (33.46,)), (14.3, 15.3, 16.3, 33.46)),
+            gpu_temp: (((40.68,), (41.68,), (42.68,), (43.68,)), (14.3, 15.3, 16.3, 43.68)),
+            "/amd/p": (((60.12,), (), (), ()), (14.3, None, None, None)),
+            "/nv/load": (((70.88,), (71.88,), (), (73.88,)), (14.3, 15.3, 15.3, 73.88)),
+            "/nv/power": (((80.22,), (), (), (83.22,)), (14.3, None, None, 83.22)),
+            "/intel/load": (((5.68,), (6.68,), (), (8.68,)), (13.3, 13.3, 13.3, 8.68))}}
+    for prefix, trace in traces.items():
+        aliases = ({("Load", "Core"): "/cpu/shared", ("Load", "Core (1)"): "/cpu/shared",
+                    ("Power", "Package"): "/cpu/none"} if prefix == "cpu" else {
+                    ("Load", "1 Core"): "/amd/a", ("Load", "1 Core (1)"): "/amd/b",
+                    ("Power", "1 Board"): "/amd/p", ("Load", "2 Core"): "/nv/load",
+                    ("Power", "2 Board"): "/nv/power", ("Load", "3 Core"): "/intel/load"})
+        # Percentile insertion order persists even after histories are cleared.
+        pkeys = [k for canon in trace if canon != "/cpu/none" or tick > 0
+                 for k in (canon, *(a for a, c in aliases.items() if c == canon))]
+        if prefix == "gpu" and tick > 0:
+            aliases[("Load", "1 Core")] = "/amd/b"
+        detached = {("Load", "1 Core (1)"), ("Power", "1 Board"), ("Power", "2 Board")}
+        live_aliases = [a for a in aliases if (prefix == "cpu" and (tick > 0 or a[0] == "Load"))
+                        or (prefix == "gpu" and (tick == 0 or a not in detached or tick == 3 and a == ("Power", "2 Board")))]
+        seeded = [k for k in trace if k != "/cpu/none"]
+        keys = seeded + live_aliases
+        if prefix == "cpu" and tick > 0:
+            keys.insert(-1, "/cpu/none")
+        if tick == 3:
+            keys = [k for canon, (samples, _) in trace.items() if samples[3]
+                    for k in (canon, *(a for a in live_aliases if aliases[a] == canon))]
+        expected = {}
+        for suffix, size in (("history", 20), ("history_long", 600)):
+            def values(canon):
+                seed = [float(i % 100) for i in range(size)] if tick < 3 and canon in seeded else []
+                samples = trace[canon][0][3:] if tick == 3 else trace[canon][0][:tick + 1]
+                return tuple((seed + [v for batch in samples for v in batch])[-size:])
+            canonical = lambda key: aliases.get(key, key)
+            expected[suffix] = () if invalid else tuple((k, values(canonical(k)), size,
+                tuple(a for a in keys if canonical(a) == canonical(k))) for k in keys)
+        percentiles = {k: None if invalid or k in aliases and k not in live_aliases
+                       else trace[aliases.get(k, k)][1][tick] for k in pkeys}
+        if not invalid and prefix == "cpu":
+            percentiles[("Load", "Core")] = (13.3, 14.3, 15.3, 13.13)[tick]
+        expected["percentiles"] = tuple(percentiles.items())
+        actual = snapshot(m)
+        assert {suffix: actual[f"{prefix}_{suffix}"] for suffix in expected} == expected
+
+
 @contextmanager
 def copy_meter(module):
     """Only module-level list(deque); percentile traversal is tracked separately.
@@ -150,11 +230,11 @@ def copy_meter(module):
 
 @pytest.mark.parametrize("fallback", [False, True])
 def test_changing_passes_complete_equivalence(monkeypatch, fallback):
-    baseline, candidate = load_modules()
+    modules = load_modules(optional_baseline=True)
     if fallback:
-        monkeypatch.setattr(baseline, "np", None)
-        monkeypatch.setattr(candidate, "np", None)
-    monitors = [make_monitor(mod) for mod in (baseline, candidate)]
+        for module in modules:
+            monkeypatch.setattr(module, "np", None)
+    monitors = [make_monitor(mod) for mod in modules]
     originals = [m.cpu_history["/cpu/shared"] for m in monitors]
     for tick in range(4):
         texts, states = [], []
@@ -168,6 +248,7 @@ def test_changing_passes_complete_equivalence(monkeypatch, fallback):
                     assert tuple(original)[-2:] == (12.13, 88.99)
                     assert m.gpu_history["/amd/b"][-1] == 32.46
                     assert m.gpu_history["/nv/load"][-1] == 71.88
+                    assert_expected_data(m, tick)
                     states.append(snapshot(m))  # Compare partial work before invalidation too.
                     m._invalidate_readings()
                     assert all(v is None for v in m.cpu_percentiles.values())
@@ -181,11 +262,13 @@ def test_changing_passes_complete_equivalence(monkeypatch, fallback):
                     else:
                         assert m.cpu_history["/cpu/shared"] is not original
                 states.append(snapshot(m))
+                assert_expected_data(m, tick, invalid=tick == 2)
             assert not m._lock.locked()
-        assert texts[:1] == texts[1:]
-        midpoint = len(states) // 2
-        assert states[:midpoint] == states[midpoint:]
-        m = monitors[1]
+        assert all(text == texts[0] for text in texts)
+        if len(monitors) == 2:
+            midpoint = len(states) // 2
+            assert states[:midpoint] == states[midpoint:]
+        m = monitors[-1]
         assert m.gpu_hw_names == ["AMD GPU", "NVIDIA GPU", "Intel GPU"]
         for prefix in ("cpu", "gpu"):
             for suffix, size in (("history", 20), ("history_long", 600)):
@@ -196,20 +279,27 @@ def test_changing_passes_complete_equivalence(monkeypatch, fallback):
         if tick == 3:
             expected_calls += ["CPU", "AMD GPU", "NVIDIA GPU", "Intel GPU"]
         assert m.updates == [(name, True, threading.current_thread().name) for name in expected_calls]
+        if tick != 2:
+            cpu_values = ((10.13, 90.99, 50.56), (11.13, 89.99, 51.56), (), (13.13, 87.99, 53.56))[tick]
+            cpu_p = ((13.3, 14.3, 14.3), (14.3, 15.3, 15.3), (), (13.13, 65.53, 53.56))[tick]
+            rows = [(kind, name, value, p) for (kind, name), value, p in zip(
+                (("Load", "Core"), ("Load", "Core (1)"), ("Temperature", "Package")), cpu_values, cpu_p)]
+            if tick > 0:
+                value = 26.33 if tick == 1 else 28.33
+                rows.append(("Power", "Package", value, value))
+            amd_rows = ([("Load", "1 Core", 20.23, 14.3), ("Load", "1 Core (1)", 30.46, 14.3),
+                ("Temperature", "1 Hot", 40.68, 14.3), ("Power", "1 Board", 60.12, 14.3)] if tick == 0 else
+                [("Load", "1 Core", 31.46 if tick == 1 else 33.46, 15.3 if tick == 1 else 33.46),
+                 ("Temperature", "1 Hot", 41.68 if tick == 1 else 43.68, 15.3 if tick == 1 else 43.68)])
+            nv_value, intel_value = (70.88, 71.88, None, 73.88)[tick], (5.68, 6.68, None, 8.68)[tick]
+            nv_rows = [("Load", "2 Core", nv_value, (14.3, 15.3, None, 73.88)[tick])]
+            if tick != 1:
+                value = 80.22 if tick == 0 else 83.22
+                nv_rows.append(("Power", "2 Board", value, 14.3 if tick == 0 else value))
+            assert texts[-1] == "\n\n".join([expected_text("CPU", rows),
+                expected_text("AMD GPU", amd_rows), expected_text("NVIDIA GPU", nv_rows),
+                expected_text("Intel GPU", [("Load", "3 Core", intel_value, 13.3 if tick < 3 else intel_value)])])
         if tick == 0:
-            rows = [("Load", "Core", "10.13", "13.3"),
-                    ("Load", "Core (1)", "90.99", "14.3"),
-                    ("Temperature", "Package", "50.56", "14.3")]
-            assert texts[1] == "\n\n".join([expected_text("CPU", rows),
-                expected_text("AMD GPU", [("Load", "1 Core", "20.23", "14.3"),
-                    ("Load", "1 Core (1)", "30.46", "14.3"),
-                    ("Temperature", "1 Hot", "40.68", "14.3"),
-                    ("Power", "1 Board", "60.12", "14.3")]),
-                expected_text("NVIDIA GPU", [("Load", "2 Core", "70.88", "14.3"),
-                    ("Power", "2 Board", "80.22", "14.3")]),
-                expected_text("Intel GPU", [("Load", "3 Core", "5.68", "13.3")])])
-            assert tuple(m.cpu_history["/cpu/shared"]) == tuple(map(float, range(2, 20))) + (10.13, 90.99)
-            assert tuple(m.cpu_history_long["/cpu/shared"]) == tuple(float(i % 100) for i in range(2, 600)) + (10.13, 90.99)
             assert "/cpu/none" not in m.cpu_history and "/intel/none" not in m.gpu_percentiles
         if tick == 1:
             assert m.gpu_percentiles["/amd/a"] is None and m.gpu_percentiles["/amd/p"] is None
@@ -220,25 +310,27 @@ def test_changing_passes_complete_equivalence(monkeypatch, fallback):
 
 
 def test_no_full_history_display_copy():
-    baseline, candidate = load_modules()
+    modules = load_modules(optional_baseline=True)
     measured, states, texts = [], [], []
-    for module in (baseline, candidate):
+    for module in modules:
         m = make_monitor(module)
         with copy_meter(module) as counts, m._lock:
             texts.append(m._poll_pass())
         measured.append(counts)
         states.append(snapshot(m))
-    assert texts[0] == texts[1] and states[0] == states[1]
-    assert measured[0] == dict(calls=10, references=200, full_calls=10,
-                               percentile_calls=10, percentile_input_references=200)
-    assert measured[1]["percentile_calls"] == 10
-    assert measured[1]["percentile_input_references"] == 200
-    assert measured[1]["calls"] == measured[1]["references"] == 0, (
-        "Performance requirement only: eliminate redundant list(deque) display copies", measured[1])
+        assert_expected_data(m, 0)
+    if len(modules) == 2:
+        assert texts[0] == texts[1] and states[0] == states[1]
+        assert measured[0] == dict(calls=10, references=200, full_calls=10,
+                                   percentile_calls=10, percentile_input_references=200)
+    assert measured[-1]["percentile_calls"] == 10
+    assert measured[-1]["percentile_input_references"] == 200
+    assert measured[-1]["calls"] == measured[-1]["references"] == measured[-1]["full_calls"] == 0, (
+        "Performance requirement only: eliminate redundant list(deque) display copies", measured[-1])
 
 
 def test_public_format_history_standalone():
-    for module in load_modules():
+    for module in load_modules(optional_baseline=True):
         m = make_monitor(module)
         history = {"ignored": [1], ("bad",): [2], ("Load", "empty"): [],
                    ("Power", "full"): deque([1, 2.25], maxlen=20)}
