@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from collections import Counter
 from core.config_io import new_config, read_config, merge_defaults, write_config
 from core.ui_scale import normalize_preference
@@ -495,16 +496,24 @@ class ConfigManager:
     def _lhm_policies(self, section):
         # JSON values preserve Identifier case/Unicode even though INI option
         # names are case-insensitive. Absence alone means a legacy ordinal file.
+        # False means corrupt canonical data: never fall back to ordinals or
+        # replace the saved blob when saving unrelated settings.
         raw = section.get("lhm_sensor_policies")
         if raw is None:
             return None
-        policies = json.loads(raw)
-        if not isinstance(policies, dict) or any(
-            not isinstance(policy, dict) or
-            not all(suffix in policy for suffix in ("enable", "lower", "upper"))
-            for policy in policies.values()
-        ):
-            raise ValueError("Invalid lhm_sensor_policies; saved policies were not replaced")
+        try:
+            policies = json.loads(raw)
+            if not isinstance(policies, dict) or any(
+                not identifier.strip() or not isinstance(policy, dict) or
+                type(policy.get("enable")) is not bool or
+                type(policy.get("lower")) is not int or
+                type(policy.get("upper")) is not int
+                for identifier, policy in policies.items()
+            ):
+                raise ValueError("invalid policy mapping")
+        except (ValueError, TypeError) as exc:
+            self.logger.add_log(f"Error parsing lhm_sensor_policies ({exc}); sensors disabled, saved data retained")
+            return False
         return policies
 
     def _lhm_input_values(self, section):
@@ -516,30 +525,44 @@ class ConfigManager:
             param = sensor["parameter_id"]
             identifier = sensor.get("identifier")
             unique = bool(identifier and identifier.strip() and counts[identifier] == 1)
-            if not unique:
+            if policies is not None and not unique:
                 self.logger.add_log(f"Ambiguous LibreHM Identifier for {param}; saved policy not assigned")
             for suffix, default in (("enable", False), ("lower", 0), ("upper", 100)):
                 key = f"{param}_{suffix}"
-                if unique and policies is None:
+                if policies is None:
                     # Historical files cannot tell us who previously owned an
                     # ordinal. Retain legacy reading until an explicit save.
                     values[key] = section.get(key, default)
                 else:
-                    values[key] = policies.get(identifier, {}).get(suffix, default) if unique else default
+                    values[key] = policies.get(identifier, {}).get(suffix, default) if unique and policies is not False else default
         return values
 
     def _save_profile_inputs(self, section):
         policies = self._lhm_policies(section)
-        if policies is None:
-            policies = {}
-            self.logger.add_log("Saving LibreHM identities from current discovery; historical ordinal ownership is unknown")
         sensors = getattr(self, "sensor_infos", [])
         counts = Counter(sensor.get("identifier") for sensor in sensors)
-        sensor_keys = set()
+        saved_sensor_keys = {key for key in section if re.fullmatch(
+            r"(?:cpu|gpu)\d+_[a-z]+_\d+_(?:enable|lower|upper)", key)}
+        sensor_keys = saved_sensor_keys | {
+            f"{sensor['parameter_id']}_{suffix}"
+            for sensor in sensors for suffix in ("enable", "lower", "upper")
+        }
+        if policies is None:
+            unique_params = {sensor["parameter_id"] for sensor in sensors
+                             if sensor.get("identifier") and sensor["identifier"].strip()
+                             and counts[sensor["identifier"]] == 1}
+            saved_params = {key.rsplit("_", 1)[0] for key in saved_sensor_keys}
+            if not sensors or len(unique_params) != len(sensors) or not saved_params <= unique_params:
+                policies = False
+                self.logger.add_log("LibreHM identity migration deferred: incomplete discovery; legacy sensor values retained")
+            else:
+                policies = {}
+                self.logger.add_log("Saving LibreHM identities from current discovery; historical ordinal ownership is unknown")
         for sensor in sensors:
             param = sensor["parameter_id"]
             keys = {suffix: f"{param}_{suffix}" for suffix in ("enable", "lower", "upper")}
-            sensor_keys.update(keys.values())
+            if policies is False:
+                continue
             identifier = sensor.get("identifier")
             if not identifier or not identifier.strip() or counts[identifier] != 1:
                 self.logger.add_log(f"Ambiguous LibreHM Identifier for {param}; saved policy retained")
@@ -553,7 +576,8 @@ class ConfigManager:
             if key not in sensor_keys:
                 section[key] = str(self.parse_input_value(key, self.dpg.get_value(f"input_{key}")))
         # Merge: temporarily absent or ambiguous identities retain their policy.
-        section["lhm_sensor_policies"] = json.dumps(policies, ensure_ascii=False)
+        if policies is not False:
+            section["lhm_sensor_policies"] = json.dumps(policies, ensure_ascii=False)
 
     def save_to_profile(self):
         selected_profile = self.dpg.get_value("profile_dropdown")

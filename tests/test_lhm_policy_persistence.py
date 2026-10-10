@@ -12,7 +12,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from core.config_io import new_config, read_config
+from core.config_io import new_config, read_config, write_config
 
 
 CORE = Path(__file__).resolve().parents[1] / "src" / "core"
@@ -302,3 +302,115 @@ def test_profiles_case_unicode_quick_copy_and_ini_preservation(backend, save_met
     assert json.loads(disk[second]["lhm_sensor_policies"]) == swapped
     assert disk[first]["cpu1_temperature_01_upper"] == "60"
     assert disk[first]["cpu1_temperature_02_upper"] == "95"
+
+
+@pytest.mark.parametrize("save_method", ["save_profile", "save_to_profile"])
+@pytest.mark.parametrize("first_launch", [False, True])
+@pytest.mark.parametrize("discovery", [[], [FIRST], [None, None], [FIRST, FIRST]], ids=["empty", "partial", "missing", "duplicate"])
+def test_legacy_save_without_discovery_preserves_policy_on_return(backend, save_method, first_launch, discovery):
+    seed = backend.start()
+    seed.update_preference_setting("first_launch_done", None, not first_launch, None)
+    legacy_values = {
+        f"{info['parameter_id']}_{suffix}": str(value)
+        for info in seed.sensor_infos
+        for suffix, value in POLICIES[info["identifier"]].items()
+    }
+    Path(seed.profiles_path).write_text(
+        "[Global]\n" + "".join(f"{key}={value}\n" for key, value in legacy_values.items()),
+        encoding="utf-8",
+    )
+    backend.order[:] = discovery
+    unavailable = backend.start()
+    for info in unavailable.sensor_infos:
+        for suffix in ("enable", "lower", "upper"):
+            key = f"{info['parameter_id']}_{suffix}"
+            expected = unavailable.parse_input_value(key, legacy_values[key])
+            assert unavailable.dpg.get_value(f"input_{key}") == expected
+            assert unavailable.get_setting(key) == expected
+            # An incomplete save must retain the stored ordinal values exactly,
+            # even if widgets have been edited while discovery is ambiguous.
+            unavailable.dpg.set_value(f"input_{key}", False if suffix == "enable" else "1")
+    unavailable.dpg.set_value("input_maxcap", "99")
+    _save(unavailable, save_method, "Global")
+    disk = new_config()
+    read_config(disk, unavailable.profiles_path)
+    assert "lhm_sensor_policies" not in disk["Global"]
+    assert {key: disk["Global"][key] for key in legacy_values} == legacy_values
+    assert disk["Global"]["maxcap"] == "99"
+    assert any("migration deferred" in message for message in backend.logger.messages)
+    backend.order[:] = [FIRST, SECOND]
+    returned = backend.start()
+    assert _policies_by_identifier(returned) == POLICIES
+    _save(returned, save_method, "Global")
+    assert json.loads(returned.profiles_config["Global"]["lhm_sensor_policies"]) == POLICIES
+
+
+@pytest.mark.parametrize("save_method", ["save_profile", "save_to_profile"])
+def test_deferred_migration_does_not_bind_new_sensor_or_drop_missing_hardware(backend, save_method):
+    backend.order[:] = [[FIRST], [SECOND]]
+    seed = backend.start()
+    seed.update_preference_setting("first_launch_done", None, True, None)
+    legacy_values = {
+        f"{info['parameter_id']}_{suffix}": str(value)
+        for info in seed.sensor_infos
+        for suffix, value in POLICIES[info["identifier"]].items()
+    }
+    Path(seed.profiles_path).write_text(
+        "[Global]\n" + "".join(f"{key}={value}\n" for key, value in legacy_values.items()),
+        encoding="utf-8",
+    )
+    new = "/amdcpu/0/temperature/2"
+    backend.order[:] = [FIRST, new]
+    partial = backend.start()
+    assert _policies_by_identifier(partial) == {
+        FIRST: POLICIES[FIRST], new: {"enable": False, "lower": 0, "upper": 100},
+    }
+    partial.dpg.set_value("input_cpu1_temperature_02_enable", True)
+    _save(partial, save_method, "Global")
+    disk = new_config()
+    read_config(disk, partial.profiles_path)
+    assert "lhm_sensor_policies" not in disk["Global"]
+    assert {key: disk["Global"][key] for key in legacy_values} == legacy_values
+    assert "cpu1_temperature_02_enable" not in disk["Global"]
+    backend.order[:] = [[FIRST], [SECOND]]
+    assert _policies_by_identifier(backend.start()) == POLICIES
+
+
+@pytest.mark.parametrize("save_method", ["save_profile", "save_to_profile"])
+@pytest.mark.parametrize("first_launch", [False, True])
+@pytest.mark.parametrize("raw", [
+    "", "[", "[]", '{"unknown": {}}', "null",
+    json.dumps({FIRST: {"enable": "False", "lower": 20, "upper": 60}}),
+    json.dumps({FIRST: {"enable": True, "lower": None, "upper": 60}}),
+    json.dumps({"": POLICIES[FIRST]}),
+])
+def test_invalid_mapping_does_not_crash_or_replace_saved_data(backend, save_method, first_launch, raw):
+    seed = backend.start()
+    seed.update_preference_setting("first_launch_done", None, not first_launch, None)
+    _set_policies(seed)
+    _save(seed, save_method, "Global")
+    legacy_values = {
+        f"{info['parameter_id']}_{suffix}": str(value)
+        for info in seed.sensor_infos
+        for suffix, value in POLICIES[info["identifier"]].items()
+    }
+    seed.profiles_config["Global"]["lhm_sensor_policies"] = raw
+    write_config(seed.profiles_config, seed.profiles_path)
+    cm = backend.start()
+    default = {"enable": False, "lower": 0, "upper": 100}
+    assert _policies_by_identifier(cm) == {FIRST: default, SECOND: default}
+    for key in legacy_values:
+        assert cm.get_setting(key) == default[key.rsplit("_", 1)[1]]
+    cm.quick_load_settings()
+    assert _policies_by_identifier(cm) == {FIRST: default, SECOND: default}
+    _set_policies(cm)  # Widget edits must not replace corrupt persisted data.
+    cm.dpg.set_value("input_maxcap", "99")
+    _save(cm, save_method, "Global")
+    disk = new_config()
+    read_config(disk, cm.profiles_path)
+    assert disk["Global"]["lhm_sensor_policies"] == raw
+    assert {key: disk["Global"][key] for key in legacy_values} == legacy_values
+    assert disk["Global"]["maxcap"] == "99"
+    assert any("Error parsing lhm_sensor_policies" in message for message in backend.logger.messages)
+    restarted = backend.start()
+    assert _policies_by_identifier(restarted) == {FIRST: default, SECOND: default}
