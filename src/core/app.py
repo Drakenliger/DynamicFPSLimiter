@@ -1632,7 +1632,7 @@ autopilot_thread.start()
 apply_all_tooltips(dpg, get_tooltips(), cm.showtooltip, cm, logger)
 cm.refresh_ui_callbacks()
 
-autostart = AutoStartManager(app_path=os.path.join(os.path.dirname(Base_dir), "DynamicFPSLimiter.exe"), logger=logger)
+autostart = AutoStartManager(source_path=os.path.join(os.path.dirname(Base_dir), "__main__.py"), logger=logger)
 if _acceptance_runtime is None:
     autostart_result = autostart.update_if_needed(cm.launchonstartup)
     if cm.launchonstartup and autostart_result is False:

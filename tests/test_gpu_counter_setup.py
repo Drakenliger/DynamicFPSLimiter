@@ -35,6 +35,18 @@ class MockPDH:
         self.add_counter_calls = []  # [(qh_val, counter_path, ch_val)]
         self.close_query_calls = []  # [qh_val]
         self.collect_calls = []  # [qh_val]
+        self.PdhEnumObjectsW = MagicMock(side_effect=self._enum_objects)
+
+    def _enum_objects(
+        self, szDataSource, szMachineName, mszObjectList,
+        pcchBufferLength, dwDetailLevel, bRefresh,
+    ):
+        # Sizing-only refresh; MagicMock permits ctypes signature assignment.
+        assert szDataSource is None and szMachineName is None
+        assert mszObjectList is None
+        assert dwDetailLevel == 400 and bRefresh == 1
+        self._set_ref_val(pcchBufferLength, len("GPU Engine\x00\x00"))
+        return ctypes.c_int32(0x800007D2).value  # Signed PDH_MORE_DATA
 
     def _set_ref_val(self, ref, val):
         # ref can be a ctypes.byref (cparam) or a ctypes pointer/structure
@@ -169,6 +181,7 @@ def test_monitor_start_adds_counters_exactly_once(monkeypatch, stub_logger):
     # Assert exactly 2 counters total were registered on the query handle
     assert len(mock_pdh.add_counter_calls) == 2
     assert len(mock_pdh.queries[qh]) == 2
+    assert mock_pdh.PdhEnumObjectsW.call_count == 1
 
     # Check that all registered counter handles in Python map match active native query handles
     registered_handles = set()
@@ -203,6 +216,7 @@ def test_reinitialize_creates_fresh_query_and_closes_old(monkeypatch, stub_logge
     new_counter_handles = {h.value for h_list in m.counter_handles.values() for h in h_list}
     assert old_counter_handles.isdisjoint(new_counter_handles)
     assert len(mock_pdh.queries[new_qh]) == 2
+    assert mock_pdh.PdhEnumObjectsW.call_count == 2
 
 
 def test_alternative_engine_type_reconfigures_counters(monkeypatch, stub_logger):
@@ -232,6 +246,7 @@ def test_alternative_engine_type_reconfigures_counters(monkeypatch, stub_logger)
     compute_counter_paths = [path for _, path, _ in mock_pdh.add_counter_calls if "engtype_Compute" in path]
     assert len(compute_counter_paths) == 1
     assert len(mock_pdh.queries[qh]) == 1
+    assert mock_pdh.PdhEnumObjectsW.call_count == 2
 
 
 def test_setup_failure_preserves_recovery_and_cleanup(monkeypatch, stub_logger):

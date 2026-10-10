@@ -75,7 +75,7 @@ def current_user_sid(user_id):
     return sid
 
 
-def build_task_xml(app_path, user_id):
+def build_task_xml(app_path, user_id, arguments=""):
     """Build an interactive logon task without battery or runtime limits."""
     def element(parent, name, text=None, **attributes):
         node = ET.SubElement(parent, f"{{{TASK_NAMESPACE}}}{name}", attributes)
@@ -95,11 +95,13 @@ def build_task_xml(app_path, user_id):
     element(settings, "ExecutionTimeLimit", "PT0S")
     action = element(element(task, "Actions", Context="Author"), "Exec")
     element(action, "Command", app_path)
+    if arguments:
+        element(action, "Arguments", arguments)
     return ET.tostring(task, encoding="utf-16", xml_declaration=True)
 
 
-def task_xml_matches(xml, app_path, user_id, known_aliases=()):
-    """Require the executable and all autostart policy fields to match."""
+def task_xml_matches(xml, app_path, user_id, known_aliases=(), arguments=""):
+    """Require the command, arguments and all autostart policy fields to match."""
     try:
         task = ET.fromstring(xml)
     except (ET.ParseError, TypeError, ValueError):
@@ -128,7 +130,7 @@ def task_xml_matches(xml, app_path, user_id, known_aliases=()):
         and task.find("t:Actions", ns).get("Context") == principal.get("id")
         and action.tag == f"{{{TASK_NAMESPACE}}}Exec"
         and (value(action, "Command") or "").lower() == app_path.lower()
-        and not value(action, "Arguments")
+        and (value(action, "Arguments") or "") == arguments
         and task.findtext("t:Settings/t:DisallowStartIfOnBatteries", namespaces=ns) == "false"
         and task.findtext("t:Settings/t:StopIfGoingOnBatteries", namespaces=ns) == "false"
         and task.findtext("t:Settings/t:ExecutionTimeLimit", namespaces=ns) == "PT0S"
@@ -136,10 +138,31 @@ def task_xml_matches(xml, app_path, user_id, known_aliases=()):
 
 
 class AutoStartManager:
-    def __init__(self, app_path=None, task_name=TASK_NAME, logger=None):
-        self.app_path = app_path or self.get_current_app_path()
+    def __init__(self, app_path=None, task_name=TASK_NAME, logger=None, *, source_path=None):
+        self.arguments = ""
+        self.source_path = None
+        if source_path is not None and not app_path:
+            self.app_path, self.arguments = self.get_runtime_target(source_path)
+            if not getattr(sys, "frozen", False):
+                self.source_path = os.path.abspath(source_path)
+        else:
+            self.app_path = app_path or self.get_current_app_path()
         self.task_name = task_name
         self.logger = logger
+
+    @staticmethod
+    def get_runtime_target(source_path):
+        """Use the running package, or launch the source entry through Python."""
+        if getattr(sys, "frozen", False):
+            return sys.executable, ""
+        executable = sys.executable
+        flags = ["--debug"] if "--debug" in sys.argv[1:] else []
+        if not flags:
+            pythonw = os.path.join(os.path.dirname(executable), "pythonw.exe")
+            if os.path.isfile(pythonw):
+                executable = pythonw
+        source = os.path.normcase(os.path.abspath(source_path))
+        return executable, subprocess.list2cmdline([source, *flags])
 
     @staticmethod
     def get_current_app_path():
@@ -204,9 +227,11 @@ class AutoStartManager:
 
     @report_operational_failure
     def create(self):
-        if not self.is_in_program_files():
+        install_path = self.source_path or self.app_path
+        if not self.is_in_program_files(path=install_path):
+            path_kind = "source" if self.source_path else "executable"
             msg = (
-                f"Autostart executable path '{self.app_path}' is outside Program Files. "
+                f"Autostart {path_kind} path '{install_path}' is outside Program Files. "
                 "It is recommended to install under Program Files before enabling autostart."
             )
             try:
@@ -219,7 +244,7 @@ class AutoStartManager:
             except Exception:
                 pass
 
-        xml = build_task_xml(self.app_path, current_user_id())
+        xml = build_task_xml(self.app_path, current_user_id(), self.arguments)
         filename = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as stream:
@@ -251,9 +276,11 @@ class AutoStartManager:
                     creationflags=CREATE_NO_WINDOW, check=True,
                 )
                 user_id = current_user_id()
-                if not task_xml_matches(result.stdout, self.app_path, user_id):
+                if not task_xml_matches(result.stdout, self.app_path, user_id,
+                                        arguments=self.arguments):
                     sid = current_user_sid(user_id)
-                    if not task_xml_matches(result.stdout, self.app_path, user_id, (sid,)):
+                    if not task_xml_matches(result.stdout, self.app_path, user_id, (sid,),
+                                            arguments=self.arguments):
                         return self.create()
             else:
                 return self.create()
